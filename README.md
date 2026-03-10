@@ -1,6 +1,6 @@
 # darpan-ui
 
-Temporary frontend repo for the Darpan browser pilot.
+Frontend repo for the Darpan browser pilot.
 
 ## Purpose
 
