@@ -1,12 +1,17 @@
 # darpan-ui
 
-Frontend repo for the Darpan browser pilot.
+Command-first frontend facade for the Darpan browser pilot.
 
 ## Purpose
 
-- Build and validate pilot UX outside the Moqui component repo.
-- Consume backend contracts exposed by `hotwax/darpan`.
-- Support future transfer to HotWax org without contract changes.
+- Host migrated module screens in `darpan-ui` while backend screens remain in parallel during cutover.
+- Consume authenticated facade contracts from `darpan-backend` (`service/facade/**`).
+- Keep custom UI/PWA behavior out of backend `screen/**`, `template/**`, and `theme-library/**`.
+
+## Ownership boundary
+
+- `darpan-ui`: all custom UI, PWA shell, and browser interaction flows.
+- `darpan-backend`: Moqui backend contracts, business logic, and reconciliation processing only.
 
 ## Tech Stack
 
@@ -18,11 +23,20 @@ Frontend repo for the Darpan browser pilot.
 
 ## Configuration
 
-Set environment variables in `.env` or CI environment.
+Set environment variables in `.env` or CI environment:
 
 ```bash
-VITE_DARPAN_API_BASE_URL=http://localhost:8080
+# Optional in local dev. If omitted, darpan-ui uses same-origin /rpc/json with Vite proxy.
+# VITE_DARPAN_API_BASE_URL=http://localhost:8080
+# VITE_DARPAN_RPC_URL=http://localhost:8080/rpc/json
 VITE_DARPAN_UI_MODE=pilot
+VITE_DARPAN_AUTH_BYPASS=false
+```
+
+For local UI-only prototyping without backend login, set:
+
+```bash
+VITE_DARPAN_AUTH_BYPASS=true
 ```
 
 ## Commands
@@ -35,7 +49,27 @@ npm run build
 npm run preview
 ```
 
+Default local URL: `http://localhost:5173`.
+
+## Wave 1 Routes
+
+- `/login` (initial screen)
+- `/` (module hub)
+- `/connections/llm`
+- `/connections/sftp`
+- `/connections/netsuite/auth`
+- `/connections/netsuite/endpoints`
+- `/connections/read-db`
+- `/schemas/library`
+- `/schemas/infer`
+- `/schemas/editor/:jsonSchemaId`
+- `/roadmap/reconciliation` (roadmap card for upcoming module rollout)
+
+## Legacy Redirect Support
+
+- During phased cutover, pass `?legacy=1` when opening migrated routes from backend links to display migration banner context.
+- Keep backend and darpan-ui routes in parallel until parity sign-off, then retire legacy backend screens in the following release.
+
 ## Notes
 
-- This repository is temporary by design and will be transferred/mirrored to HotWax org when permissions are available.
-- API contracts remain owned by `hotwax/darpan`.
+- API contracts remain owned by `darpan-backend/runtime/component/darpan/service/facade/**`.
