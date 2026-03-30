@@ -30,6 +30,8 @@ export class ApiCallError extends Error {
   }
 }
 
+export const AUTH_REQUIRED_EVENT = 'darpan:auth-required'
+
 const rawApiBase = import.meta.env.VITE_DARPAN_API_BASE_URL ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080')
 const apiBase = rawApiBase.replace(/\/$/, '')
 
@@ -66,28 +68,40 @@ function resolvePrimaryRpcUrl(): string {
 function buildRpcCandidates(): string[] {
   const configured = (import.meta.env.VITE_DARPAN_RPC_URL ?? '').trim()
   const origin = resolveApiOrigin(apiBase)
-  const runtimeFallbackOrigins: string[] = []
-  if (typeof window !== 'undefined') {
-    runtimeFallbackOrigins.push(window.location.origin)
-    const protocol = window.location.protocol || 'http:'
-    const host = window.location.hostname || 'localhost'
-    runtimeFallbackOrigins.push(`${protocol}//${host}:8080`)
-    runtimeFallbackOrigins.push(`${protocol}//${host}:8085`)
-    runtimeFallbackOrigins.push('http://localhost:8080')
-    runtimeFallbackOrigins.push('http://localhost:8085')
+  const candidates = new Set<string>()
+
+  if (configured) {
+    candidates.add(resolveRpcUrl(configured))
   }
 
-  const candidates = [
-    configured ? resolveRpcUrl(configured) : '',
-    `${apiBase}/rpc/json`,
-    `${apiBase}/qapps/darpan/rpc/json`,
-    `${origin}/rpc/json`,
-    `${origin}/qapps/darpan/rpc/json`,
-    ...runtimeFallbackOrigins.map((item) => `${item}/rpc/json`),
-    ...runtimeFallbackOrigins.map((item) => `${item}/qapps/darpan/rpc/json`),
-  ].filter((item) => item.length > 0)
+  // Keep broad fallback probing to local/dev environments only.
+  if (!configured || import.meta.env.DEV) {
+    candidates.add(`${apiBase}/rpc/json`)
+    candidates.add(`${apiBase}/qapps/darpan/rpc/json`)
+    candidates.add(`${origin}/rpc/json`)
+    candidates.add(`${origin}/qapps/darpan/rpc/json`)
+  }
 
-  return [...new Set(candidates)]
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const protocol = window.location.protocol || 'http:'
+    const host = window.location.hostname || 'localhost'
+    const runtimeFallbackOrigins = new Set<string>([
+      window.location.origin,
+      `${protocol}//${host}:8080`,
+      `${protocol}//${host}:8081`,
+      `${protocol}//${host}:8085`,
+      'http://localhost:8080',
+      'http://localhost:8081',
+      'http://localhost:8085',
+    ])
+
+    for (const runtimeOrigin of runtimeFallbackOrigins) {
+      candidates.add(`${runtimeOrigin}/rpc/json`)
+      candidates.add(`${runtimeOrigin}/qapps/darpan/rpc/json`)
+    }
+  }
+
+  return Array.from(candidates).filter((item) => item.length > 0)
 }
 
 const rpcUrl = resolvePrimaryRpcUrl()
@@ -123,6 +137,25 @@ function extractCsrfFromHtml(body: string): string | null {
     if (match?.[1]?.trim()) return match[1].trim()
   }
   return null
+}
+
+function isHtmlResponse(response: Response, body: string): boolean {
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+  if (contentType.includes('text/html') || contentType.includes('application/xhtml+xml')) {
+    return true
+  }
+  return /^\s*</.test(body)
+}
+
+function looksLikeAuthHtml(body: string): boolean {
+  const normalized = body.toLowerCase()
+  return (
+    normalized.includes('moquisessiontoken') ||
+    normalized.includes('<title>login') ||
+    normalized.includes('name="username"') ||
+    normalized.includes('name="password"') ||
+    normalized.includes('sign in')
+  )
 }
 
 function getOriginFromUrl(urlValue: string): string {
@@ -169,6 +202,39 @@ async function resetSession(candidateUrl?: string): Promise<void> {
   }
 }
 
+async function retryWithCsrfToken(
+  candidateUrl: string,
+  request: JsonRpcRequest,
+  initialBody: string,
+): Promise<{ response: Response; body: string } | null> {
+  if (!csrfToken) {
+    const inlineToken = extractCsrfFromHtml(initialBody)
+    if (inlineToken) csrfToken = inlineToken
+  }
+
+  let bootstrapped = !!csrfToken
+  if (!bootstrapped) {
+    bootstrapped = await bootstrapCsrfToken(candidateUrl)
+  }
+  if (!bootstrapped) {
+    await resetSession(candidateUrl)
+    bootstrapped = await bootstrapCsrfToken(candidateUrl)
+  }
+  if (!bootstrapped) return null
+
+  const retryResponse = await fetch(candidateUrl, {
+    method: 'POST',
+    headers: buildHeaders(),
+    credentials: 'include',
+    body: JSON.stringify(request),
+  })
+  updateCsrfFromResponse(retryResponse)
+  return {
+    response: retryResponse,
+    body: await retryResponse.text(),
+  }
+}
+
 function normalizeEnvelope(result: unknown): ApiEnvelope {
   const payload = result as Partial<ApiEnvelope>
   return {
@@ -176,6 +242,25 @@ function normalizeEnvelope(result: unknown): ApiEnvelope {
     messages: Array.isArray(payload.messages) ? payload.messages.map((item) => String(item)) : [],
     errors: Array.isArray(payload.errors) ? payload.errors.map((item) => String(item)) : [],
   }
+}
+
+function isAuthRequiredMessage(message: string | null | undefined): boolean {
+  if (!message) return false
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('user must be logged in') ||
+    normalized.includes('no active authenticated session') ||
+    normalized.includes('authentication required')
+  )
+}
+
+function dispatchAuthRequiredEvent(payload: { message: string; method: string; candidateUrl: string; status?: number }): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent(AUTH_REQUIRED_EVENT, {
+      detail: payload,
+    }),
+  )
 }
 
 export async function callService<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
@@ -211,30 +296,22 @@ export async function callService<T>(method: string, params: Record<string, unkn
     let finalResponse = response
     let finalBody = bodyText
 
-    if (response.status === 401 && finalBody.includes('Session token required')) {
-      let bootstrapped = await bootstrapCsrfToken(candidateUrl)
-      if (!bootstrapped) {
-        await resetSession(candidateUrl)
-        bootstrapped = await bootstrapCsrfToken(candidateUrl)
-      }
-      if (bootstrapped) {
-        try {
-          const retryResponse = await fetch(candidateUrl, {
-            method: 'POST',
-            headers: buildHeaders(),
-            credentials: 'include',
-            body: JSON.stringify(request),
-          })
-          updateCsrfFromResponse(retryResponse)
-          finalResponse = retryResponse
-          finalBody = await retryResponse.text()
-        } catch (error) {
-          parseFailures.push({
-            url: candidateUrl,
-            error,
-          })
-          continue
+    if (
+      (response.status === 401 && finalBody.toLowerCase().includes('session token required')) ||
+      (isHtmlResponse(response, finalBody) && looksLikeAuthHtml(finalBody))
+    ) {
+      try {
+        const retryResult = await retryWithCsrfToken(candidateUrl, request, finalBody)
+        if (retryResult) {
+          finalResponse = retryResult.response
+          finalBody = retryResult.body
         }
+      } catch (error) {
+        parseFailures.push({
+          url: candidateUrl,
+          error,
+        })
+        continue
       }
     }
 
@@ -252,27 +329,54 @@ export async function callService<T>(method: string, params: Record<string, unkn
     }
 
     if (!finalResponse.ok) {
+      const message = parsed.error?.message ?? `Request failed with status ${finalResponse.status}`
+      if (finalResponse.status === 401 || isAuthRequiredMessage(message)) {
+        dispatchAuthRequiredEvent({
+          message,
+          method,
+          candidateUrl,
+          status: finalResponse.status,
+        })
+      }
       throw new ApiCallError(
-        parsed.error?.message ?? `Request failed with status ${finalResponse.status}`,
+        message,
         finalResponse.status,
         { candidateUrl, data: parsed.error?.data },
       )
     }
 
     if (parsed.error) {
+      if (finalResponse.status === 401 || isAuthRequiredMessage(parsed.error.message)) {
+        dispatchAuthRequiredEvent({
+          message: parsed.error.message,
+          method,
+          candidateUrl,
+          status: finalResponse.status,
+        })
+      }
       throw new ApiCallError(parsed.error.message, finalResponse.status, { candidateUrl, data: parsed.error.data })
     }
 
     const result = parsed.result
     if (!result) {
-      throw new ApiCallError(`No result returned for ${method}`, response.status, { candidateUrl })
+      throw new ApiCallError(`No result returned for ${method}`, finalResponse.status, { candidateUrl })
     }
 
     const envelope = normalizeEnvelope(result)
     if (!envelope.ok || envelope.errors.length > 0) {
+      const message = envelope.errors[0] ?? `Service ${method} returned an error`
+      const isAuthRequired = isAuthRequiredMessage(message)
+      if (isAuthRequired) {
+        dispatchAuthRequiredEvent({
+          message,
+          method,
+          candidateUrl,
+          status: 401,
+        })
+      }
       throw new ApiCallError(
-        envelope.errors[0] ?? `Service ${method} returned an error`,
-        finalResponse.status,
+        message,
+        isAuthRequired ? 401 : finalResponse.status,
         { candidateUrl, result },
       )
     }
@@ -280,8 +384,42 @@ export async function callService<T>(method: string, params: Record<string, unkn
     return result
   }
 
-  throw new ApiCallError(`Invalid JSON response from ${method}`, 500, {
-    attemptedUrls: rpcCandidates,
+  const attemptedUrls = rpcCandidates
+  const allUnreachable = parseFailures.length > 0 && parseFailures.every((failure) => failure.status == null)
+  const authLikeFailure = parseFailures.find((failure) => {
+    const raw = failure.raw?.toLowerCase() ?? ''
+    return (
+      failure.status === 401 ||
+      raw.includes('session token required') ||
+      raw.includes('moquisessiontoken') ||
+      raw.includes('login') ||
+      raw.includes('sign in') ||
+      raw.includes('authentication required')
+    )
+  })
+
+  if (authLikeFailure) {
+    dispatchAuthRequiredEvent({
+      message: 'Authentication required',
+      method,
+      candidateUrl: authLikeFailure.url,
+      status: authLikeFailure.status ?? 401,
+    })
+    throw new ApiCallError(`Authentication required for ${method}`, 401, {
+      attemptedUrls,
+      failures: parseFailures,
+    })
+  }
+
+  if (allUnreachable) {
+    throw new ApiCallError(`Unable to reach API endpoint for ${method}`, 503, {
+      attemptedUrls,
+      failures: parseFailures,
+    })
+  }
+
+  throw new ApiCallError(`Received non-JSON response from ${method}`, 502, {
+    attemptedUrls,
     failures: parseFailures,
   })
 }

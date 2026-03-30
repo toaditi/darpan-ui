@@ -3,7 +3,7 @@
     <section class="module-intro">
       <p class="eyebrow">[wave_1] clear_task_flow</p>
       <h1>Clear task flow</h1>
-      <p class="muted-copy">Connections -> Schema Studio -> Reconciliation roadmap.</p>
+      <p class="muted-copy">Connections -> Schema Studio -> Roadmap &amp; Requests.</p>
     </section>
 
     <section class="card-grid three hub-grid">
@@ -40,10 +40,11 @@
         <div class="stack-sm">
           <p class="eyebrow">Roadmap</p>
           <h3>Reconciliation</h3>
-          <p>Roadmap-only surface in this wave.</p>
+          <p>Customer roadmap access and request intake are available here, and results remain in a dedicated workspace.</p>
         </div>
         <div class="actions-tight">
-          <RouterLink class="ghost-link" to="/roadmap/reconciliation">Open Roadmap Card</RouterLink>
+          <RouterLink class="ghost-link" to="/roadmap/reconciliation">Open Roadmap &amp; Requests</RouterLink>
+          <RouterLink class="ghost-link" to="/reconciliation/results">Open Results Workspace</RouterLink>
         </div>
       </article>
     </section>
@@ -55,7 +56,7 @@
           <button type="button" @click="loadReadiness" :disabled="loading">Refresh Status</button>
         </div>
 
-        <InlineValidation v-if="statusError" tone="error" :message="statusError" />
+        <InlineValidation v-if="statusMessage" :tone="statusMessageTone" :message="statusMessage" />
 
         <ol class="action-track">
           <li v-for="step in readiness" :key="step.id" class="action-track-item">
@@ -73,10 +74,11 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import FormSection from '../components/ui/FormSection.vue'
 import InlineValidation from '../components/ui/InlineValidation.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
+import { ensureAuthenticated } from '../lib/auth'
 import { jsonSchemaFacade, settingsFacade } from '../lib/api/facade'
 import type { HubReadinessState, ReadinessStatus } from '../lib/types/ux'
 
@@ -102,7 +104,10 @@ const readiness = ref<HubReadinessState[]>([
 ])
 
 const loading = ref(false)
-const statusError = ref<string | null>(null)
+const statusMessage = ref<string | null>(null)
+const statusMessageTone = ref<'error' | 'info'>('info')
+const route = useRoute()
+const router = useRouter()
 
 function statusLabel(status: ReadinessStatus): string {
   if (status === 'complete') return 'Complete'
@@ -221,9 +226,18 @@ function summarizeRollout(connections: ReadinessStatus, schema: ReadinessStatus)
 
 async function loadReadiness(): Promise<void> {
   loading.value = true
-  statusError.value = null
+  statusMessage.value = null
 
   try {
+    const authenticated = await ensureAuthenticated(true)
+    if (!authenticated) {
+      await router.replace({
+        name: 'login',
+        query: { redirect: route.fullPath },
+      })
+      return
+    }
+
     const [llm, sftp, nsAuth, nsEndpoints, readDb, schemas] = await Promise.allSettled([
       settingsFacade.getLlmSettings(),
       settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 1 }),
@@ -244,6 +258,8 @@ async function loadReadiness(): Promise<void> {
     const schemaSummary = summarizeSchema(parseTotalCount(schemas))
 
     const rolloutSummary = summarizeRollout(connectionSummary.status, schemaSummary.status)
+    const readinessStates: ReadinessStatus[] = [connectionSummary.status, schemaSummary.status, rolloutSummary.status]
+    const hasUnknownState = readinessStates.includes('unknown')
 
     readiness.value = [
       {
@@ -266,12 +282,35 @@ async function loadReadiness(): Promise<void> {
       },
     ]
 
-    const hasFailures = [llm, sftp, nsAuth, nsEndpoints, readDb, schemas].some((result) => result.status === 'rejected')
-    if (hasFailures) {
-      statusError.value = 'Some readiness checks failed. Displayed status includes unknown states where needed.'
+    const checks = [
+      { label: 'LLM settings', result: llm },
+      { label: 'SFTP servers', result: sftp },
+      { label: 'NetSuite auth', result: nsAuth },
+      { label: 'NetSuite endpoints', result: nsEndpoints },
+      { label: 'Read DB profiles', result: readDb },
+      { label: 'Schema library', result: schemas },
+    ]
+    const failedChecks = checks
+      .filter((check) => check.result.status === 'rejected')
+      .map((check) => check.label)
+
+    if (failedChecks.length > 0 && hasUnknownState) {
+      statusMessageTone.value = 'info'
+      if (failedChecks.length === checks.length) {
+        statusMessage.value =
+          'Readiness checks are temporarily unavailable. Unknown statuses are shown where data could not be confirmed.'
+      } else {
+        const preview = failedChecks.slice(0, 2).join(', ')
+        const remaining = failedChecks.length - 2
+        const suffix = remaining > 0 ? `, +${remaining} more` : ''
+        statusMessage.value =
+          `Some readiness checks are unavailable (${preview}${suffix}). ` +
+          'Unknown statuses are shown where data could not be confirmed.'
+      }
     }
   } catch {
-    statusError.value = 'Unable to load readiness states right now.'
+    statusMessageTone.value = 'error'
+    statusMessage.value = 'Unable to load readiness states right now.'
   } finally {
     loading.value = false
   }

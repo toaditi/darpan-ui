@@ -3,18 +3,24 @@
     <div v-if="open" class="command-overlay" @click.self="close">
       <section class="command-panel" role="dialog" aria-modal="true" aria-label="Command launcher">
         <header class="command-head">
+          <label class="sr-only" for="command-palette-search">Search commands</label>
           <input
+            id="command-palette-search"
             ref="searchInput"
             v-model="query"
             type="search"
+            name="command-search"
             class="command-input"
-            placeholder="Search modules and actions"
+            aria-describedby="command-palette-hint"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Search modules, settings, or actions…"
             @keydown.enter.prevent="executeFirst"
           />
-          <button type="button" class="ghost-btn" @click="close">Esc</button>
+          <button type="button" class="ghost-btn" @click="close">Close</button>
         </header>
 
-        <p class="mono-copy">Use Cmd/Ctrl+K to reopen. Press Enter to run top match.</p>
+        <p id="command-palette-hint" class="mono-copy">Use Cmd/Ctrl+K to reopen. Press Enter to run the top match.</p>
 
         <div v-if="grouped.length === 0" class="empty-state compact">
           <h3>No matching commands</h3>

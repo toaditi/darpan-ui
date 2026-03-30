@@ -6,6 +6,7 @@
   "description": "Temporary Darpan UI pilot app (Vue + TypeScript + Vite)",
   "scripts": {
     "dev": "vite",
+    "dev:stack": "./scripts/dev-stack.sh",
     "build": "npm run type-check && npm run build-only",
     "build-only": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",

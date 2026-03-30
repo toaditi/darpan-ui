@@ -1,4 +1,6 @@
 <template>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
   <div class="app-shell">
     <header v-if="!isLoginRoute" class="utility-header">
       <div class="utility-brand">
@@ -9,7 +11,7 @@
       </div>
     </header>
 
-    <section class="content-shell">
+    <section id="main-content" class="content-shell" tabindex="-1">
       <RouterView />
     </section>
   </div>
@@ -23,54 +25,64 @@
   ></button>
 
   <div v-if="!isLoginRoute" class="floating-actions">
-    <div class="user-menu-wrap">
-      <button
-        type="button"
-        class="user-fab"
-        :aria-expanded="isUserMenuOpen"
-        aria-haspopup="dialog"
-        aria-label="Open user details and settings"
-        @click="toggleUserMenu"
-      >
+    <div class="floating-quick-actions">
+      <button type="button" class="home-fab" aria-label="Go to Hub" @click="goToHub">
         <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-          <circle cx="12" cy="8" r="3.5" />
-          <path d="M4 19.5c1.9-3 5-4.5 8-4.5s6.1 1.5 8 4.5" />
+          <path d="M3.8 10.4 12 4l8.2 6.4" />
+          <path d="M6.7 9.5V20h10.6V9.5" />
+          <path d="M10.3 20v-5.8h3.4V20" />
         </svg>
       </button>
 
-      <section v-if="isUserMenuOpen" class="user-menu-card" role="dialog" aria-label="User details and settings">
-        <p class="eyebrow">User details</p>
-        <p class="user-menu-name">{{ userDisplayName }}</p>
-        <p class="mono-copy">{{ userStatusText }}</p>
+      <div class="user-menu-wrap">
+        <button
+          type="button"
+          class="user-fab"
+          :aria-expanded="isUserMenuOpen"
+          aria-haspopup="dialog"
+          aria-label="Open user details and settings"
+          @click="toggleUserMenu"
+        >
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <circle cx="12" cy="8" r="3.5" />
+            <path d="M4 19.5c1.9-3 5-4.5 8-4.5s6.1 1.5 8 4.5" />
+          </svg>
+        </button>
 
-        <div class="user-menu-row">
-          <span class="muted-copy">Theme</span>
-          <button
-            type="button"
-            class="theme-toggle"
-            :class="{ dark: theme === 'dark', light: theme === 'light' }"
-            :aria-label="`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`"
-            :aria-pressed="theme === 'dark'"
-            @click="toggleTheme"
-          >
-            <span class="theme-toggle-icon theme-toggle-sun" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <circle cx="12" cy="12" r="3.5" />
-                <path d="M12 2.5v3.2M12 18.3v3.2M21.5 12h-3.2M5.7 12H2.5M18.7 5.3l-2.3 2.3M7.6 16.4l-2.3 2.3M18.7 18.7l-2.3-2.3M7.6 7.6 5.3 5.3" />
-              </svg>
-            </span>
-            <span class="theme-toggle-icon theme-toggle-moon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M15.7 3.2a8.7 8.7 0 1 0 5.1 15.6 9.8 9.8 0 1 1-5.1-15.6Z" />
-              </svg>
-            </span>
-            <span class="theme-toggle-thumb" aria-hidden="true"></span>
-            <span class="sr-only">Toggle theme</span>
-          </button>
-        </div>
+        <section v-if="isUserMenuOpen" class="user-menu-card" role="dialog" aria-label="User details and settings">
+          <p class="eyebrow">User details</p>
+          <p class="user-menu-name">{{ userDisplayName }}</p>
+          <p class="mono-copy">{{ userStatusText }}</p>
 
-        <p class="mono-copy user-menu-hint">Ask Darpan shortcut: Cmd/Ctrl+K</p>
-      </section>
+          <div class="user-menu-row">
+            <span class="muted-copy">Theme</span>
+            <button
+              type="button"
+              class="theme-toggle"
+              :class="{ dark: theme === 'dark', light: theme === 'light' }"
+              :aria-label="`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`"
+              :aria-pressed="theme === 'dark'"
+              @click="toggleTheme"
+            >
+              <span class="theme-toggle-icon theme-toggle-sun" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3.5" />
+                  <path d="M12 2.5v3.2M12 18.3v3.2M21.5 12h-3.2M5.7 12H2.5M18.7 5.3l-2.3 2.3M7.6 16.4l-2.3 2.3M18.7 18.7l-2.3-2.3M7.6 7.6 5.3 5.3" />
+                </svg>
+              </span>
+              <span class="theme-toggle-icon theme-toggle-moon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                  <path d="M15.7 3.2a8.7 8.7 0 1 0 5.1 15.6 9.8 9.8 0 1 1-5.1-15.6Z" />
+                </svg>
+              </span>
+              <span class="theme-toggle-thumb" aria-hidden="true"></span>
+              <span class="sr-only">Toggle theme</span>
+            </button>
+          </div>
+
+          <p class="mono-copy user-menu-hint">Ask Darpan shortcut: Cmd/Ctrl+K</p>
+        </section>
+      </div>
     </div>
 
     <button type="button" class="command-bubble" aria-label="Open command menu" @click="openCommandPalette">
@@ -94,6 +106,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import CommandPalette from './components/shell/CommandPalette.vue'
 import { ensureAuthenticated, useAuthState } from './lib/auth'
+import { AUTH_REQUIRED_EVENT } from './lib/api/client'
 import { useTheme } from './lib/theme'
 import type { CommandAction } from './lib/types/ux'
 
@@ -197,6 +210,14 @@ const commandActions: CommandAction[] = [
     aliases: ['reconciliation', 'roadmap', 'coming soon'],
   },
   {
+    id: 'navigate-results',
+    label: 'Open Inventory Results',
+    description: 'Review persisted discrepancy runs and evidence.',
+    group: 'Navigate',
+    to: '/reconciliation/results',
+    aliases: ['reconciliation', 'results', 'inventory', 'workspace'],
+  },
+  {
     id: 'quick-new-schema',
     label: 'Quick Action: New Schema Upload',
     description: 'Jump to library upload panel.',
@@ -271,6 +292,13 @@ function closeUserMenu(): void {
   isUserMenuOpen.value = false
 }
 
+async function goToHub(): Promise<void> {
+  isCommandPaletteOpen.value = false
+  isUserMenuOpen.value = false
+  if (route.path === '/') return
+  await router.push('/')
+}
+
 async function executeCommand(action: CommandAction): Promise<void> {
   isCommandPaletteOpen.value = false
   if (action.to === route.fullPath) return
@@ -299,6 +327,23 @@ function handleKeyboard(event: KeyboardEvent): void {
   }
 }
 
+async function redirectToLoginIfNeeded(): Promise<void> {
+  if (isLoginRoute.value) return
+
+  isCommandPaletteOpen.value = false
+  isUserMenuOpen.value = false
+  await router.replace({
+    name: 'login',
+    query: {
+      redirect: route.fullPath,
+    },
+  })
+}
+
+function handleAuthRequired(): void {
+  void redirectToLoginIfNeeded()
+}
+
 watch(
   () => route.fullPath,
   () => {
@@ -312,6 +357,7 @@ watch(
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
+  window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
   if (!isLoginRoute.value) {
     void ensureAuthenticated()
   }
@@ -319,5 +365,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyboard)
+  window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
 })
 </script>

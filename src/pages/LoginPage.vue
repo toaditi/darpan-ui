@@ -33,6 +33,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import InlineValidation from '../components/ui/InlineValidation.vue'
 import { loginWithCredentials, useAuthState } from '../lib/auth'
+import { resolveInternalRedirectTarget } from '../lib/navigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,7 +56,7 @@ async function submit(): Promise<void> {
       return
     }
 
-    const redirectTarget = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+    const redirectTarget = resolveInternalRedirectTarget(route.query.redirect)
     await router.replace(redirectTarget)
   } finally {
     loading.value = false

@@ -19,6 +19,16 @@ const authState = reactive<AuthState>({
 })
 
 const authBypass = (import.meta.env.VITE_DARPAN_AUTH_BYPASS ?? '').toLowerCase() === 'true'
+const AUTH_CACHE_KEY = 'darpan-ui-auth-cache'
+
+function clearLegacyAuthState(): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.removeItem(AUTH_CACHE_KEY)
+  } catch {
+    // ignore storage cleanup failures
+  }
+}
 
 function formatApiError(error: ApiCallError): string {
   const details = (error.details ?? {}) as {
@@ -43,6 +53,16 @@ function setAuthenticated(userId: string | null, username: string | null): void 
   authState.userId = userId
   authState.username = username
   authState.error = null
+  clearLegacyAuthState()
+}
+
+function setUnauthenticated(error: string): void {
+  authState.checked = true
+  authState.authenticated = false
+  authState.userId = null
+  authState.username = null
+  authState.error = error
+  clearLegacyAuthState()
 }
 
 export async function ensureAuthenticated(force = false): Promise<boolean> {
@@ -60,25 +80,12 @@ export async function ensureAuthenticated(force = false): Promise<boolean> {
     if (response.authenticated) {
       setAuthenticated(response.sessionInfo?.userId ?? null, response.sessionInfo?.username ?? null)
     } else {
-      authState.checked = true
-      authState.authenticated = false
-      authState.userId = null
-      authState.username = null
-      authState.error = 'No active authenticated session detected.'
+      setUnauthenticated('No active authenticated session detected.')
     }
     return authState.authenticated
   } catch (error) {
-    authState.checked = true
-    authState.authenticated = false
-    authState.userId = null
-    authState.username = null
-
-    if (error instanceof ApiCallError) {
-      authState.error = formatApiError(error)
-    } else {
-      authState.error = 'Unable to verify authentication'
-    }
-
+    const formattedError = error instanceof ApiCallError ? formatApiError(error) : 'Unable to verify authentication'
+    setUnauthenticated(formattedError)
     return false
   }
 }
@@ -96,18 +103,10 @@ export async function loginWithCredentials(username: string, password: string): 
       return true
     }
 
-    authState.checked = true
-    authState.authenticated = false
-    authState.userId = null
-    authState.username = null
-    authState.error = response.errors?.[0] ?? 'Login failed'
+    setUnauthenticated(response.errors?.[0] ?? 'Login failed')
     return false
   } catch (error) {
-    authState.checked = true
-    authState.authenticated = false
-    authState.userId = null
-    authState.username = null
-    authState.error = error instanceof ApiCallError ? formatApiError(error) : 'Login failed'
+    setUnauthenticated(error instanceof ApiCallError ? formatApiError(error) : 'Login failed')
     return false
   }
 }
