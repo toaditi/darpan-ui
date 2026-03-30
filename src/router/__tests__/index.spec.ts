@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import router from '../index'
 
-describe('router release scope', () => {
-  it('does not register the out-of-scope inventory results workspace', () => {
+describe('router inventory results route', () => {
+  it('registers the results workspace as an authenticated route', () => {
     const route = router.getRoutes().find((record) => record.name === 'reconciliation-results')
 
-    expect(route).toBeUndefined()
-  })
-
-  it('does not register the out-of-scope ruleset mockup route', () => {
-    const route = router.getRoutes().find((record) => record.name === 'roadmap-reconciliation-create-ruleset')
-
-    expect(route).toBeUndefined()
+    expect(route).toBeTruthy()
+    expect(route?.path).toBe('/reconciliation/results')
+    expect(route?.meta.requiresAuth).toBe(true)
   })
 })

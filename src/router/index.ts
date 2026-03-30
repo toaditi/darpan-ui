@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { ensureAuthenticated } from '../lib/auth'
 
+const enableRuleSetMockup = (import.meta.env.VITE_DARPAN_ENABLE_RULESET_MOCKUP ?? '').toLowerCase() === 'true'
+
 const routes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -24,6 +26,22 @@ const routes: RouteRecordRaw[] = [
     name: 'roadmap-reconciliation',
     component: () => import('../pages/ReconciliationPlaceholderPage.vue'),
     meta: { requiresAuth: true, section: 'roadmap' },
+  },
+  {
+    path: '/reconciliation/results',
+    name: 'reconciliation-results',
+    component: () => import('../pages/reconciliation/InventoryResultsPage.vue'),
+    meta: { requiresAuth: true, section: 'reconciliation' },
+  },
+  {
+    path: '/roadmap/reconciliation/create-ruleset',
+    name: 'roadmap-reconciliation-create-ruleset',
+    component: () => import('../pages/reconciliation/CreateRuleSetMockupPage.vue'),
+    meta: { requiresAuth: true, section: 'roadmap' },
+    beforeEnter: () => {
+      if (enableRuleSetMockup) return true
+      return { name: 'roadmap-reconciliation' }
+    },
   },
   {
     path: '/connections',

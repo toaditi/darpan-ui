@@ -1,11 +1,15 @@
 import { callService } from './client'
 import type {
   DeleteJsonSchemaResponse,
+  DownloadInventoryResultReviewCsvResponse,
   FlattenJsonSchemaResponse,
   GetJsonSchemaResponse,
+  GetInventoryResultDetailResponse,
+  GetInventoryResultRunResponse,
   InferJsonSchemaResponse,
   ListEnumOptionsResponse,
   ListHcReadDbConfigsResponse,
+  ListInventoryResultRunsResponse,
   ListJsonSchemasResponse,
   ListNsAuthConfigsResponse,
   ListNsRestletConfigsResponse,
@@ -51,6 +55,13 @@ const JSON_SCHEMA = {
   flatten: 'facade.JsonSchemaFacadeServices.flatten#JsonSchema',
   saveRefined: 'facade.JsonSchemaFacadeServices.save#RefinedSchema',
   delete: 'facade.JsonSchemaFacadeServices.delete#JsonSchema',
+}
+
+const INVENTORY_RESULTS = {
+  listRuns: 'facade.InventoryResultsFacadeServices.list#InventoryResultRuns',
+  getRun: 'facade.InventoryResultsFacadeServices.get#InventoryResultRun',
+  getDetail: 'facade.InventoryResultsFacadeServices.get#InventoryResultDetail',
+  downloadReviewCsv: 'facade.InventoryResultsFacadeServices.download#InventoryResultReviewCsv',
 }
 
 export const authFacade = {
@@ -122,5 +133,20 @@ export const jsonSchemaFacade = {
   },
   delete(payload: Record<string, unknown>): Promise<DeleteJsonSchemaResponse> {
     return callService<DeleteJsonSchemaResponse>(JSON_SCHEMA.delete, payload)
+  },
+}
+
+export const resultsFacade = {
+  listInventoryResultRuns(payload: Record<string, unknown>): Promise<ListInventoryResultRunsResponse> {
+    return callService<ListInventoryResultRunsResponse>(INVENTORY_RESULTS.listRuns, payload)
+  },
+  getInventoryResultRun(payload: Record<string, unknown>): Promise<GetInventoryResultRunResponse> {
+    return callService<GetInventoryResultRunResponse>(INVENTORY_RESULTS.getRun, payload)
+  },
+  getInventoryResultDetail(payload: Record<string, unknown>): Promise<GetInventoryResultDetailResponse> {
+    return callService<GetInventoryResultDetailResponse>(INVENTORY_RESULTS.getDetail, payload)
+  },
+  downloadInventoryResultReviewCsv(runId: string): Promise<DownloadInventoryResultReviewCsvResponse> {
+    return callService<DownloadInventoryResultReviewCsvResponse>(INVENTORY_RESULTS.downloadReviewCsv, { runId })
   },
 }

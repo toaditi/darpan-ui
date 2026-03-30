@@ -210,6 +210,14 @@ const commandActions: CommandAction[] = [
     aliases: ['reconciliation', 'roadmap', 'coming soon'],
   },
   {
+    id: 'navigate-results',
+    label: 'Open Inventory Results',
+    description: 'Review persisted discrepancy runs and evidence.',
+    group: 'Navigate',
+    to: '/reconciliation/results',
+    aliases: ['reconciliation', 'results', 'inventory', 'workspace'],
+  },
+  {
     id: 'quick-new-schema',
     label: 'Quick Action: New Schema Upload',
     description: 'Jump to library upload panel.',

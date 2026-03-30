@@ -23,6 +23,7 @@
           </div>
           <div class="actions-tight">
             <RouterLink class="ghost-link" to="/">Back to Hub</RouterLink>
+            <RouterLink class="ghost-link" to="/reconciliation/results">Open Results Workspace</RouterLink>
             <RouterLink class="ghost-link" to="/connections/llm">Open Connections</RouterLink>
           </div>
         </article>

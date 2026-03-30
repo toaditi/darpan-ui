@@ -34,6 +34,8 @@ Set environment variables in `.env` or CI environment:
 # VITE_DARPAN_LINEAR_REQUEST_URL=https://linear.app/your-request-form
 # Optional. Set false when the Linear target should open only in a new tab.
 # VITE_DARPAN_LINEAR_EMBED_ENABLED=true
+# Optional. Keep false in production unless explicitly demoing the mockup route.
+# VITE_DARPAN_ENABLE_RULESET_MOCKUP=false
 VITE_DARPAN_UI_MODE=pilot
 VITE_DARPAN_AUTH_BYPASS=false
 ```
@@ -88,6 +90,7 @@ DARPAN_BACKEND_PORT=8081 DARPAN_FRONTEND_PORT=5174 npm run dev:stack
 - `/schemas/infer`
 - `/schemas/editor/:jsonSchemaId`
 - `/roadmap/reconciliation` (customer roadmap and request access, backed by configurable Linear URLs)
+- `/roadmap/reconciliation/create-ruleset` (mockup route, only when `VITE_DARPAN_ENABLE_RULESET_MOCKUP=true`)
 
 ## Legacy Redirect Support
 
