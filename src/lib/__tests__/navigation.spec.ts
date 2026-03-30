@@ -3,8 +3,8 @@ import { resolveInternalRedirectTarget } from '../navigation'
 
 describe('resolveInternalRedirectTarget', () => {
   it('keeps valid internal routes', () => {
-    expect(resolveInternalRedirectTarget('/reconciliation/results?tab=review#drawer')).toBe(
-      '/reconciliation/results?tab=review#drawer',
+    expect(resolveInternalRedirectTarget('/connections/llm?focus=create#panel')).toBe(
+      '/connections/llm?focus=create#panel',
     )
   })
 

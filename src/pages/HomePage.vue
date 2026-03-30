@@ -40,11 +40,10 @@
         <div class="stack-sm">
           <p class="eyebrow">Roadmap</p>
           <h3>Reconciliation</h3>
-          <p>Customer roadmap access and request intake are available here, and results remain in a dedicated workspace.</p>
+          <p>Customer roadmap access and request intake are available here.</p>
         </div>
         <div class="actions-tight">
           <RouterLink class="ghost-link" to="/roadmap/reconciliation">Open Roadmap &amp; Requests</RouterLink>
-          <RouterLink class="ghost-link" to="/reconciliation/results">Open Results Workspace</RouterLink>
         </div>
       </article>
     </section>
