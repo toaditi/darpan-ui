@@ -1,32 +1,19 @@
 <template>
   <a class="skip-link" href="#main-content">Skip to main content</a>
 
-  <div class="app-shell">
-    <header v-if="!isLoginRoute" class="utility-header">
-      <div class="utility-brand">
-        <h1 class="app-title">
-          <RouterLink class="app-title-link" to="/">Darpan</RouterLink>
-        </h1>
-        <p class="muted-copy utility-subtitle">Connections, schema setup, and reconciliation readiness in one place.</p>
-      </div>
-    </header>
-
-    <section id="main-content" class="content-shell" tabindex="-1">
+  <div :class="['app-shell', `app-shell--${surfaceMode}`]">
+    <section id="main-content" :class="['content-shell', `content-shell--${surfaceMode}`]" tabindex="-1">
       <RouterView />
     </section>
   </div>
 
-  <button
-    v-if="!isLoginRoute && isUserMenuOpen"
-    type="button"
-    class="user-menu-backdrop"
-    aria-label="Close user details menu"
-    @click="closeUserMenu"
-  ></button>
+  <div v-if="workflowEscapeHintLabel" class="workflow-escape-hint" role="status" aria-live="polite">
+    Press Esc to go back to {{ workflowEscapeHintLabel }}
+  </div>
 
-  <div v-if="!isLoginRoute" class="floating-actions">
+  <div v-if="!isShelllessRoute" class="floating-actions">
     <div class="floating-quick-actions">
-      <button type="button" class="home-fab" aria-label="Go to Hub" @click="goToHub">
+      <button type="button" class="home-fab" aria-label="Go to Dashboard" @click="goToHub()">
         <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
           <path d="M3.8 10.4 12 4l8.2 6.4" />
           <path d="M6.7 9.5V20h10.6V9.5" />
@@ -34,7 +21,7 @@
         </svg>
       </button>
 
-      <div class="user-menu-wrap">
+      <div ref="userMenuWrap" class="user-menu-wrap">
         <button
           type="button"
           class="user-fab"
@@ -50,12 +37,10 @@
         </button>
 
         <section v-if="isUserMenuOpen" class="user-menu-card" role="dialog" aria-label="User details and settings">
-          <p class="eyebrow">User details</p>
           <p class="user-menu-name">{{ userDisplayName }}</p>
-          <p class="mono-copy">{{ userStatusText }}</p>
+          <p v-if="userStatusText" class="mono-copy">{{ userStatusText }}</p>
 
           <div class="user-menu-row">
-            <span class="muted-copy">Theme</span>
             <button
               type="button"
               class="theme-toggle"
@@ -80,7 +65,11 @@
             </button>
           </div>
 
-          <p class="mono-copy user-menu-hint">Ask Darpan shortcut: Cmd/Ctrl+K</p>
+          <div class="user-menu-actions">
+            <button type="button" class="user-menu-logout" :disabled="isLoggingOut" @click="handleLogout">
+              {{ isLoggingOut ? 'Signing out...' : 'Sign Out' }}
+            </button>
+          </div>
         </section>
       </div>
     </div>
@@ -93,22 +82,27 @@
   </div>
 
   <CommandPalette
-    v-if="!isLoginRoute"
+    v-if="!isShelllessRoute"
     :open="isCommandPaletteOpen"
     :actions="commandActions"
+    :recent-command-ids="recentCommandIds"
     @close="closeCommandPalette"
     @execute="executeCommand"
   />
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import CommandPalette from './components/shell/CommandPalette.vue'
-import { ensureAuthenticated, useAuthState } from './lib/auth'
+import { buildAuthRedirect, ensureAuthenticated, logoutSession, useAuthState } from './lib/auth'
 import { AUTH_REQUIRED_EVENT } from './lib/api/client'
+import { listRecentCommandIds, recordRecentCommand } from './lib/commandSearch'
+import { shouldAbortWorkflowOnEscape } from './lib/keyboard'
+import { purgeLegacyReconciliationDrafts } from './lib/reconciliationDrafts'
 import { useTheme } from './lib/theme'
 import type { CommandAction } from './lib/types/ux'
+import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState, resolveStaticPageLabel } from './lib/workflowOrigin'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,22 +111,28 @@ const { theme, toggleTheme } = useTheme()
 
 const isCommandPaletteOpen = ref(false)
 const isUserMenuOpen = ref(false)
+const isLoggingOut = ref(false)
+const recentCommandIds = ref<string[]>([])
+const userMenuWrap = ref<HTMLElement | null>(null)
+const workflowEscapeHintLabel = ref<string | null>(null)
+const workflowEscapeOriginPath = ref<string | null>(null)
 
-const isLoginRoute = computed(() => route.name === 'login')
+const isShelllessRoute = computed(() => route.name === 'login' || route.name === 'auth-required')
+const surfaceMode = computed<'static' | 'workflow'>(() => (route.meta.surfaceMode === 'workflow' ? 'workflow' : 'static'))
 const userDisplayName = computed(() => authState.username ?? authState.userId ?? 'Unknown user')
-const userStatusText = computed(() => {
-  if (authState.authenticated) return 'Signed in'
-  if (authState.checked) {
-    return authState.error ? 'Session check failed' : 'Not signed in'
-  }
+const userStatusText = computed<string | null>(() => {
+  if (isLoggingOut.value) return 'Signing out'
+  if (authState.authenticated) return null
+  if (authState.status === 'verification-failed') return 'Session check failed'
+  if (authState.checked) return 'Not signed in'
   return 'Checking session'
 })
 
 const commandActions: CommandAction[] = [
   {
     id: 'navigate-hub',
-    label: 'Go to Hub',
-    description: 'Open module hub and readiness track.',
+    label: 'Go to Dashboard',
+    description: 'Open the reconciliation dashboard and flow inventory.',
     group: 'Navigate',
     to: '/',
     aliases: ['home', 'dashboard', 'module hub'],
@@ -170,14 +170,6 @@ const commandActions: CommandAction[] = [
     aliases: ['netsuite', 'endpoint', 'restlet'],
   },
   {
-    id: 'navigate-read-db',
-    label: 'Open Read DB',
-    description: 'Manage read-only database connection profiles.',
-    group: 'Navigate',
-    to: '/connections/read-db',
-    aliases: ['read db', 'jdbc', 'database'],
-  },
-  {
     id: 'navigate-schema-library',
     label: 'Open Schema Library',
     description: 'Upload, browse, validate, and edit saved schemas.',
@@ -202,12 +194,44 @@ const commandActions: CommandAction[] = [
     aliases: ['schema', 'editor', 'refine'],
   },
   {
+    id: 'navigate-create-reconciliation',
+    label: 'Create Reconciliation Flow',
+    description: 'Open the guided reconciliation creation flow.',
+    group: 'Navigate',
+    to: '/reconciliation/create',
+    aliases: ['create reconciliation', 'new flow', 'guided flow'],
+  },
+  {
+    id: 'navigate-pilot-diff',
+    label: 'Open Diff',
+    description: 'Run the scoped 1-to-1 reconciliation diff flow.',
+    group: 'Navigate',
+    to: '/reconciliation/pilot-diff',
+    aliases: ['diff', 'basic diff', 'run reconciliation'],
+  },
+  {
     id: 'navigate-roadmap',
     label: 'Open Reconciliation Roadmap',
     description: 'View reconciliation rollout status.',
     group: 'Navigate',
     to: '/roadmap/reconciliation',
     aliases: ['reconciliation', 'roadmap', 'coming soon'],
+  },
+  {
+    id: 'quick-create-reconciliation',
+    label: 'Quick Action: Create Reconciliation',
+    description: 'Start the guided flow builder.',
+    group: 'Quick Actions',
+    to: '/reconciliation/create',
+    aliases: ['create flow', 'new reconciliation', 'guided create'],
+  },
+  {
+    id: 'quick-run-pilot-diff',
+    label: 'Quick Action: Execute',
+    description: 'Jump straight to the diff flow.',
+    group: 'Quick Actions',
+    to: '/reconciliation/pilot-diff',
+    aliases: ['execute', 'run diff', 'compare files', 'reconciliation diff'],
   },
   {
     id: 'quick-new-schema',
@@ -250,14 +274,6 @@ const commandActions: CommandAction[] = [
     aliases: ['endpoint', 'restlet', 'add endpoint'],
   },
   {
-    id: 'quick-add-read-db',
-    label: 'Quick Action: Add Read DB Config',
-    description: 'Open Read DB profile form.',
-    group: 'Quick Actions',
-    to: '/connections/read-db?focus=create',
-    aliases: ['read db', 'jdbc', 'add config'],
-  },
-  {
     id: 'quick-open-llm',
     label: 'Quick Action: Open LLM Provider',
     description: 'Open provider model and key settings.',
@@ -266,6 +282,9 @@ const commandActions: CommandAction[] = [
     aliases: ['llm', 'provider', 'openai', 'gemini'],
   },
 ]
+
+const workflowRoutePaths = new Set(['/reconciliation/create', '/reconciliation/pilot-diff'])
+let workflowEscapeHintTimer: ReturnType<typeof globalThis.setTimeout> | null = null
 
 function openCommandPalette(): void {
   isUserMenuOpen.value = false
@@ -284,16 +303,76 @@ function closeUserMenu(): void {
   isUserMenuOpen.value = false
 }
 
-async function goToHub(): Promise<void> {
+function handleWindowMouseDown(event: MouseEvent): void {
+  if (!isUserMenuOpen.value) return
+  if (!(event.target instanceof Node)) return
+  if (userMenuWrap.value?.contains(event.target)) return
+  closeUserMenu()
+}
+
+function clearActiveElementFocus(): void {
+  if (typeof document === 'undefined') return
+
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement && activeElement !== document.body) {
+    activeElement.blur()
+  }
+}
+
+async function goToHub(options: { clearFocus?: boolean } = {}): Promise<void> {
   isCommandPaletteOpen.value = false
   isUserMenuOpen.value = false
+  if (options.clearFocus) clearActiveElementFocus()
   if (route.path === '/') return
   await router.push('/')
+  if (options.clearFocus) {
+    await nextTick()
+    clearActiveElementFocus()
+  }
+}
+
+async function goToWorkflowOrigin(options: { clearFocus?: boolean } = {}): Promise<void> {
+  const targetPath = workflowEscapeOriginPath.value || '/'
+
+  isCommandPaletteOpen.value = false
+  isUserMenuOpen.value = false
+  if (options.clearFocus) clearActiveElementFocus()
+  if (route.fullPath === targetPath) return
+  await router.push(targetPath)
+  if (options.clearFocus) {
+    await nextTick()
+    clearActiveElementFocus()
+  }
+}
+
+async function handleLogout(): Promise<void> {
+  if (isLoggingOut.value) return
+
+  isCommandPaletteOpen.value = false
+  isLoggingOut.value = true
+  try {
+    const loggedOut = await logoutSession()
+    if (!loggedOut) return
+
+    isUserMenuOpen.value = false
+    await router.replace({ name: 'login' })
+  } finally {
+    isLoggingOut.value = false
+  }
 }
 
 async function executeCommand(action: CommandAction): Promise<void> {
   isCommandPaletteOpen.value = false
+  recentCommandIds.value = recordRecentCommand(action.id)
   if (action.to === route.fullPath) return
+  const staticPageLabel = resolveStaticPageLabel(route)
+  if (staticPageLabel && workflowRoutePaths.has(action.to)) {
+    await router.push({
+      path: action.to,
+      state: buildWorkflowOriginState(staticPageLabel, route.fullPath),
+    })
+    return
+  }
   await router.push(action.to)
 }
 
@@ -316,24 +395,69 @@ function handleKeyboard(event: KeyboardEvent): void {
   if (key === 'escape' && isUserMenuOpen.value) {
     event.preventDefault()
     isUserMenuOpen.value = false
+    return
+  }
+
+  if (shouldAbortWorkflowOnEscape(event, { workflowActive: surfaceMode.value === 'workflow' })) {
+    event.preventDefault()
+    void goToWorkflowOrigin({ clearFocus: true })
   }
 }
 
-async function redirectToLoginIfNeeded(): Promise<void> {
-  if (isLoginRoute.value) return
+async function redirectToAuthBoundary(): Promise<void> {
+  if (isShelllessRoute.value) return
 
   isCommandPaletteOpen.value = false
   isUserMenuOpen.value = false
-  await router.replace({
-    name: 'login',
-    query: {
-      redirect: route.fullPath,
-    },
-  })
+  await router.replace(buildAuthRedirect(route.fullPath))
 }
 
-function handleAuthRequired(): void {
-  void redirectToLoginIfNeeded()
+async function handleAuthRequired(): Promise<void> {
+  if (isShelllessRoute.value) return
+
+  const authenticated = await ensureAuthenticated(true)
+  if (authenticated) return
+
+  await redirectToAuthBoundary()
+}
+
+function syncBodySurfaceMode(nextMode: 'static' | 'workflow'): void {
+  if (typeof document === 'undefined') return
+  document.body.classList.remove('surface-mode-static', 'surface-mode-workflow')
+  document.body.classList.add(`surface-mode-${nextMode}`)
+}
+
+function clearWorkflowEscapeHintTimer(): void {
+  if (workflowEscapeHintTimer === null) return
+  globalThis.clearTimeout(workflowEscapeHintTimer)
+  workflowEscapeHintTimer = null
+}
+
+function hideWorkflowEscapeHint(): void {
+  clearWorkflowEscapeHintTimer()
+  workflowEscapeHintLabel.value = null
+}
+
+function syncWorkflowEscapeOrigin(): void {
+  if (surfaceMode.value !== 'workflow') {
+    workflowEscapeOriginPath.value = null
+    hideWorkflowEscapeHint()
+    return
+  }
+
+  const workflowOrigin = readWorkflowOriginFromHistoryState()
+  workflowEscapeOriginPath.value = workflowOrigin?.path ?? null
+  if (!workflowOrigin) {
+    hideWorkflowEscapeHint()
+    return
+  }
+
+  workflowEscapeHintLabel.value = workflowOrigin.label
+  clearWorkflowEscapeHintTimer()
+  workflowEscapeHintTimer = globalThis.setTimeout(() => {
+    workflowEscapeHintLabel.value = null
+    workflowEscapeHintTimer = null
+  }, 2000)
 }
 
 watch(
@@ -341,22 +465,47 @@ watch(
   () => {
     isCommandPaletteOpen.value = false
     isUserMenuOpen.value = false
-    if (!isLoginRoute.value) {
+    if (!isShelllessRoute.value) {
       void ensureAuthenticated()
     }
   },
 )
 
+watch(
+  () => route.fullPath,
+  () => {
+    syncWorkflowEscapeOrigin()
+  },
+  { immediate: true },
+)
+
+watch(
+  surfaceMode,
+  (nextMode) => {
+    syncBodySurfaceMode(nextMode)
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
+  purgeLegacyReconciliationDrafts()
+  recentCommandIds.value = listRecentCommandIds()
   window.addEventListener('keydown', handleKeyboard)
+  window.addEventListener('mousedown', handleWindowMouseDown)
   window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
-  if (!isLoginRoute.value) {
+  syncBodySurfaceMode(surfaceMode.value)
+  if (!isShelllessRoute.value) {
     void ensureAuthenticated()
   }
 })
 
 onBeforeUnmount(() => {
+  hideWorkflowEscapeHint()
   window.removeEventListener('keydown', handleKeyboard)
+  window.removeEventListener('mousedown', handleWindowMouseDown)
   window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
+  if (typeof document !== 'undefined') {
+    document.body.classList.remove('surface-mode-static', 'surface-mode-workflow')
+  }
 })
 </script>

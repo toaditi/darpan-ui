@@ -1,7 +1,7 @@
 <template>
-  <main class="page-root">
-    <FormSection title="SFTP Settings" description="Manage SFTP server credentials for reconciliation automation.">
-      <form class="stack-lg" @submit.prevent="save">
+  <section class="page-root">
+    <StaticPageSection title="SFTP Settings" description="Manage SFTP server credentials for reconciliation automation.">
+      <form class="stack-lg" @submit.prevent="save" @keydown.enter="requestSubmitOnEnter">
         <div class="field-grid two">
           <label>
             <span>Server ID</span>
@@ -55,52 +55,48 @@
 
       <InlineValidation v-if="error" tone="error" :message="error" />
       <p v-if="success" class="success-copy">{{ success }}</p>
+    </StaticPageSection>
 
-      <div class="stack-md">
-        <div class="row-between">
-          <h3>Existing SFTP Servers</h3>
-          <div class="page-controls">
-            <button type="button" @click="prevPage" :disabled="pageIndex <= 0">Prev</button>
-            <span>Page {{ pageIndex + 1 }} / {{ pageCount }}</span>
-            <button type="button" @click="nextPage" :disabled="pageIndex + 1 >= pageCount">Next</button>
-          </div>
+    <StaticPageSection title="Saved Servers" description="Only saved server names are listed here. Click one to reopen it in the form.">
+      <div class="row-between">
+        <p class="muted-copy">Saved records stay secondary until you need to reopen one.</p>
+        <div v-if="pageCount > 1" class="page-controls">
+          <button type="button" @click="prevPage" :disabled="pageIndex <= 0">Prev</button>
+          <span>Page {{ pageIndex + 1 }} / {{ pageCount }}</span>
+          <button type="button" @click="nextPage" :disabled="pageIndex + 1 >= pageCount">Next</button>
         </div>
-
-        <EmptyState
-          v-if="rows.length === 0"
-          title="No SFTP servers"
-          description="Add a server above to start using automation remotes."
-        />
-
-        <SparseTable v-else :columns="columns" :rows="rows" row-key="sftpServerId">
-          <template #cell-hasPassword="{ row }">
-            <StatusBadge :label="row.hasPassword ? 'Yes' : 'No'" :tone="row.hasPassword ? 'success' : 'neutral'" />
-          </template>
-          <template #cell-hasPrivateKey="{ row }">
-            <StatusBadge
-              :label="row.hasPrivateKey ? 'Yes' : 'No'"
-              :tone="row.hasPrivateKey ? 'success' : 'neutral'"
-            />
-          </template>
-          <template #cell-actions="{ row }">
-            <button type="button" @click="editRow(row)">Edit</button>
-          </template>
-        </SparseTable>
       </div>
-    </FormSection>
-  </main>
+
+      <EmptyState
+        v-if="rows.length === 0"
+        title="No SFTP servers"
+        description="Save a server above to start using automation remotes."
+      />
+
+      <div v-else class="static-page-tile-grid settings-record-grid" data-testid="saved-sftp-servers">
+        <button
+          v-for="row in rows"
+          :key="row.sftpServerId"
+          type="button"
+          class="static-page-tile settings-record-tile"
+          @click="editRow(row)"
+        >
+          <span class="static-page-tile-title">{{ savedServerName(row) }}</span>
+        </button>
+      </div>
+    </StaticPageSection>
+  </section>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
-import FormSection from '../../components/ui/FormSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
-import SparseTable from '../../components/ui/SparseTable.vue'
-import StatusBadge from '../../components/ui/StatusBadge.vue'
+import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { requestSubmitOnEnter } from '../../lib/keyboard'
 import type { SftpServerRecord } from '../../lib/api/types'
 
 interface SftpForm {
@@ -127,17 +123,6 @@ const form = reactive<SftpForm>({
 const route = useRoute()
 const serverIdInput = ref<HTMLInputElement | null>(null)
 
-const columns = [
-  { key: 'sftpServerId', label: 'Server ID' },
-  { key: 'description', label: 'Description' },
-  { key: 'host', label: 'Host' },
-  { key: 'port', label: 'Port' },
-  { key: 'username', label: 'Username' },
-  { key: 'hasPassword', label: 'Password' },
-  { key: 'hasPrivateKey', label: 'Private Key' },
-  { key: 'actions', label: '' },
-]
-
 const rows = ref<SftpServerRecord[]>([])
 const pageIndex = ref(0)
 const pageSize = ref(10)
@@ -146,6 +131,10 @@ const pageCount = ref(1)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
+
+function savedServerName(row: SftpServerRecord): string {
+  return row.description?.trim() || row.sftpServerId
+}
 
 function setForm(record: Partial<SftpForm>): void {
   form.sftpServerId = record.sftpServerId ?? ''
@@ -158,14 +147,14 @@ function setForm(record: Partial<SftpForm>): void {
   form.remoteAttributes = record.remoteAttributes ?? 'Y'
 }
 
-function editRow(row: Record<string, unknown>): void {
+function editRow(row: SftpServerRecord): void {
   setForm({
-    sftpServerId: String(row.sftpServerId ?? ''),
-    description: String(row.description ?? ''),
-    host: String(row.host ?? ''),
-    port: Number(row.port ?? 22),
-    username: String(row.username ?? ''),
-    remoteAttributes: String(row.remoteAttributes ?? 'Y'),
+    sftpServerId: row.sftpServerId,
+    description: row.description ?? '',
+    host: row.host,
+    port: row.port,
+    username: row.username,
+    remoteAttributes: row.remoteAttributes ?? 'Y',
   })
 }
 

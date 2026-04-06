@@ -31,6 +31,13 @@ export class ApiCallError extends Error {
 }
 
 export const AUTH_REQUIRED_EVENT = 'darpan:auth-required'
+const AUTH_SESSION_INFO_METHOD = 'facade.AuthFacadeServices.get#SessionInfo'
+const AUTH_LOGOUT_METHOD = 'facade.AuthFacadeServices.logout#Session'
+const AUTH_REQUIRED_MESSAGE = 'Your session has ended. Sign in again to continue.'
+const UNREACHABLE_MESSAGE = 'Unable to connect to Darpan right now. Try again in a moment.'
+const UNEXPECTED_RESPONSE_MESSAGE = 'Darpan returned an unexpected response. Try again in a moment.'
+const EMPTY_RESULT_MESSAGE = 'Darpan did not return any data.'
+const GENERIC_SERVICE_ERROR_MESSAGE = 'Darpan could not complete the request.'
 
 const rawApiBase = import.meta.env.VITE_DARPAN_API_BASE_URL ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080')
 const apiBase = rawApiBase.replace(/\/$/, '')
@@ -43,6 +50,18 @@ function resolveApiOrigin(value: string): string {
       return window.location.origin
     }
     return value.replace(/\/$/, '')
+  }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
+}
+
+function isLoopbackUrl(value: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(value).hostname)
+  } catch {
+    return false
   }
 }
 
@@ -59,53 +78,43 @@ function resolveRpcUrl(value: string): string {
   return `${apiOrigin}/${value}`
 }
 
-function resolvePrimaryRpcUrl(): string {
-  const configured = (import.meta.env.VITE_DARPAN_RPC_URL ?? '').trim()
-  if (!configured) return `${resolveApiOrigin(apiBase)}/rpc/json`
-  return resolveRpcUrl(configured)
+function buildSameOriginProxyCandidates(): string[] {
+  if (typeof window === 'undefined') return []
+
+  const origin = window.location.origin.replace(/\/$/, '')
+  return [`${origin}/rpc/json`, `${origin}/qapps/darpan/rpc/json`]
+}
+
+function shouldPreferSameOriginProxy(targetUrl: string): boolean {
+  if (typeof window === 'undefined') return false
+  if (!isLoopbackUrl(targetUrl) || !isLoopbackUrl(window.location.origin)) return false
+
+  return getOriginFromUrl(targetUrl) !== window.location.origin
 }
 
 function buildRpcCandidates(): string[] {
   const configured = (import.meta.env.VITE_DARPAN_RPC_URL ?? '').trim()
-  const origin = resolveApiOrigin(apiBase)
-  const candidates = new Set<string>()
-
   if (configured) {
-    candidates.add(resolveRpcUrl(configured))
+    const configuredUrl = resolveRpcUrl(configured)
+    const preferredCandidates = shouldPreferSameOriginProxy(configuredUrl) ? buildSameOriginProxyCandidates() : []
+    return Array.from(new Set<string>([...preferredCandidates, configuredUrl])).filter((item) => item.length > 0)
   }
 
-  // Keep broad fallback probing to local/dev environments only.
-  if (!configured || import.meta.env.DEV) {
-    candidates.add(`${apiBase}/rpc/json`)
-    candidates.add(`${apiBase}/qapps/darpan/rpc/json`)
-    candidates.add(`${origin}/rpc/json`)
-    candidates.add(`${origin}/qapps/darpan/rpc/json`)
-  }
-
-  if (import.meta.env.DEV && typeof window !== 'undefined') {
-    const protocol = window.location.protocol || 'http:'
-    const host = window.location.hostname || 'localhost'
-    const runtimeFallbackOrigins = new Set<string>([
-      window.location.origin,
-      `${protocol}//${host}:8080`,
-      `${protocol}//${host}:8081`,
-      `${protocol}//${host}:8085`,
-      'http://localhost:8080',
-      'http://localhost:8081',
-      'http://localhost:8085',
-    ])
-
-    for (const runtimeOrigin of runtimeFallbackOrigins) {
-      candidates.add(`${runtimeOrigin}/rpc/json`)
-      candidates.add(`${runtimeOrigin}/qapps/darpan/rpc/json`)
-    }
-  }
-
-  return Array.from(candidates).filter((item) => item.length > 0)
+  const origin = resolveApiOrigin(apiBase)
+  const preferredCandidates = shouldPreferSameOriginProxy(origin) ? buildSameOriginProxyCandidates() : []
+  return Array.from(
+    new Set<string>([
+      ...preferredCandidates,
+      `${apiBase}/rpc/json`,
+      `${apiBase}/qapps/darpan/rpc/json`,
+      `${origin}/rpc/json`,
+      `${origin}/qapps/darpan/rpc/json`,
+    ]),
+  ).filter((item) => item.length > 0)
 }
 
-const rpcUrl = resolvePrimaryRpcUrl()
 const rpcCandidates = buildRpcCandidates()
+const rpcUrl = rpcCandidates[0] ?? `${resolveApiOrigin(apiBase)}/rpc/json`
 let csrfToken: string | null = null
 
 function buildHeaders(): Record<string, string> {
@@ -188,7 +197,32 @@ async function bootstrapCsrfToken(candidateUrl?: string): Promise<boolean> {
 }
 
 async function resetSession(candidateUrl?: string): Promise<void> {
-  const origin = getOriginFromUrl(candidateUrl ?? rpcUrl)
+  const targetUrl = candidateUrl ?? rpcUrl
+
+  try {
+    const bootstrapped = csrfToken ? true : await bootstrapCsrfToken(targetUrl)
+    if (bootstrapped) {
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers: buildHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method: AUTH_LOGOUT_METHOD,
+          params: {},
+        }),
+      })
+      updateCsrfFromResponse(response)
+      await response.text()
+      csrfToken = null
+      return
+    }
+  } catch {
+    // fall through to legacy logout path
+  }
+
+  const origin = getOriginFromUrl(targetUrl)
   const logoutUrl = `${origin}/Login/logout`
   try {
     const response = await fetch(logoutUrl, {
@@ -200,6 +234,7 @@ async function resetSession(candidateUrl?: string): Promise<void> {
   } catch {
     // ignore; next bootstrap attempt decides final outcome
   }
+  csrfToken = null
 }
 
 async function retryWithCsrfToken(
@@ -261,6 +296,20 @@ function dispatchAuthRequiredEvent(payload: { message: string; method: string; c
       detail: payload,
     }),
   )
+}
+
+function shouldDispatchAuthRequired(method: string): boolean {
+  // Session bootstrap is resolved through get#SessionInfo itself. Dispatching the global
+  // auth-required event for that method creates redirect races and bypasses the contract
+  // classification in src/lib/auth.ts.
+  return method !== AUTH_SESSION_INFO_METHOD
+}
+
+function withMethodDetails(method: string, details: Record<string, unknown>): Record<string, unknown> {
+  return {
+    method,
+    ...details,
+  }
 }
 
 export async function callService<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
@@ -330,7 +379,7 @@ export async function callService<T>(method: string, params: Record<string, unkn
 
     if (!finalResponse.ok) {
       const message = parsed.error?.message ?? `Request failed with status ${finalResponse.status}`
-      if (finalResponse.status === 401 || isAuthRequiredMessage(message)) {
+      if (shouldDispatchAuthRequired(method) && (finalResponse.status === 401 || isAuthRequiredMessage(message))) {
         dispatchAuthRequiredEvent({
           message,
           method,
@@ -346,7 +395,7 @@ export async function callService<T>(method: string, params: Record<string, unkn
     }
 
     if (parsed.error) {
-      if (finalResponse.status === 401 || isAuthRequiredMessage(parsed.error.message)) {
+      if (shouldDispatchAuthRequired(method) && (finalResponse.status === 401 || isAuthRequiredMessage(parsed.error.message))) {
         dispatchAuthRequiredEvent({
           message: parsed.error.message,
           method,
@@ -359,14 +408,14 @@ export async function callService<T>(method: string, params: Record<string, unkn
 
     const result = parsed.result
     if (!result) {
-      throw new ApiCallError(`No result returned for ${method}`, finalResponse.status, { candidateUrl })
+      throw new ApiCallError(EMPTY_RESULT_MESSAGE, finalResponse.status, withMethodDetails(method, { candidateUrl }))
     }
 
     const envelope = normalizeEnvelope(result)
     if (!envelope.ok || envelope.errors.length > 0) {
-      const message = envelope.errors[0] ?? `Service ${method} returned an error`
+      const message = envelope.errors[0] ?? GENERIC_SERVICE_ERROR_MESSAGE
       const isAuthRequired = isAuthRequiredMessage(message)
-      if (isAuthRequired) {
+      if (shouldDispatchAuthRequired(method) && isAuthRequired) {
         dispatchAuthRequiredEvent({
           message,
           method,
@@ -377,7 +426,7 @@ export async function callService<T>(method: string, params: Record<string, unkn
       throw new ApiCallError(
         message,
         isAuthRequired ? 401 : finalResponse.status,
-        { candidateUrl, result },
+        withMethodDetails(method, { candidateUrl, result }),
       )
     }
 
@@ -399,29 +448,31 @@ export async function callService<T>(method: string, params: Record<string, unkn
   })
 
   if (authLikeFailure) {
-    dispatchAuthRequiredEvent({
-      message: 'Authentication required',
-      method,
-      candidateUrl: authLikeFailure.url,
-      status: authLikeFailure.status ?? 401,
-    })
-    throw new ApiCallError(`Authentication required for ${method}`, 401, {
+    if (shouldDispatchAuthRequired(method)) {
+      dispatchAuthRequiredEvent({
+        message: 'Authentication required',
+        method,
+        candidateUrl: authLikeFailure.url,
+        status: authLikeFailure.status ?? 401,
+      })
+    }
+    throw new ApiCallError(AUTH_REQUIRED_MESSAGE, 401, withMethodDetails(method, {
       attemptedUrls,
       failures: parseFailures,
-    })
+    }))
   }
 
   if (allUnreachable) {
-    throw new ApiCallError(`Unable to reach API endpoint for ${method}`, 503, {
+    throw new ApiCallError(UNREACHABLE_MESSAGE, 503, withMethodDetails(method, {
       attemptedUrls,
       failures: parseFailures,
-    })
+    }))
   }
 
-  throw new ApiCallError(`Received non-JSON response from ${method}`, 502, {
+  throw new ApiCallError(UNEXPECTED_RESPONSE_MESSAGE, 502, withMethodDetails(method, {
     attemptedUrls,
     failures: parseFailures,
-  })
+  }))
 }
 
 export function getRpcUrl(): string {

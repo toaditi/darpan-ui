@@ -4,6 +4,10 @@ export interface ApiEnvelope {
   errors: string[]
 }
 
+export type AuthContractState = 'AUTHENTICATED' | 'UNAUTHENTICATED'
+export type AuthSessionSource = 'PASSWORD_LOGIN' | 'ACTIVE_SESSION' | 'PERSISTENT_LOGIN' | 'NONE'
+export type SessionScopeType = 'GLOBAL' | 'CUSTOMER' | 'ANONYMOUS'
+
 export interface ApiResult<T> extends ApiEnvelope {
   data?: T
 }
@@ -28,17 +32,20 @@ export interface SessionInfo {
   username?: string
   locale?: string
   timeZone?: string
+  scopeType?: SessionScopeType
+  customerScopeId?: string | null
+  isSuperAdmin?: boolean
 }
 
-export interface SessionInfoResponse extends ApiEnvelope {
-  authenticated: boolean
-  sessionInfo?: SessionInfo
+export interface AuthContractResponse extends ApiEnvelope {
+  authState: AuthContractState
+  authSource: AuthSessionSource
+  sessionInfo?: SessionInfo | null
 }
 
-export interface LoginSessionResponse extends ApiEnvelope {
-  authenticated: boolean
-  sessionInfo?: SessionInfo
-}
+export type SessionInfoResponse = AuthContractResponse
+export type LoginSessionResponse = AuthContractResponse
+export type LogoutSessionResponse = AuthContractResponse
 
 export interface ListEnumOptionsResponse extends ApiEnvelope {
   options: EnumOption[]
@@ -117,31 +124,80 @@ export interface SaveNsRestletConfigResponse extends ApiEnvelope {
   savedRestletConfig?: NsRestletConfigRecord
 }
 
-export interface HcReadDbConfigRecord {
-  hcReadDbConfigId: string
-  displayName?: string
-  host: string
-  port: number
-  databaseName: string
-  additionalParameters?: string
-  jdbcUrl?: string
-  username: string
-  dbDriver?: string
-  defaultTableName?: string
-  itemIdColumn?: string
-  locationIdColumn?: string
-  transactionDateColumn?: string
-  connectionPropertiesJson?: string
-  isActive: string
-  hasPassword: boolean
-}
-
-export interface SaveHcReadDbConfigResponse extends ApiEnvelope {
-  savedConfig?: HcReadDbConfigRecord
-}
-
 export interface PaginatedResponse extends ApiEnvelope {
   pagination: PaginationMeta
+}
+
+export interface PilotMappingSystemOption {
+  enumId: string
+  enumCode?: string
+  description?: string
+  label?: string
+  fileTypeEnumId?: string
+  fileTypeLabel?: string
+  idFieldExpression?: string
+  schemaFileName?: string
+}
+
+export interface PilotMappingSummary {
+  reconciliationMappingId: string
+  mappingName: string
+  description?: string
+  requiresSystemSelection: boolean
+  defaultFile1SystemEnumId?: string
+  defaultFile2SystemEnumId?: string
+  systemOptions: PilotMappingSystemOption[]
+}
+
+export interface SavedPilotMapping {
+  reconciliationMappingId: string
+  mappingName: string
+  file1SystemEnumId?: string
+  file2SystemEnumId?: string
+  file1SchemaName?: string
+  file2SchemaName?: string
+  file1FieldPath?: string
+  file2FieldPath?: string
+}
+
+export interface PilotGeneratedOutput {
+  fileName: string
+  sourceFormat: string
+  availableFormats: string[]
+  preferredDownloadFormat?: string
+  reconciliationMappingId?: string
+  mappingName?: string
+  reconciliationType?: string
+  file1Label?: string
+  file2Label?: string
+  totalDifferences?: number
+  onlyInFile1Count?: number
+  onlyInFile2Count?: number
+  createdDate?: string
+  sizeBytes?: number
+}
+
+export interface RunPilotGenericDiffResult {
+  reconciliationMappingId: string
+  mappingName?: string
+  file1Name?: string
+  file2Name?: string
+  file1SystemEnumId?: string
+  file1SystemLabel?: string
+  file2SystemEnumId?: string
+  file2SystemLabel?: string
+  validationErrors?: string[]
+  processingWarnings?: string[]
+  generatedOutput?: PilotGeneratedOutput
+}
+
+export interface GetPilotGeneratedOutputFile {
+  fileName: string
+  downloadFileName: string
+  sourceFormat: string
+  format: string
+  contentType: string
+  contentText: string
 }
 
 export interface ListSftpServersResponse extends PaginatedResponse {
@@ -156,14 +212,40 @@ export interface ListNsRestletConfigsResponse extends PaginatedResponse {
   restletConfigs: NsRestletConfigRecord[]
 }
 
-export interface ListHcReadDbConfigsResponse extends PaginatedResponse {
-  configs: HcReadDbConfigRecord[]
+export interface ListPilotMappingsResponse extends PaginatedResponse {
+  mappings: PilotMappingSummary[]
+}
+
+export interface RunPilotGenericDiffResponse extends ApiEnvelope {
+  validationErrors?: string[]
+  processingWarnings?: string[]
+  runResult?: RunPilotGenericDiffResult
+}
+
+export interface CreatePilotMappingResponse extends ApiEnvelope {
+  savedMapping?: SavedPilotMapping
+}
+
+export interface ListPilotGeneratedOutputsResponse extends PaginatedResponse {
+  generatedOutputs: PilotGeneratedOutput[]
+}
+
+export interface GetPilotGeneratedOutputResponse extends ApiEnvelope {
+  outputFile?: GetPilotGeneratedOutputFile
+}
+
+export interface DeletePilotGeneratedOutputResponse extends ApiEnvelope {
+  deleted?: boolean
+  deletedFileName?: string
+  statusMessage?: string
 }
 
 export interface JsonSchemaSummary {
   jsonSchemaId: string
   schemaName: string
   description?: string
+  systemEnumId?: string
+  systemLabel?: string
   statusId?: string
   createdDate?: string
   lastUpdatedStamp?: string

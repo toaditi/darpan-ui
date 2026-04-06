@@ -7,7 +7,13 @@
     </section>
 
     <nav class="module-nav" aria-label="Schema navigation">
-      <RouterLink v-for="tab in tabs" :key="tab.to" :to="tab.to" class="module-link">
+      <RouterLink
+        v-for="tab in tabs"
+        :key="tab.to"
+        :to="tab.to"
+        :class="['module-link', { 'router-link-active': currentTab === tab.key, 'router-link-exact-active': currentTab === tab.key }]"
+        :aria-current="currentTab === tab.key ? 'page' : undefined"
+      >
         {{ tab.label }}
       </RouterLink>
     </nav>
@@ -17,11 +23,21 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 
+const route = useRoute()
 const tabs = [
-  { to: '/schemas/library', label: 'Library' },
-  { to: '/schemas/infer', label: 'Infer' },
-  { to: '/schemas/editor', label: 'Editor' },
+  { key: 'library', to: '/schemas/library', label: 'Library' },
+  { key: 'infer', to: '/schemas/infer', label: 'Infer' },
+  { key: 'editor', to: '/schemas/editor', label: 'Editor' },
 ]
+
+const currentTab = computed(() => {
+  const routeName = String(route.name ?? '')
+  if (routeName === 'schemas-library') return 'library'
+  if (routeName === 'schemas-infer') return 'infer'
+  if (routeName === 'schemas-editor' || String(route.path ?? '').startsWith('/schemas/editor')) return 'editor'
+  return null
+})
 </script>

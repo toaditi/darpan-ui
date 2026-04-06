@@ -49,11 +49,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { rankCommandActions } from '../../lib/commandSearch'
 import type { CommandAction } from '../../lib/types/ux'
 
 const props = defineProps<{
   open: boolean
   actions: CommandAction[]
+  recentCommandIds?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -64,46 +66,8 @@ const emit = defineEmits<{
 const query = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
 
-interface ScoredAction {
-  action: CommandAction
-  score: number
-}
-
-function scoreAction(action: CommandAction, input: string): number {
-  const normalizedInput = input.trim().toLowerCase()
-  if (!normalizedInput) return 100
-
-  const tokens = normalizedInput.split(/\s+/).filter((token) => token.length > 0)
-  const label = action.label.toLowerCase()
-  const description = action.description.toLowerCase()
-  const aliases = action.aliases.map((item) => item.toLowerCase())
-
-  for (const token of tokens) {
-    const tokenMatch =
-      label.includes(token) || description.includes(token) || aliases.some((alias) => alias.includes(token))
-    if (!tokenMatch) return -1
-  }
-
-  let score = 0
-  if (label.startsWith(normalizedInput)) score += 90
-  if (label.includes(normalizedInput)) score += 70
-  if (aliases.some((alias) => alias.startsWith(normalizedInput))) score += 55
-  if (description.includes(normalizedInput)) score += 35
-  score += Math.max(0, 18 - label.length)
-
-  return score
-}
-
 const filtered = computed(() => {
-  const scored: ScoredAction[] = []
-  for (const action of props.actions) {
-    const score = scoreAction(action, query.value)
-    if (score >= 0) scored.push({ action, score })
-  }
-
-  return scored
-    .sort((left, right) => right.score - left.score)
-    .map((entry) => entry.action)
+  return rankCommandActions(props.actions, query.value, props.recentCommandIds ?? [])
 })
 
 const grouped = computed(() => {

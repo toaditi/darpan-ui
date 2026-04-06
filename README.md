@@ -38,6 +38,27 @@ VITE_DARPAN_UI_MODE=pilot
 VITE_DARPAN_AUTH_BYPASS=false
 ```
 
+## GitHub Pages Deployment
+
+The current public Pages URL is:
+
+- `https://toaditi.github.io/darpan-ui/`
+
+For release-week auth and cookie validation, the Pages build must be pointed at a real backend target through GitHub Actions repository or environment variables:
+
+```bash
+VITE_DARPAN_API_BASE_URL=https://your-pilot-host.example.com
+# or, when the RPC route is different from the API origin:
+VITE_DARPAN_RPC_URL=https://your-pilot-host.example.com/rpc/json
+```
+
+Notes:
+
+- `VITE_DARPAN_RPC_URL` wins when both are set.
+- If neither backend variable is set, the deployed Pages app falls back to same-origin `/rpc/json`.
+- On GitHub Pages, that fallback is not a valid pilot backend target by itself, so the Pages URL alone is not enough for Friday release-week auth or cookie validation.
+- Prefer the final pilot smoke to run against the same-site or reverse-proxied host that will actually serve invite-only users.
+
 For local UI-only prototyping without backend login, set:
 
 ```bash
@@ -83,7 +104,6 @@ DARPAN_BACKEND_PORT=8081 DARPAN_FRONTEND_PORT=5174 npm run dev:stack
 - `/connections/sftp`
 - `/connections/netsuite/auth`
 - `/connections/netsuite/endpoints`
-- `/connections/read-db`
 - `/schemas/library`
 - `/schemas/infer`
 - `/schemas/editor/:jsonSchemaId`

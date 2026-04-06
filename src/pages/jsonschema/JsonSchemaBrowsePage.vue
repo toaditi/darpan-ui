@@ -1,7 +1,7 @@
 <template>
   <section class="stack-xl">
     <FormSection title="Upload Schema" description="Create a schema library entry from a JSON schema document.">
-      <form class="stack-md" @submit.prevent="uploadSchema">
+      <form class="stack-md" @submit.prevent="uploadSchema" @keydown.enter="requestSubmitOnEnter">
         <div class="field-grid two">
           <label>
             <span>Schema Name</span>
@@ -14,12 +14,22 @@
         </div>
 
         <label>
+          <span>System</span>
+          <select v-model="upload.systemEnumId" required>
+            <option value="">Select system</option>
+            <option v-for="option in systemOptions" :key="option.enumId" :value="option.enumId">
+              {{ option.label || option.description || option.enumId }}
+            </option>
+          </select>
+        </label>
+
+        <label>
           <span>Schema File (.json)</span>
           <input type="file" accept=".json,application/json" @change="onSchemaFileChange" />
         </label>
 
         <div class="action-row">
-          <button type="submit" :disabled="uploading || !upload.file">Upload Schema</button>
+          <button type="submit" :disabled="uploading || !upload.file || !upload.systemEnumId">Upload Schema</button>
         </div>
       </form>
     </FormSection>
@@ -56,6 +66,9 @@
         />
 
         <SparseTable v-else :columns="columns" :rows="rows" row-key="jsonSchemaId">
+          <template #cell-systemLabel="{ row }">
+            {{ row.systemLabel || row.systemEnumId || 'Unassigned' }}
+          </template>
           <template #cell-statusId="{ row }">
             <StatusBadge
               :label="row.statusId === 'Active' ? 'Active' : String(row.statusId || 'Unknown')"
@@ -77,7 +90,7 @@
     </FormSection>
 
     <FormSection title="Validate JSON" description="Validate JSON text/file against a selected saved schema.">
-      <form class="stack-md" @submit.prevent="validateJson">
+      <form class="stack-md" @submit.prevent="validateJson" @keydown.enter="requestSubmitOnEnter">
         <label>
           <span>Schema</span>
           <select v-model="validation.jsonSchemaId" required>
@@ -121,12 +134,14 @@ import InlineValidation from '../../components/ui/InlineValidation.vue'
 import SparseTable from '../../components/ui/SparseTable.vue'
 import StatusBadge from '../../components/ui/StatusBadge.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { jsonSchemaFacade } from '../../lib/api/facade'
-import type { JsonSchemaSummary } from '../../lib/api/types'
+import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
+import { requestSubmitOnEnter } from '../../lib/keyboard'
+import type { EnumOption, JsonSchemaSummary } from '../../lib/api/types'
 
 interface UploadState {
   schemaName: string
   description: string
+  systemEnumId: string
   file: File | null
 }
 
@@ -145,6 +160,7 @@ const uploadNameInput = ref<HTMLInputElement | null>(null)
 const columns = [
   { key: 'schemaName', label: 'Schema Name' },
   { key: 'description', label: 'Description' },
+  { key: 'systemLabel', label: 'System' },
   { key: 'statusId', label: 'Status' },
   { key: 'lastUpdatedStamp', label: 'Updated' },
   { key: 'actions', label: '' },
@@ -167,10 +183,12 @@ const uploading = ref(false)
 const validating = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
+const systemOptions = ref<EnumOption[]>([])
 
 const upload = reactive<UploadState>({
   schemaName: '',
   description: '',
+  systemEnumId: '',
   file: null,
 })
 
@@ -240,6 +258,15 @@ async function refresh(): Promise<void> {
   await load()
 }
 
+async function loadSystemOptions(): Promise<void> {
+  try {
+    const response = await settingsFacade.listEnumOptions('DarpanSystemSource')
+    systemOptions.value = response.options ?? []
+  } catch (loadError) {
+    error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load reconciliation systems.'
+  }
+}
+
 async function uploadSchema(): Promise<void> {
   if (!upload.file) return
 
@@ -253,6 +280,7 @@ async function uploadSchema(): Promise<void> {
     const response = await jsonSchemaFacade.saveText({
       schemaName,
       description: upload.description,
+      systemEnumId: upload.systemEnumId,
       schemaText,
       overwrite: false,
     })
@@ -260,6 +288,7 @@ async function uploadSchema(): Promise<void> {
     success.value = response.messages?.[0] ?? `Uploaded schema ${schemaName}.`
     upload.schemaName = ''
     upload.description = ''
+    upload.systemEnumId = ''
     upload.file = null
     await load()
   } catch (saveError) {
@@ -372,7 +401,7 @@ function nextPage(): void {
 
 onMounted(() => {
   focusUploadIfRequested()
-  void load()
+  void Promise.all([load(), loadSystemOptions()])
 })
 
 watch(
