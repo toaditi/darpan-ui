@@ -1,22 +1,37 @@
 import { reactive } from 'vue'
+import type { RouteLocationRaw } from 'vue-router'
 import { ApiCallError, clearAuthToken, setAuthTokenContract } from './api/client'
 import { authFacade } from './api/facade'
+import type { LoginSessionResponse, SessionInfo, SessionInfoResponse } from './api/types'
+import { resolveInternalRedirectTarget } from './navigation'
+
+export type AuthStatus = 'authenticated' | 'unauthenticated' | 'verification-failed'
 
 interface AuthState {
   checked: boolean
-  authenticated: boolean
-  userId: string | null
-  username: string | null
   error: string | null
+  status: AuthStatus
+  sessionInfo: SessionInfo | null
+  readonly authenticated: boolean
+  readonly userId: string | null
+  readonly username: string | null
 }
 
-const authState = reactive<AuthState>({
+const authState = reactive({
   checked: false,
-  authenticated: false,
-  userId: null,
-  username: null,
-  error: null,
-})
+  error: null as string | null,
+  status: 'unauthenticated' as AuthStatus,
+  sessionInfo: null as SessionInfo | null,
+  get authenticated() {
+    return this.status === 'authenticated'
+  },
+  get userId() {
+    return this.sessionInfo?.userId ?? null
+  },
+  get username() {
+    return this.sessionInfo?.username ?? this.sessionInfo?.userId ?? null
+  },
+}) as AuthState
 
 const authBypass = (import.meta.env.VITE_DARPAN_AUTH_BYPASS ?? '').toLowerCase() === 'true'
 
@@ -37,37 +52,78 @@ function formatApiError(error: ApiCallError): string {
   return error.message
 }
 
-function setAuthenticated(userId: string | null, username: string | null): void {
-  authState.checked = true
-  authState.authenticated = !!userId
-  authState.userId = userId
-  authState.username = username
-  authState.error = null
+function normalizeUserId(value: unknown): string | null {
+  const normalized = value?.toString()?.trim()
+  return normalized ? normalized : null
 }
 
-function setUnauthenticated(error: string | null): void {
-  authState.checked = true
-  authState.authenticated = false
-  authState.userId = null
-  authState.username = null
-  authState.error = error
-}
-
-function normalizeAuthenticatedUser(response: { sessionInfo?: { userId?: string; username?: string } }): { userId: string; username: string } {
-  const userId = response.sessionInfo?.userId?.toString()?.trim()
-  if (!userId) {
-    throw new Error('Authenticated response missing sessionInfo.userId')
+function normalizeSessionInfo(sessionInfo: SessionInfo | null | undefined): SessionInfo {
+  const normalizedUserId = normalizeUserId(sessionInfo?.userId)
+  if (!normalizedUserId) {
+    throw new Error('Auth contract violation: authenticated response missing sessionInfo.userId')
   }
 
   return {
-    userId,
-    username: response.sessionInfo?.username?.toString()?.trim() || userId,
+    ...sessionInfo,
+    userId: normalizedUserId,
+    username: sessionInfo?.username?.toString()?.trim() || normalizedUserId,
+    customerScopeId: sessionInfo?.customerScopeId?.toString()?.trim() || null,
+  }
+}
+
+function applyAuthState(nextState: {
+  status: AuthStatus
+  error?: string | null
+  sessionInfo?: SessionInfo | null
+}): void {
+  authState.checked = true
+  authState.status = nextState.status
+  authState.error = nextState.error ?? null
+  authState.sessionInfo = nextState.sessionInfo ?? null
+}
+
+function buildContractViolationError(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'Invalid auth contract'
+  return `Unable to verify authentication. ${message}`
+}
+
+function applyAuthResponse(response: SessionInfoResponse | LoginSessionResponse, unauthenticatedMessage: string): boolean {
+  if (response.authenticated) {
+    applyAuthState({
+      status: 'authenticated',
+      sessionInfo: normalizeSessionInfo(response.sessionInfo),
+    })
+    return true
+  }
+
+  clearAuthToken()
+  applyAuthState({
+    status: 'unauthenticated',
+    error: response.errors?.[0] ?? unauthenticatedMessage,
+  })
+  return false
+}
+
+export function buildAuthRedirect(redirectTarget: unknown): RouteLocationRaw {
+  const redirect = resolveInternalRedirectTarget(redirectTarget)
+  if (authState.status === 'verification-failed') {
+    return {
+      name: 'auth-required',
+      query: { redirect },
+    }
+  }
+  return {
+    name: 'login',
+    query: { redirect },
   }
 }
 
 export async function ensureAuthenticated(force = false): Promise<boolean> {
   if (authBypass) {
-    setAuthenticated('local-dev', 'local-dev')
+    applyAuthState({
+      status: 'authenticated',
+      sessionInfo: { userId: 'local-dev', username: 'local-dev' },
+    })
     return true
   }
 
@@ -77,30 +133,33 @@ export async function ensureAuthenticated(force = false): Promise<boolean> {
 
   try {
     const response = await authFacade.getSessionInfo()
-    if (response.authenticated) {
-      const sessionUser = normalizeAuthenticatedUser(response)
-      setAuthenticated(sessionUser.userId, sessionUser.username)
-    } else {
-      clearAuthToken()
-      setUnauthenticated('No active authenticated session detected.')
-    }
-    return authState.authenticated
+    return applyAuthResponse(response, 'No active authenticated session detected.')
   } catch (error) {
     if (error instanceof ApiCallError && error.status === 401) {
       clearAuthToken()
-      setUnauthenticated(error.message)
+      applyAuthState({
+        status: 'unauthenticated',
+        error: error.message,
+      })
       return false
     }
 
-    const formattedError = error instanceof ApiCallError ? formatApiError(error) : 'Unable to verify authentication'
-    setUnauthenticated(formattedError)
+    const formattedError =
+      error instanceof ApiCallError ? formatApiError(error) : buildContractViolationError(error)
+    applyAuthState({
+      status: 'verification-failed',
+      error: formattedError,
+    })
     return false
   }
 }
 
 export async function loginWithCredentials(username: string, password: string): Promise<boolean> {
   if (authBypass) {
-    setAuthenticated('local-dev', 'local-dev')
+    applyAuthState({
+      status: 'authenticated',
+      sessionInfo: { userId: 'local-dev', username: 'local-dev' },
+    })
     return true
   }
 
@@ -111,38 +170,49 @@ export async function loginWithCredentials(username: string, password: string): 
       if (!authToken) {
         throw new Error('Authenticated login response missing authToken')
       }
-
-      const sessionUser = normalizeAuthenticatedUser(response)
       setAuthTokenContract(response)
-      setAuthenticated(sessionUser.userId, sessionUser.username)
-      return true
     }
 
-    clearAuthToken()
-    setUnauthenticated(response.errors?.[0] ?? 'Login failed')
-    return false
+    return applyAuthResponse(response, 'Login failed')
   } catch (error) {
     clearAuthToken()
-    setUnauthenticated(error instanceof ApiCallError ? formatApiError(error) : 'Login failed')
+    applyAuthState({
+      status: 'unauthenticated',
+      error: error instanceof ApiCallError ? formatApiError(error) : buildContractViolationError(error),
+    })
     return false
   }
 }
 
 export async function logoutSession(): Promise<boolean> {
   if (authBypass) {
-    clearAuthToken()
-    setUnauthenticated(null)
+    applyAuthState({
+      status: 'unauthenticated',
+    })
     return true
   }
 
   try {
-    await authFacade.logoutSession()
+    const response = await authFacade.logoutSession()
     clearAuthToken()
-    setUnauthenticated(null)
-    return true
+    if (!response.authenticated) {
+      applyAuthState({
+        status: 'unauthenticated',
+      })
+      return true
+    }
+
+    applyAuthState({
+      status: 'unauthenticated',
+      error: response.errors?.[0] ?? 'Logout failed',
+    })
+    return false
   } catch (error) {
     clearAuthToken()
-    setUnauthenticated(error instanceof ApiCallError ? formatApiError(error) : 'Logout failed')
+    applyAuthState({
+      status: 'unauthenticated',
+      error: error instanceof ApiCallError ? formatApiError(error) : 'Logout failed',
+    })
     return false
   }
 }

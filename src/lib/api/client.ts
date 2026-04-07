@@ -76,48 +76,57 @@ function resolveRpcUrl(value: string): string {
   return `${apiOrigin}/${value}`
 }
 
-function resolvePrimaryRpcUrl(): string {
-  const configured = (import.meta.env.VITE_DARPAN_RPC_URL ?? '').trim()
-  if (!configured) return `${resolveApiOrigin(apiBase)}/rpc/json`
-  return resolveRpcUrl(configured)
+function getOriginFromUrl(value: string): string {
+  try {
+    return new URL(value).origin
+  } catch {
+    return resolveApiOrigin(apiBase)
+  }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
+}
+
+function isLoopbackUrl(value: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(value).hostname)
+  } catch {
+    return false
+  }
+}
+
+function buildSameOriginProxyCandidates(): string[] {
+  if (typeof window === 'undefined') return []
+  const origin = window.location.origin.replace(/\/$/, '')
+  return [`${origin}/rpc/json`]
+}
+
+function shouldPreferSameOriginProxy(targetUrl: string): boolean {
+  if (typeof window === 'undefined' || !import.meta.env.DEV) return false
+  if (!isLoopbackUrl(targetUrl) || !isLoopbackUrl(window.location.origin)) return false
+  return getOriginFromUrl(targetUrl) !== window.location.origin
 }
 
 function buildRpcCandidates(): string[] {
   const configured = (import.meta.env.VITE_DARPAN_RPC_URL ?? '').trim()
-  const origin = resolveApiOrigin(apiBase)
-  const candidates = new Set<string>()
+  const candidates: string[] = []
 
   if (configured) {
-    candidates.add(resolveRpcUrl(configured))
-  }
-
-  if (!configured || import.meta.env.DEV) {
-    candidates.add(`${apiBase}/rpc/json`)
-    candidates.add(`${apiBase}/qapps/darpan/rpc/json`)
-    candidates.add(`${origin}/rpc/json`)
-    candidates.add(`${origin}/qapps/darpan/rpc/json`)
-  }
-
-  if (import.meta.env.DEV && typeof window !== 'undefined') {
-    const protocol = window.location.protocol || 'http:'
-    const host = window.location.hostname || 'localhost'
-    const runtimeFallbackOrigins = new Set<string>([
-      window.location.origin,
-      `${protocol}//${host}:8080`,
-      `${protocol}//${host}:8081`,
-      `${protocol}//${host}:8085`,
-      'http://localhost:8080',
-      'http://localhost:8081',
-      'http://localhost:8085',
-    ])
-
-    for (const runtimeOrigin of runtimeFallbackOrigins) {
-      candidates.add(`${runtimeOrigin}/rpc/json`)
-      candidates.add(`${runtimeOrigin}/qapps/darpan/rpc/json`)
+    const configuredRpcUrl = resolveRpcUrl(configured)
+    if (shouldPreferSameOriginProxy(configuredRpcUrl)) {
+      candidates.push(...buildSameOriginProxyCandidates())
     }
+    candidates.push(configuredRpcUrl)
+  } else {
+    const defaultRpcUrl = `${resolveApiOrigin(apiBase)}/rpc/json`
+    if (shouldPreferSameOriginProxy(defaultRpcUrl)) {
+      candidates.push(...buildSameOriginProxyCandidates())
+    }
+    candidates.push(defaultRpcUrl)
   }
 
-  return Array.from(candidates).filter((item) => item.length > 0)
+  return Array.from(new Set(candidates.map((item) => item.replace(/\/$/, '')))).filter((item) => item.length > 0)
 }
 
 function normalizeTokenValue(value: unknown): string | null {
@@ -246,8 +255,8 @@ export function getAuthToken(): string | null {
   return getActiveAuthTokenState()?.value ?? null
 }
 
-const rpcUrl = resolvePrimaryRpcUrl()
 const rpcCandidates = buildRpcCandidates()
+const rpcUrl = rpcCandidates[0] ?? `${resolveApiOrigin(apiBase)}/rpc/json`
 
 function buildHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -280,6 +289,18 @@ function isAuthRequiredMessage(message: string | null | undefined): boolean {
     normalized.includes('authentication required') ||
     normalized.includes('login key not valid') ||
     normalized.includes('login key expired')
+  )
+}
+
+function looksLikeLoginHtml(body: string | null | undefined): boolean {
+  if (!body) return false
+  const normalized = body.toLowerCase()
+  return (
+    normalized.includes('<title>login') ||
+    normalized.includes('name="username"') ||
+    normalized.includes('name="password"') ||
+    normalized.includes('moquisessiontoken') ||
+    normalized.includes('sign in')
   )
 }
 
@@ -428,7 +449,8 @@ export async function callService<T>(method: string, params: Record<string, unkn
       raw.includes('authentication required') ||
       raw.includes('user must be logged in') ||
       raw.includes('login key not valid') ||
-      raw.includes('login key expired')
+      raw.includes('login key expired') ||
+      looksLikeLoginHtml(raw)
     )
   })
 

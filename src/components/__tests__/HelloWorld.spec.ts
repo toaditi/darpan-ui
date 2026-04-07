@@ -6,10 +6,10 @@ describe('HelloWorld', () => {
   it('renders message', () => {
     const wrapper = mount(HelloWorld, {
       props: {
-        message: 'Pilot ready'
+        message: 'Ready'
       }
     })
 
-    expect(wrapper.text()).toContain('Pilot ready')
+    expect(wrapper.text()).toContain('Ready')
   })
 })

@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { ensureAuthenticated } from '../lib/auth'
+import { buildAuthRedirect, ensureAuthenticated } from '../lib/auth'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -12,13 +12,43 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'hub',
     component: () => import('../pages/HomePage.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, surfaceMode: 'static', staticPageLabel: 'Dashboard' },
+  },
+  {
+    path: '/auth-required',
+    name: 'auth-required',
+    component: () => import('../pages/AuthRequiredPage.vue'),
+    meta: { public: true },
   },
   {
     path: '/roadmap/reconciliation',
     name: 'roadmap-reconciliation',
     component: () => import('../pages/ReconciliationPlaceholderPage.vue'),
-    meta: { requiresAuth: true, section: 'roadmap' },
+    meta: { requiresAuth: true, section: 'roadmap', staticPageLabel: 'Reconciliation Roadmap' },
+  },
+  {
+    path: '/reconciliation/pilot-diff',
+    name: 'reconciliation-pilot-diff',
+    component: () => import('../pages/reconciliation/PilotGenericDiffPage.vue'),
+    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/reconciliation/run-result/:reconciliationMappingId/:outputFileName',
+    name: 'reconciliation-run-result',
+    component: () => import('../pages/reconciliation/ReconciliationRunResultPage.vue'),
+    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run Result' },
+  },
+  {
+    path: '/reconciliation/create',
+    name: 'reconciliation-create',
+    component: () => import('../pages/reconciliation/ReconciliationCreateFlowPage.vue'),
+    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/reconciliation/run-history/:reconciliationMappingId',
+    name: 'reconciliation-run-history',
+    component: () => import('../pages/reconciliation/ReconciliationRunHistoryPage.vue'),
+    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run History' },
   },
   {
     path: '/connections',
@@ -33,31 +63,25 @@ const routes: RouteRecordRaw[] = [
         path: 'llm',
         name: 'connections-llm',
         component: () => import('../pages/settings/LlmSettingsPage.vue'),
-        meta: { section: 'connections' },
+        meta: { section: 'connections', staticPageLabel: 'LLM Settings' },
       },
       {
         path: 'sftp',
         name: 'connections-sftp',
         component: () => import('../pages/settings/SftpServersPage.vue'),
-        meta: { section: 'connections' },
+        meta: { section: 'connections', staticPageLabel: 'SFTP Servers' },
       },
       {
         path: 'netsuite/auth',
         name: 'connections-netsuite-auth',
         component: () => import('../pages/settings/NetSuiteAuthPage.vue'),
-        meta: { section: 'connections' },
+        meta: { section: 'connections', staticPageLabel: 'NetSuite Auth' },
       },
       {
         path: 'netsuite/endpoints',
         name: 'connections-netsuite-endpoints',
         component: () => import('../pages/settings/NetSuiteEndpointsPage.vue'),
-        meta: { section: 'connections' },
-      },
-      {
-        path: 'read-db',
-        name: 'connections-read-db',
-        component: () => import('../pages/settings/HcReadDbPage.vue'),
-        meta: { section: 'connections' },
+        meta: { section: 'connections', staticPageLabel: 'NetSuite Endpoints' },
       },
     ],
   },
@@ -74,20 +98,20 @@ const routes: RouteRecordRaw[] = [
         path: 'library',
         name: 'schemas-library',
         component: () => import('../pages/jsonschema/JsonSchemaBrowsePage.vue'),
-        meta: { section: 'schemas' },
+        meta: { section: 'schemas', staticPageLabel: 'Schema Library' },
       },
       {
         path: 'infer',
         name: 'schemas-infer',
         component: () => import('../pages/jsonschema/JsonSchemaWizardPage.vue'),
-        meta: { section: 'schemas' },
+        meta: { section: 'schemas', staticPageLabel: 'Schema Infer' },
       },
       {
         path: 'editor/:jsonSchemaId?',
         name: 'schemas-editor',
         component: () => import('../pages/jsonschema/JsonSchemaEditorPage.vue'),
         props: true,
-        meta: { section: 'schemas' },
+        meta: { section: 'schemas', staticPageLabel: 'Schema Editor' },
       },
     ],
   },
@@ -111,13 +135,7 @@ router.beforeEach(async (to) => {
 
   const authenticated = await ensureAuthenticated(true)
   if (authenticated) return true
-
-  return {
-    name: 'login',
-    query: {
-      redirect: to.fullPath,
-    },
-  }
+  return buildAuthRedirect(to.fullPath)
 })
 
 export default router

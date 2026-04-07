@@ -4,48 +4,73 @@
       title="Schema Editor"
       description="Edit raw schema text or refine flattened fields, then save through platform services."
     >
-      <div class="stack-md">
+      <form class="stack-md" @submit.prevent="saveSchemaText" @keydown.enter="requestSubmitOnEnter">
         <div class="row-between">
           <p class="muted-copy">Schema ID: <strong>{{ currentSchemaId || '-' }}</strong></p>
           <div class="action-row">
             <button type="button" @click="reload" :disabled="loading || !hasTarget">Refresh</button>
-            <button type="button" @click="downloadSchema" :disabled="schemaText.trim().length === 0">Download</button>
+            <button type="button" @click="downloadSchema" :disabled="schemaText.trim().length === 0 || showInitialLoadFailureState">
+              Download
+            </button>
           </div>
         </div>
 
-        <EmptyState
-          v-if="!hasTarget"
-          title="No schema selected"
-          description="Open a schema from Library or Infer and then return here for direct editor updates."
-        />
+        <template v-if="showInitialLoadFailureState">
+          <EmptyState
+            title="Unable to load this schema"
+            description="Retry loading before making changes."
+          />
 
-        <div class="field-grid two">
+          <div class="action-row">
+            <button type="button" @click="reload" :disabled="loading">Retry Loading Schema</button>
+          </div>
+        </template>
+
+        <template v-else>
+          <EmptyState
+            v-if="!hasTarget"
+            title="No schema selected"
+            description="Open a schema from Library or Infer and then return here for direct editor updates."
+          />
+
+          <div class="field-grid two">
+            <label>
+              <span>Schema Name</span>
+              <input v-model="schemaName" type="text" required />
+            </label>
+            <label>
+              <span>Description</span>
+              <input v-model="description" type="text" />
+            </label>
+            <label>
+              <span>System</span>
+              <select v-model="systemEnumId" required>
+                <option value="">Select system</option>
+                <option v-for="option in systemOptions" :key="option.enumId" :value="option.enumId">
+                  {{ option.label || option.description || option.enumId }}
+                </option>
+              </select>
+            </label>
+          </div>
+
           <label>
-            <span>Schema Name</span>
-            <input v-model="schemaName" type="text" required />
+            <span>Raw Schema JSON</span>
+            <textarea v-model="schemaText" rows="14" required />
           </label>
-          <label>
-            <span>Description</span>
-            <input v-model="description" type="text" />
-          </label>
-        </div>
 
-        <label>
-          <span>Raw Schema JSON</span>
-          <textarea v-model="schemaText" rows="14" required />
-        </label>
-
-        <div class="action-row">
-          <button type="button" :disabled="savingText || !hasTarget" @click="saveSchemaText">Save Raw Schema</button>
-        </div>
-      </div>
+          <div class="action-row">
+            <button type="submit" :disabled="savingText || !canSaveSchemaText">Save Raw Schema</button>
+          </div>
+        </template>
+      </form>
     </FormSection>
 
     <FormSection
+      v-if="!showInitialLoadFailureState"
       title="Refined Fields"
       description="Refine flattened field rows and persist back as schema structure."
     >
-      <div class="stack-md">
+      <form class="stack-md" @submit.prevent="saveRefined" @keydown.enter="requestSubmitOnEnter">
         <div class="row-between">
           <h3>Field Rows</h3>
           <button type="button" @click="addFieldRow">Add Row</button>
@@ -92,11 +117,11 @@
         </div>
 
         <div class="action-row">
-          <button type="button" :disabled="savingRefined || !hasTarget || fieldRows.length === 0" @click="saveRefined">
+          <button type="submit" :disabled="savingRefined || !canEditTarget || fieldRows.length === 0">
             Save Refined Fields
           </button>
         </div>
-      </div>
+      </form>
     </FormSection>
 
     <InlineValidation v-if="error" tone="error" :message="error" />
@@ -111,8 +136,9 @@ import EmptyState from '../../components/ui/EmptyState.vue'
 import FormSection from '../../components/ui/FormSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { jsonSchemaFacade } from '../../lib/api/facade'
-import type { JsonSchemaField } from '../../lib/api/types'
+import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
+import { requestSubmitOnEnter } from '../../lib/keyboard'
+import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
 
 interface EditableFieldRow {
   fieldPath: string
@@ -131,6 +157,7 @@ const route = useRoute()
 const currentSchemaId = ref(props.jsonSchemaId ?? '')
 const schemaName = ref('')
 const description = ref('')
+const systemEnumId = ref('')
 const schemaText = ref('')
 const fieldRows = ref<EditableFieldRow[]>([])
 const loading = ref(false)
@@ -138,8 +165,22 @@ const savingText = ref(false)
 const savingRefined = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
+const initialLoadCompleted = ref(false)
+const initialLoadSucceeded = ref(false)
+const requestedSchemaId = ref('')
+const requestedSchemaName = ref('')
+const systemOptions = ref<EnumOption[]>([])
 
 const hasTarget = computed(() => currentSchemaId.value.length > 0 || schemaName.value.length > 0)
+const hasRequestedTarget = computed(() => requestedSchemaId.value.length > 0 || requestedSchemaName.value.length > 0)
+const canEditTarget = computed(() => {
+  if (!hasRequestedTarget.value) return hasTarget.value
+  return initialLoadSucceeded.value
+})
+const canSaveSchemaText = computed(() => canEditTarget.value && hasTarget.value)
+const showInitialLoadFailureState = computed(() => {
+  return hasRequestedTarget.value && initialLoadCompleted.value && !initialLoadSucceeded.value
+})
 
 function parseBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
@@ -214,12 +255,26 @@ async function load(): Promise<void> {
     currentSchemaId.value = schemaData.jsonSchemaId
     schemaName.value = schemaData.schemaName
     description.value = schemaData.description ?? ''
+    systemEnumId.value = schemaData.systemEnumId ?? ''
     schemaText.value = schemaData.schemaText ?? ''
     await loadFlattenedRows()
+    initialLoadSucceeded.value = true
   } catch (loadError) {
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load schema.'
   } finally {
+    if (hasRequestedTarget.value && !initialLoadCompleted.value) {
+      initialLoadCompleted.value = true
+    }
     loading.value = false
+  }
+}
+
+async function loadSystemOptions(): Promise<void> {
+  try {
+    const response = await settingsFacade.listEnumOptions('DarpanSystemSource')
+    systemOptions.value = response.options ?? []
+  } catch (loadError) {
+    error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load reconciliation systems.'
   }
 }
 
@@ -233,6 +288,7 @@ async function saveSchemaText(): Promise<void> {
       jsonSchemaId: currentSchemaId.value,
       schemaName: schemaName.value,
       description: description.value,
+      systemEnumId: systemEnumId.value,
       schemaText: schemaText.value,
     })
     success.value = response.messages?.[0] ?? `Saved schema ${schemaName.value}.`
@@ -254,6 +310,7 @@ async function saveRefined(): Promise<void> {
       jsonSchemaId: currentSchemaId.value,
       schemaName: schemaName.value,
       description: description.value,
+      systemEnumId: systemEnumId.value,
       fieldList: fieldRows.value.map((row) => ({
         fieldPath: row.fieldPath.trim(),
         type: row.type,
@@ -281,12 +338,14 @@ function downloadSchema(): void {
 onMounted(() => {
   const paramSchemaId = String(route.params.jsonSchemaId ?? '')
   const querySchemaName = String(route.query.schemaName ?? '')
+  requestedSchemaId.value = paramSchemaId
+  requestedSchemaName.value = querySchemaName
   if (paramSchemaId) {
     currentSchemaId.value = paramSchemaId
   }
   if (querySchemaName && !schemaName.value) {
     schemaName.value = querySchemaName
   }
-  void load()
+  void Promise.all([loadSystemOptions(), load()])
 })
 </script>

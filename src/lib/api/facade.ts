@@ -1,19 +1,23 @@
 import { callService } from './client'
 import type {
+  CreatePilotMappingResponse,
   DeleteJsonSchemaResponse,
+  DeletePilotGeneratedOutputResponse,
   FlattenJsonSchemaResponse,
+  GetPilotGeneratedOutputResponse,
   GetJsonSchemaResponse,
   InferJsonSchemaResponse,
   ListEnumOptionsResponse,
-  ListHcReadDbConfigsResponse,
   ListJsonSchemasResponse,
   ListNsAuthConfigsResponse,
   ListNsRestletConfigsResponse,
+  ListPilotGeneratedOutputsResponse,
+  ListPilotMappingsResponse,
   ListSftpServersResponse,
   LoginSessionResponse,
   LlmSettingsResponse,
   LogoutSessionResponse,
-  SaveHcReadDbConfigResponse,
+  RunPilotGenericDiffResponse,
   SaveJsonSchemaTextResponse,
   SaveLlmSettingsResponse,
   SaveNsAuthConfigResponse,
@@ -40,8 +44,6 @@ const SETTINGS = {
   saveNsAuthConfig: 'facade.SettingsFacadeServices.save#NsAuthConfig',
   listNsRestletConfigs: 'facade.SettingsFacadeServices.list#NsRestletConfigs',
   saveNsRestletConfig: 'facade.SettingsFacadeServices.save#NsRestletConfig',
-  listHcReadDbConfigs: 'facade.SettingsFacadeServices.list#HcReadDbConfigs',
-  saveHcReadDbConfig: 'facade.SettingsFacadeServices.save#HcReadDbConfig',
 }
 
 const JSON_SCHEMA = {
@@ -53,6 +55,15 @@ const JSON_SCHEMA = {
   flatten: 'facade.JsonSchemaFacadeServices.flatten#JsonSchema',
   saveRefined: 'facade.JsonSchemaFacadeServices.save#RefinedSchema',
   delete: 'facade.JsonSchemaFacadeServices.delete#JsonSchema',
+}
+
+const RECONCILIATION = {
+  createPilotMapping: 'facade.ReconciliationFacadeServices.create#PilotMapping',
+  listPilotMappings: 'facade.ReconciliationFacadeServices.list#PilotMappings',
+  runPilotGenericDiff: 'facade.ReconciliationFacadeServices.run#PilotGenericDiff',
+  listPilotGeneratedOutputs: 'facade.ReconciliationFacadeServices.list#PilotGeneratedOutputs',
+  getPilotGeneratedOutput: 'facade.ReconciliationFacadeServices.get#PilotGeneratedOutput',
+  deletePilotGeneratedOutput: 'facade.ReconciliationFacadeServices.delete#PilotGeneratedOutput',
 }
 
 export const authFacade = {
@@ -95,12 +106,6 @@ export const settingsFacade = {
   saveNsRestletConfig(payload: Record<string, unknown>): Promise<SaveNsRestletConfigResponse> {
     return callService<SaveNsRestletConfigResponse>(SETTINGS.saveNsRestletConfig, payload)
   },
-  listHcReadDbConfigs(payload: Record<string, unknown>): Promise<ListHcReadDbConfigsResponse> {
-    return callService<ListHcReadDbConfigsResponse>(SETTINGS.listHcReadDbConfigs, payload)
-  },
-  saveHcReadDbConfig(payload: Record<string, unknown>): Promise<SaveHcReadDbConfigResponse> {
-    return callService<SaveHcReadDbConfigResponse>(SETTINGS.saveHcReadDbConfig, payload)
-  },
 }
 
 export const jsonSchemaFacade = {
@@ -127,5 +132,26 @@ export const jsonSchemaFacade = {
   },
   delete(payload: Record<string, unknown>): Promise<DeleteJsonSchemaResponse> {
     return callService<DeleteJsonSchemaResponse>(JSON_SCHEMA.delete, payload)
+  },
+}
+
+export const reconciliationFacade = {
+  createPilotMapping(payload: Record<string, unknown>): Promise<CreatePilotMappingResponse> {
+    return callService<CreatePilotMappingResponse>(RECONCILIATION.createPilotMapping, payload)
+  },
+  listPilotMappings(payload: Record<string, unknown>): Promise<ListPilotMappingsResponse> {
+    return callService<ListPilotMappingsResponse>(RECONCILIATION.listPilotMappings, payload)
+  },
+  runPilotGenericDiff(payload: Record<string, unknown>): Promise<RunPilotGenericDiffResponse> {
+    return callService<RunPilotGenericDiffResponse>(RECONCILIATION.runPilotGenericDiff, payload)
+  },
+  listPilotGeneratedOutputs(payload: Record<string, unknown>): Promise<ListPilotGeneratedOutputsResponse> {
+    return callService<ListPilotGeneratedOutputsResponse>(RECONCILIATION.listPilotGeneratedOutputs, payload)
+  },
+  getPilotGeneratedOutput(payload: Record<string, unknown>): Promise<GetPilotGeneratedOutputResponse> {
+    return callService<GetPilotGeneratedOutputResponse>(RECONCILIATION.getPilotGeneratedOutput, payload)
+  },
+  deletePilotGeneratedOutput(payload: Record<string, unknown>): Promise<DeletePilotGeneratedOutputResponse> {
+    return callService<DeletePilotGeneratedOutputResponse>(RECONCILIATION.deletePilotGeneratedOutput, payload)
   },
 }

@@ -1,7 +1,7 @@
 <template>
-  <main class="page-root">
-    <FormSection title="NetSuite Endpoint Settings" description="Configure endpoint URLs and attach reusable auth profiles.">
-      <form class="stack-lg" @submit.prevent="save">
+  <section class="page-root">
+    <StaticPageSection title="NetSuite Endpoint Settings" description="Configure endpoint URLs and attach reusable auth profiles.">
+      <form class="stack-lg" @submit.prevent="save" @keydown.enter="requestSubmitOnEnter">
         <div class="field-grid two">
           <label>
             <span>Endpoint Config ID</span>
@@ -68,49 +68,51 @@
 
       <InlineValidation v-if="error" tone="error" :message="error" />
       <p v-if="success" class="success-copy">{{ success }}</p>
+    </StaticPageSection>
 
-      <div class="stack-md">
-        <div class="row-between">
-          <h3>Existing Endpoint Configs</h3>
-          <div class="page-controls">
-            <button type="button" @click="prevPage" :disabled="pageIndex <= 0">Prev</button>
-            <span>Page {{ pageIndex + 1 }} / {{ pageCount }}</span>
-            <button type="button" @click="nextPage" :disabled="pageIndex + 1 >= pageCount">Next</button>
-          </div>
+    <StaticPageSection
+      title="Saved Endpoint Configs"
+      description="Only saved endpoint-config names are listed here. Click one to reopen it in the form."
+    >
+      <div class="row-between">
+        <p class="muted-copy">Saved records stay secondary until you need to reopen one.</p>
+        <div v-if="pageCount > 1" class="page-controls">
+          <button type="button" @click="prevPage" :disabled="pageIndex <= 0">Prev</button>
+          <span>Page {{ pageIndex + 1 }} / {{ pageCount }}</span>
+          <button type="button" @click="nextPage" :disabled="pageIndex + 1 >= pageCount">Next</button>
         </div>
-
-        <EmptyState
-          v-if="rows.length === 0"
-          title="No endpoint configs"
-          description="Add one above and link it to a NetSuite auth profile."
-        />
-
-        <SparseTable v-else :columns="columns" :rows="rows" row-key="nsRestletConfigId">
-          <template #cell-isActive="{ row }">
-            <StatusBadge :label="row.isActive === 'Y' ? 'Active' : 'Inactive'" :tone="row.isActive === 'Y' ? 'success' : 'warning'" />
-          </template>
-          <template #cell-authType="{ row }">
-            <StatusBadge :label="String(row.authType ?? 'Unknown')" tone="neutral" />
-          </template>
-          <template #cell-actions="{ row }">
-            <button type="button" @click="editRow(row)">Edit</button>
-          </template>
-        </SparseTable>
       </div>
-    </FormSection>
-  </main>
+
+      <EmptyState
+        v-if="rows.length === 0"
+        title="No endpoint configs"
+        description="Add one above and link it to a NetSuite auth profile."
+      />
+
+      <div v-else class="static-page-tile-grid settings-record-grid" data-testid="saved-endpoint-configs">
+        <button
+          v-for="row in rows"
+          :key="row.nsRestletConfigId"
+          type="button"
+          class="static-page-tile settings-record-tile"
+          @click="editRow(row)"
+        >
+          <span class="static-page-tile-title">{{ savedEndpointConfigName(row) }}</span>
+        </button>
+      </div>
+    </StaticPageSection>
+  </section>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
-import FormSection from '../../components/ui/FormSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
-import SparseTable from '../../components/ui/SparseTable.vue'
-import StatusBadge from '../../components/ui/StatusBadge.vue'
+import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { requestSubmitOnEnter } from '../../lib/keyboard'
 import type { NsRestletConfigRecord } from '../../lib/api/types'
 import { enumLabel } from '../../lib/utils/enumLabel'
 
@@ -140,17 +142,6 @@ const form = reactive<EndpointForm>({
 const route = useRoute()
 const endpointConfigIdInput = ref<HTMLInputElement | null>(null)
 
-const columns = [
-  { key: 'nsRestletConfigId', label: 'Endpoint ID' },
-  { key: 'description', label: 'Description' },
-  { key: 'endpointUrl', label: 'Endpoint URL' },
-  { key: 'httpMethod', label: 'Method' },
-  { key: 'nsAuthConfigId', label: 'Auth Config' },
-  { key: 'authType', label: 'Auth Type' },
-  { key: 'isActive', label: 'Status' },
-  { key: 'actions', label: '' },
-]
-
 const rows = ref<NsRestletConfigRecord[]>([])
 const authOptions = ref<Array<{ nsAuthConfigId: string; label: string }>>([])
 
@@ -162,16 +153,20 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 
-function editRow(row: Record<string, unknown>): void {
-  form.nsRestletConfigId = String(row.nsRestletConfigId ?? '')
-  form.description = String(row.description ?? '')
-  form.endpointUrl = String(row.endpointUrl ?? '')
-  form.httpMethod = String(row.httpMethod ?? 'POST')
-  form.nsAuthConfigId = String(row.nsAuthConfigId ?? '')
-  form.headersJson = String(row.headersJson ?? '')
-  form.connectTimeoutSeconds = Number(row.connectTimeoutSeconds ?? 30)
-  form.readTimeoutSeconds = Number(row.readTimeoutSeconds ?? 60)
-  form.isActive = String(row.isActive ?? 'Y')
+function savedEndpointConfigName(row: NsRestletConfigRecord): string {
+  return row.description?.trim() || row.nsRestletConfigId
+}
+
+function editRow(row: NsRestletConfigRecord): void {
+  form.nsRestletConfigId = row.nsRestletConfigId
+  form.description = row.description ?? ''
+  form.endpointUrl = row.endpointUrl
+  form.httpMethod = row.httpMethod ?? 'POST'
+  form.nsAuthConfigId = row.nsAuthConfigId ?? ''
+  form.headersJson = row.headersJson ?? ''
+  form.connectTimeoutSeconds = row.connectTimeoutSeconds ?? 30
+  form.readTimeoutSeconds = row.readTimeoutSeconds ?? 60
+  form.isActive = row.isActive ?? 'Y'
 }
 
 async function loadAuthOptions(): Promise<void> {

@@ -16,6 +16,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VITE_DARPAN_API_BASE_URL: ${{ vars.VITE_DARPAN_API_BASE_URL }}
+      VITE_DARPAN_RPC_URL: ${{ vars.VITE_DARPAN_RPC_URL }}
+      VITE_DARPAN_LINEAR_ROADMAP_URL: ${{ vars.VITE_DARPAN_LINEAR_ROADMAP_URL }}
+      VITE_DARPAN_LINEAR_REQUEST_URL: ${{ vars.VITE_DARPAN_LINEAR_REQUEST_URL }}
+      VITE_DARPAN_LINEAR_EMBED_ENABLED: ${{ vars.VITE_DARPAN_LINEAR_EMBED_ENABLED }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +37,16 @@ jobs:
 
       - name: Type check
         run: npm run type-check
+
+      - name: Report pilot backend target configuration
+        run: |
+          if [ -n "$VITE_DARPAN_RPC_URL" ]; then
+            echo "Using configured VITE_DARPAN_RPC_URL for this Pages build."
+          elif [ -n "$VITE_DARPAN_API_BASE_URL" ]; then
+            echo "Using configured VITE_DARPAN_API_BASE_URL for this Pages build."
+          else
+            echo "::warning::GitHub Pages build has no backend RPC target configured. The deployed Pages URL will default to same-origin /rpc/json and is not sufficient for release-week auth or cookie validation by itself."
+          fi
 
       - name: Build site
         run: npm run build-only -- --base "/${{ github.event.repository.name }}/"

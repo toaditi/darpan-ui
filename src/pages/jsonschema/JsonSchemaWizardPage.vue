@@ -4,7 +4,7 @@
       title="Infer Schema From JSON"
       description="Paste JSON or upload a file to infer a schema, then persist it in Schema Studio."
     >
-      <form class="stack-md" @submit.prevent="inferSchema">
+      <form class="stack-md" @submit.prevent="inferSchema" @keydown.enter="requestSubmitOnEnter">
         <label>
           <span>Sample JSON File (optional)</span>
           <input type="file" accept=".json,application/json" @change="onJsonFileChange" />
@@ -28,7 +28,7 @@
       title="Save Inferred Schema"
       description="Review inferred schema text and save it through authenticated platform services."
     >
-      <form class="stack-md" @submit.prevent="saveInferredSchema">
+      <form class="stack-md" @submit.prevent="saveInferredSchema" @keydown.enter="requestSubmitOnEnter">
         <div class="field-grid two">
           <label>
             <span>Schema Name</span>
@@ -41,12 +41,22 @@
         </div>
 
         <label>
+          <span>System</span>
+          <select v-model="systemEnumId" required>
+            <option value="">Select system</option>
+            <option v-for="option in systemOptions" :key="option.enumId" :value="option.enumId">
+              {{ option.label || option.description || option.enumId }}
+            </option>
+          </select>
+        </label>
+
+        <label>
           <span>Inferred JSON Schema</span>
           <textarea v-model="inferredSchemaText" rows="14" :readonly="fields.length > 0" required />
         </label>
 
         <div class="action-row">
-          <button type="submit" :disabled="saving || inferredSchemaText.trim().length === 0">Save Schema</button>
+          <button type="submit" :disabled="saving || inferredSchemaText.trim().length === 0 || !systemEnumId">Save Schema</button>
           <button type="button" :disabled="inferredSchemaText.trim().length === 0" @click="downloadInferred">
             Download
           </button>
@@ -71,15 +81,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import FormSection from '../../components/ui/FormSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import SparseTable from '../../components/ui/SparseTable.vue'
 import StatusBadge from '../../components/ui/StatusBadge.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { jsonSchemaFacade } from '../../lib/api/facade'
-import type { JsonSchemaField } from '../../lib/api/types'
+import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
+import { requestSubmitOnEnter } from '../../lib/keyboard'
+import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
 
 const columns = [
   { key: 'fieldPath', label: 'Field Path' },
@@ -90,12 +101,14 @@ const columns = [
 const sampleJsonText = ref('')
 const schemaName = ref('')
 const description = ref('')
+const systemEnumId = ref('')
 const inferredSchemaText = ref('')
 const fields = ref<JsonSchemaField[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
+const systemOptions = ref<EnumOption[]>([])
 
 const fieldsAsRows = computed(() => fields.value as Array<Record<string, unknown>>)
 
@@ -157,6 +170,7 @@ async function saveInferredSchema(): Promise<void> {
     const response = await jsonSchemaFacade.saveText({
       schemaName: schemaName.value,
       description: description.value,
+      systemEnumId: systemEnumId.value,
       schemaText: inferredSchemaText.value,
       overwrite: false,
     })
@@ -188,4 +202,17 @@ async function onJsonFileChange(event: Event): Promise<void> {
     error.value = 'Unable to read JSON file.'
   }
 }
+
+async function loadSystemOptions(): Promise<void> {
+  try {
+    const response = await settingsFacade.listEnumOptions('DarpanSystemSource')
+    systemOptions.value = response.options ?? []
+  } catch (loadError) {
+    error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load reconciliation systems.'
+  }
+}
+
+onMounted(() => {
+  void loadSystemOptions()
+})
 </script>

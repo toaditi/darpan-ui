@@ -1,321 +1,223 @@
 <template>
-  <main class="page-root">
-    <section class="module-intro">
-      <p class="eyebrow">[wave_1] clear_task_flow</p>
-      <h1>Clear task flow</h1>
-      <p class="muted-copy">Connections -> Schema Studio -> Roadmap &amp; Requests.</p>
-    </section>
+  <StaticPageFrame>
+    <template #hero>
+      <h1>Let's Investigate</h1>
+    </template>
 
-    <section class="card-grid three hub-grid">
-      <article class="card hub-card">
-        <div class="stack-sm">
-          <p class="eyebrow">Active</p>
-          <h3>Connections</h3>
-          <p>LLM, SFTP, NetSuite, and Read DB profiles.</p>
+    <StaticPageSection title="Pinned Runs">
+      <div class="static-page-drop-zone" data-testid="pinned-runs" @dragover.prevent @drop="handleDrop('pinned', $event)">
+        <div v-if="pinnedFlowCards.length > 0" class="static-page-tile-grid">
+          <RouterLink
+            v-for="flow in pinnedFlowCards"
+            :key="flow.id"
+            class="static-page-tile"
+            :data-flow-id="flow.id"
+            :to="flow.to"
+            draggable="true"
+            @dragstart="handleDragStart(flow.id, $event)"
+          >
+            <span class="static-page-tile-title">{{ flow.title }}</span>
+            <span v-if="flow.statusLabel" class="static-page-tile-status">{{ flow.statusLabel }}</span>
+          </RouterLink>
         </div>
-        <div class="actions-tight">
-          <RouterLink class="ghost-link" to="/connections/llm">LLM</RouterLink>
-          <RouterLink class="ghost-link" to="/connections/sftp?focus=create">Add SFTP</RouterLink>
-          <RouterLink class="ghost-link" to="/connections/netsuite/auth?focus=create">Add NetSuite Auth</RouterLink>
-          <RouterLink class="ghost-link" to="/connections/netsuite/endpoints?focus=create">Add Endpoint</RouterLink>
-          <RouterLink class="ghost-link" to="/connections/read-db?focus=create">Add Read DB</RouterLink>
-        </div>
-      </article>
-
-      <article class="card hub-card">
-        <div class="stack-sm">
-          <p class="eyebrow">Active</p>
-          <h3>Schema Studio</h3>
-          <p>Library, infer, validate, and refine schema records.</p>
-        </div>
-        <div class="actions-tight">
-          <RouterLink class="ghost-link" to="/schemas/library">Library</RouterLink>
-          <RouterLink class="ghost-link" to="/schemas/library?focus=upload">Upload Schema</RouterLink>
-          <RouterLink class="ghost-link" to="/schemas/infer">Infer</RouterLink>
-          <RouterLink class="ghost-link" to="/schemas/editor">Editor</RouterLink>
-        </div>
-      </article>
-
-      <article class="card hub-card roadmap">
-        <div class="stack-sm">
-          <p class="eyebrow">Roadmap</p>
-          <h3>Reconciliation</h3>
-          <p>Customer roadmap access and request intake are available here.</p>
-        </div>
-        <div class="actions-tight">
-          <RouterLink class="ghost-link" to="/roadmap/reconciliation">Open Roadmap &amp; Requests</RouterLink>
-        </div>
-      </article>
-    </section>
-
-    <FormSection title="Startup action track" description="Three operational milestones for first-time setup.">
-      <div class="stack-md">
-        <div class="row-between">
-          <p class="muted-copy">Runtime status inferred from platform service records.</p>
-          <button type="button" @click="loadReadiness" :disabled="loading">Refresh Status</button>
-        </div>
-
-        <InlineValidation v-if="statusMessage" :tone="statusMessageTone" :message="statusMessage" />
-
-        <ol class="action-track">
-          <li v-for="step in readiness" :key="step.id" class="action-track-item">
-            <div class="stack-sm">
-              <p class="action-track-title">{{ step.label }}</p>
-              <p class="mono-copy">{{ step.detail }}</p>
-            </div>
-            <StatusBadge :label="statusLabel(step.status)" :tone="statusTone(step.status)" />
-          </li>
-        </ol>
+        <div v-else class="static-page-drop-hint" data-testid="pinned-empty-state">drag and drop runs to pin</div>
       </div>
-    </FormSection>
-  </main>
+    </StaticPageSection>
+
+    <StaticPageSection title="Other Runs">
+      <div
+        :class="['static-page-drop-zone', { 'static-page-drop-zone--compact': !hasOtherRuns }]"
+        data-testid="other-runs"
+        @dragover.prevent
+        @drop="handleDrop('other', $event)"
+      >
+        <div v-if="hasOtherRuns" class="static-page-tile-grid">
+          <RouterLink
+            v-for="flow in visibleOtherFlowCards"
+            :key="flow.id"
+            class="static-page-tile"
+            :data-flow-id="flow.id"
+            :to="flow.to"
+            draggable="true"
+            @dragstart="handleDragStart(flow.id, $event)"
+          >
+            <span class="static-page-tile-title">{{ flow.title }}</span>
+            <span v-if="flow.statusLabel" class="static-page-tile-status">{{ flow.statusLabel }}</span>
+          </RouterLink>
+          <button
+            v-if="hasMoreOtherRuns"
+            type="button"
+            class="static-page-control-tile"
+            data-testid="other-runs-more"
+            @click="showAllOtherRuns = true"
+          >
+            More...
+          </button>
+        </div>
+        <RouterLink
+          v-else
+          class="static-page-action-tile static-page-action-tile--inline"
+          data-testid="other-runs-empty-action"
+          :to="createFlowRoute"
+        >
+          Create New
+        </RouterLink>
+      </div>
+    </StaticPageSection>
+
+    <RouterLink v-if="hasOtherRuns" class="static-page-action-tile" data-testid="dashboard-create-action" :to="createFlowRoute">
+      Create New
+    </RouterLink>
+  </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import FormSection from '../components/ui/FormSection.vue'
-import InlineValidation from '../components/ui/InlineValidation.vue'
-import StatusBadge from '../components/ui/StatusBadge.vue'
-import { ensureAuthenticated } from '../lib/auth'
-import { jsonSchemaFacade, settingsFacade } from '../lib/api/facade'
-import type { HubReadinessState, ReadinessStatus } from '../lib/types/ux'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
+import StaticPageFrame from '../components/ui/StaticPageFrame.vue'
+import StaticPageSection from '../components/ui/StaticPageSection.vue'
+import { buildAuthRedirect, ensureAuthenticated } from '../lib/auth'
+import { reconciliationFacade } from '../lib/api/facade'
+import type { PilotMappingSummary } from '../lib/api/types'
+import { listPinnedRunIds, savePinnedRunIds } from '../lib/pinnedRuns'
+import { buildWorkflowOriginState } from '../lib/workflowOrigin'
 
-const readiness = ref<HubReadinessState[]>([
-  {
-    id: 'connections',
-    label: 'Step 1: Add at least one connection profile',
-    status: 'pending',
-    detail: 'Checking connection profile inventory...',
-  },
-  {
-    id: 'schema',
-    label: 'Step 2: Create or infer first schema',
-    status: 'pending',
-    detail: 'Checking schema library inventory...',
-  },
-  {
-    id: 'rollout',
-    label: 'Step 3: Ready for reconciliation rollout',
-    status: 'pending',
-    detail: 'Waiting for prerequisite steps to complete.',
-  },
-])
+interface DashboardFlowCard {
+  id: string
+  title: string
+  statusLabel?: string
+  to: RouteLocationRaw
+}
 
-const loading = ref(false)
-const statusMessage = ref<string | null>(null)
-const statusMessageTone = ref<'error' | 'info'>('info')
+function resolveSystemLabel(mapping: PilotMappingSummary, enumId?: string): string {
+  if (!enumId) return ''
+  const option = mapping.systemOptions.find((systemOption) => systemOption.enumId === enumId)
+  return option?.label || option?.enumCode || option?.enumId || ''
+}
+
 const route = useRoute()
 const router = useRouter()
-
-function statusLabel(status: ReadinessStatus): string {
-  if (status === 'complete') return 'Complete'
-  if (status === 'unknown') return 'Unknown'
-  return 'Pending'
+const mappings = ref<PilotMappingSummary[]>([])
+const pinnedRunIds = ref<string[]>([])
+const showAllOtherRuns = ref(false)
+const dashboardWorkflowOriginState = buildWorkflowOriginState('Dashboard', '/')
+const createFlowRoute: RouteLocationRaw = {
+  path: '/reconciliation/create',
+  state: dashboardWorkflowOriginState,
 }
 
-function statusTone(status: ReadinessStatus): 'success' | 'warning' | 'neutral' {
-  if (status === 'complete') return 'success'
-  if (status === 'unknown') return 'warning'
-  return 'neutral'
+const mappingCards = computed<DashboardFlowCard[]>(() =>
+  mappings.value.map((mapping) => ({
+    id: `mapping:${mapping.reconciliationMappingId}`,
+    title: mapping.mappingName,
+    to: {
+      name: 'reconciliation-pilot-diff',
+      query: {
+        mappingId: mapping.reconciliationMappingId,
+        runName: mapping.mappingName,
+        file1SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile1SystemEnumId),
+        file2SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile2SystemEnumId),
+      },
+      state: dashboardWorkflowOriginState,
+    },
+  })),
+)
+
+const flowCards = computed<DashboardFlowCard[]>(() => mappingCards.value)
+
+const pinnedFlowCards = computed<DashboardFlowCard[]>(() => {
+  const flowCardMap = new Map(flowCards.value.map((card) => [card.id, card]))
+  return pinnedRunIds.value
+    .map((runId) => flowCardMap.get(runId) ?? null)
+    .filter((card): card is DashboardFlowCard => card !== null)
+})
+
+const otherFlowCards = computed<DashboardFlowCard[]>(() => {
+  const pinnedSet = new Set(pinnedRunIds.value)
+  return flowCards.value.filter((card) => !pinnedSet.has(card.id))
+})
+
+const visibleOtherFlowCards = computed<DashboardFlowCard[]>(() => {
+  return showAllOtherRuns.value ? otherFlowCards.value : otherFlowCards.value.slice(0, 5)
+})
+
+const hasMoreOtherRuns = computed(() => {
+  return otherFlowCards.value.length > 5 && !showAllOtherRuns.value
+})
+
+const hasOtherRuns = computed(() => otherFlowCards.value.length > 0)
+
+function syncPinnedRuns(): void {
+  const validRunIds = new Set(flowCards.value.map((card) => card.id))
+  const nextPinnedRunIds = pinnedRunIds.value.filter((runId) => validRunIds.has(runId))
+  if (nextPinnedRunIds.length === pinnedRunIds.value.length) return
+  pinnedRunIds.value = nextPinnedRunIds
+  savePinnedRunIds(nextPinnedRunIds)
 }
 
-function parseTotalCount(result: PromiseSettledResult<{ pagination?: { totalCount?: number } }>): number | null {
-  if (result.status === 'rejected') return null
-  return Number(result.value.pagination?.totalCount ?? 0)
+function handleDragStart(flowId: string, event: DragEvent): void {
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', flowId)
 }
 
-function parseLlmConfigured(
-  result: PromiseSettledResult<{
-    llmSettings?: {
-      llmEnabled?: string
-      llmModel?: string
-      hasStoredLlmApiKey?: boolean
-      hasFallbackLlmApiKey?: boolean
-    }
-  }>,
-): number | null {
-  if (result.status === 'rejected') return null
-  const settings = result.value.llmSettings
-  if (!settings) return 0
+function handleDrop(target: 'pinned' | 'other', event: DragEvent): void {
+  const droppedFlowId = event.dataTransfer?.getData('text/plain')?.trim()
+  if (!droppedFlowId) return
+  if (!flowCards.value.some((card) => card.id === droppedFlowId)) return
 
-  const enabled = String(settings.llmEnabled ?? 'N') === 'Y'
-  const hasKey = settings.hasStoredLlmApiKey === true || settings.hasFallbackLlmApiKey === true
-  const hasModel = String(settings.llmModel ?? '').trim().length > 0
+  const nextPinnedRunIds =
+    target === 'pinned'
+      ? [...pinnedRunIds.value.filter((runId) => runId !== droppedFlowId), droppedFlowId]
+      : pinnedRunIds.value.filter((runId) => runId !== droppedFlowId)
 
-  return enabled || hasKey || hasModel ? 1 : 0
+  pinnedRunIds.value = nextPinnedRunIds
+  savePinnedRunIds(nextPinnedRunIds)
 }
 
-function summarizeConnections(connectionCounts: Array<number | null>): {
-  status: ReadinessStatus
-  detail: string
-} {
-  const known = connectionCounts.filter((count): count is number => count !== null)
-  const knownTotal = known.reduce((sum, count) => sum + count, 0)
-  const hasAny = known.some((count) => count > 0)
-  const hasUnknown = connectionCounts.some((count) => count === null)
+async function loadDashboard(): Promise<void> {
+  const authenticated = await ensureAuthenticated(true)
+  if (!authenticated) {
+    await router.replace(buildAuthRedirect(route.fullPath))
+    return
+  }
 
-  if (hasAny) {
-    return {
-      status: 'complete',
-      detail: `Detected ${knownTotal} connection profile record(s) across available modules.`,
-    }
-  }
-  if (known.length === connectionCounts.length) {
-    return {
-      status: 'pending',
-      detail: 'No connection profiles detected yet. Create at least one profile in Connections.',
-    }
-  }
-  if (hasUnknown) {
-    return {
-      status: 'unknown',
-      detail: 'Unable to read one or more connection modules. Retry after backend stabilization.',
-    }
-  }
-  return {
-    status: 'pending',
-    detail: 'No connection profiles detected yet.',
-  }
-}
-
-function summarizeSchema(schemaCount: number | null): {
-  status: ReadinessStatus
-  detail: string
-} {
-  if (schemaCount === null) {
-    return {
-      status: 'unknown',
-      detail: 'Unable to fetch schema library status. Retry after backend stabilization.',
-    }
-  }
-  if (schemaCount > 0) {
-    return {
-      status: 'complete',
-      detail: `Detected ${schemaCount} schema record(s) in the library.`,
-    }
-  }
-  return {
-    status: 'pending',
-    detail: 'No schemas found yet. Upload or infer your first schema.',
-  }
-}
-
-function summarizeRollout(connections: ReadinessStatus, schema: ReadinessStatus): {
-  status: ReadinessStatus
-  detail: string
-} {
-  if (connections === 'complete' && schema === 'complete') {
-    return {
-      status: 'complete',
-      detail: 'Prerequisites complete. Continue with roadmap tracking until reconciliation UI is released.',
-    }
-  }
-  if (connections === 'unknown' || schema === 'unknown') {
-    return {
-      status: 'unknown',
-      detail: 'Prerequisite status is partially unknown due to unavailable module checks.',
-    }
-  }
-  return {
-    status: 'pending',
-    detail: 'Complete Step 1 and Step 2 before reconciliation rollout readiness.',
-  }
-}
-
-async function loadReadiness(): Promise<void> {
-  loading.value = true
-  statusMessage.value = null
+  showAllOtherRuns.value = false
+  pinnedRunIds.value = listPinnedRunIds()
+  mappings.value = []
 
   try {
-    const authenticated = await ensureAuthenticated(true)
-    if (!authenticated) {
-      await router.replace({
-        name: 'login',
-        query: { redirect: route.fullPath },
-      })
-      return
-    }
-
-    const [llm, sftp, nsAuth, nsEndpoints, readDb, schemas] = await Promise.allSettled([
-      settingsFacade.getLlmSettings(),
-      settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 1 }),
-      settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 1 }),
-      settingsFacade.listNsRestletConfigs({ pageIndex: 0, pageSize: 1 }),
-      settingsFacade.listHcReadDbConfigs({ pageIndex: 0, pageSize: 1 }),
-      jsonSchemaFacade.list({ pageIndex: 0, pageSize: 1, query: '' }),
-    ])
-
-    const connectionSummary = summarizeConnections([
-      parseLlmConfigured(llm),
-      parseTotalCount(sftp),
-      parseTotalCount(nsAuth),
-      parseTotalCount(nsEndpoints),
-      parseTotalCount(readDb),
-    ])
-
-    const schemaSummary = summarizeSchema(parseTotalCount(schemas))
-
-    const rolloutSummary = summarizeRollout(connectionSummary.status, schemaSummary.status)
-    const readinessStates: ReadinessStatus[] = [connectionSummary.status, schemaSummary.status, rolloutSummary.status]
-    const hasUnknownState = readinessStates.includes('unknown')
-
-    readiness.value = [
-      {
-        id: 'connections',
-        label: 'Step 1: Add at least one connection profile',
-        status: connectionSummary.status,
-        detail: connectionSummary.detail,
-      },
-      {
-        id: 'schema',
-        label: 'Step 2: Create or infer first schema',
-        status: schemaSummary.status,
-        detail: schemaSummary.detail,
-      },
-      {
-        id: 'rollout',
-        label: 'Step 3: Ready for reconciliation rollout',
-        status: rolloutSummary.status,
-        detail: rolloutSummary.detail,
-      },
-    ]
-
-    const checks = [
-      { label: 'LLM settings', result: llm },
-      { label: 'SFTP servers', result: sftp },
-      { label: 'NetSuite auth', result: nsAuth },
-      { label: 'NetSuite endpoints', result: nsEndpoints },
-      { label: 'Read DB profiles', result: readDb },
-      { label: 'Schema library', result: schemas },
-    ]
-    const failedChecks = checks
-      .filter((check) => check.result.status === 'rejected')
-      .map((check) => check.label)
-
-    if (failedChecks.length > 0 && hasUnknownState) {
-      statusMessageTone.value = 'info'
-      if (failedChecks.length === checks.length) {
-        statusMessage.value =
-          'Readiness checks are temporarily unavailable. Unknown statuses are shown where data could not be confirmed.'
-      } else {
-        const preview = failedChecks.slice(0, 2).join(', ')
-        const remaining = failedChecks.length - 2
-        const suffix = remaining > 0 ? `, +${remaining} more` : ''
-        statusMessage.value =
-          `Some readiness checks are unavailable (${preview}${suffix}). ` +
-          'Unknown statuses are shown where data could not be confirmed.'
-      }
-    }
+    const response = await reconciliationFacade.listPilotMappings({
+      pageIndex: 0,
+      pageSize: 12,
+      query: '',
+    })
+    mappings.value = response.mappings ?? []
   } catch {
-    statusMessageTone.value = 'error'
-    statusMessage.value = 'Unable to load readiness states right now.'
-  } finally {
-    loading.value = false
+    mappings.value = []
   }
+
+  syncPinnedRuns()
 }
 
 onMounted(() => {
-  void loadReadiness()
+  void loadDashboard()
 })
 </script>
+
+<style scoped>
+.static-page-tile {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-2);
+}
+
+.static-page-tile-title {
+  width: auto;
+}
+
+.static-page-tile-status {
+  text-align: center;
+}
+</style>

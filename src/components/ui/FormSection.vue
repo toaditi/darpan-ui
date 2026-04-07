@@ -1,8 +1,8 @@
 <template>
-  <section class="form-section">
+  <section :class="['form-section', `form-section--${variant}`]">
     <header class="form-section-head">
-      <h2>{{ title }}</h2>
-      <p v-if="description">
+      <h2 class="form-section-title">{{ title }}</h2>
+      <p v-if="description" class="form-section-description">
         {{ description }}
       </p>
     </header>
@@ -13,8 +13,15 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  title: string
-  description?: string
-}>()
+withDefaults(
+  defineProps<{
+    title: string
+    description?: string
+    variant?: 'static' | 'workflow'
+  }>(),
+  {
+    description: undefined,
+    variant: 'static',
+  },
+)
 </script>

@@ -3,11 +3,8 @@
     <section class="login-panel">
       <p class="eyebrow">Darpan</p>
       <h1>Sign In</h1>
-      <p class="muted-copy">
-        Sign in to access Darpan. Backend screens are admin-only.
-      </p>
 
-      <form class="stack-md" @submit.prevent="submit">
+      <form class="stack-md" @submit.prevent="submit" @keydown.enter="requestSubmitOnEnter">
         <label>
           <span>Username</span>
           <input v-model="username" type="text" autocomplete="username" required />
@@ -33,6 +30,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import InlineValidation from '../components/ui/InlineValidation.vue'
 import { loginWithCredentials, useAuthState } from '../lib/auth'
+import { requestSubmitOnEnter } from '../lib/keyboard'
 import { resolveInternalRedirectTarget } from '../lib/navigation'
 
 const route = useRoute()

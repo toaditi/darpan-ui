@@ -1,7 +1,7 @@
 <template>
-  <main class="page-root">
-    <FormSection title="NetSuite Auth Settings" description="Create reusable auth profiles for NetSuite endpoint configs.">
-      <form class="stack-lg" @submit.prevent="save">
+  <section class="page-root">
+    <StaticPageSection title="NetSuite Auth Settings" description="Create reusable auth profiles for NetSuite endpoint configs.">
+      <form class="stack-lg" @submit.prevent="save" @keydown.enter="requestSubmitOnEnter">
         <div class="field-grid two">
           <label>
             <span>Auth Config ID</span>
@@ -86,58 +86,51 @@
 
       <InlineValidation v-if="error" tone="error" :message="error" />
       <p v-if="success" class="success-copy">{{ success }}</p>
+    </StaticPageSection>
 
-      <div class="stack-md">
-        <div class="row-between">
-          <h3>Existing Auth Configs</h3>
-          <div class="page-controls">
-            <button type="button" @click="prevPage" :disabled="pageIndex <= 0">Prev</button>
-            <span>Page {{ pageIndex + 1 }} / {{ pageCount }}</span>
-            <button type="button" @click="nextPage" :disabled="pageIndex + 1 >= pageCount">Next</button>
-          </div>
+    <StaticPageSection
+      title="Saved Auth Configs"
+      description="Only saved auth-config names are listed here. Click one to reopen it in the form."
+    >
+      <div class="row-between">
+        <p class="muted-copy">Saved records stay secondary until you need to reopen one.</p>
+        <div v-if="pageCount > 1" class="page-controls">
+          <button type="button" @click="prevPage" :disabled="pageIndex <= 0">Prev</button>
+          <span>Page {{ pageIndex + 1 }} / {{ pageCount }}</span>
+          <button type="button" @click="nextPage" :disabled="pageIndex + 1 >= pageCount">Next</button>
         </div>
-
-        <EmptyState
-          v-if="rows.length === 0"
-          title="No auth configs"
-          description="Create one above and reuse it across endpoint settings."
-        />
-
-        <SparseTable v-else :columns="columns" :rows="rows" row-key="nsAuthConfigId">
-          <template #cell-hasPassword="{ row }">
-            <StatusBadge :label="row.hasPassword ? 'Yes' : 'No'" :tone="row.hasPassword ? 'success' : 'neutral'" />
-          </template>
-          <template #cell-hasApiToken="{ row }">
-            <StatusBadge :label="row.hasApiToken ? 'Yes' : 'No'" :tone="row.hasApiToken ? 'success' : 'neutral'" />
-          </template>
-          <template #cell-hasPrivateKeyPem="{ row }">
-            <StatusBadge
-              :label="row.hasPrivateKeyPem ? 'Yes' : 'No'"
-              :tone="row.hasPrivateKeyPem ? 'success' : 'neutral'"
-            />
-          </template>
-          <template #cell-isActive="{ row }">
-            <StatusBadge :label="row.isActive === 'Y' ? 'Active' : 'Inactive'" :tone="row.isActive === 'Y' ? 'success' : 'warning'" />
-          </template>
-          <template #cell-actions="{ row }">
-            <button type="button" @click="editRow(row)">Edit</button>
-          </template>
-        </SparseTable>
       </div>
-    </FormSection>
-  </main>
+
+      <EmptyState
+        v-if="rows.length === 0"
+        title="No auth configs"
+        description="Create one above and reuse it across endpoint settings."
+      />
+
+      <div v-else class="static-page-tile-grid settings-record-grid" data-testid="saved-auth-configs">
+        <button
+          v-for="row in rows"
+          :key="row.nsAuthConfigId"
+          type="button"
+          class="static-page-tile settings-record-tile"
+          @click="editRow(row)"
+        >
+          <span class="static-page-tile-title">{{ savedAuthConfigName(row) }}</span>
+        </button>
+      </div>
+    </StaticPageSection>
+  </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
-import FormSection from '../../components/ui/FormSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
-import SparseTable from '../../components/ui/SparseTable.vue'
-import StatusBadge from '../../components/ui/StatusBadge.vue'
+import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { requestSubmitOnEnter } from '../../lib/keyboard'
 import type { NsAuthConfigRecord } from '../../lib/api/types'
 
 type AuthType = 'NONE' | 'BASIC' | 'BEARER' | 'OAUTH2_M2M_JWT'
@@ -186,18 +179,6 @@ const expectedAuthInputs = computed(() => {
   return 'none'
 })
 
-const columns = [
-  { key: 'nsAuthConfigId', label: 'Auth ID' },
-  { key: 'description', label: 'Description' },
-  { key: 'authType', label: 'Type' },
-  { key: 'username', label: 'Username' },
-  { key: 'isActive', label: 'Status' },
-  { key: 'hasPassword', label: 'Password' },
-  { key: 'hasApiToken', label: 'API Token' },
-  { key: 'hasPrivateKeyPem', label: 'Private Key' },
-  { key: 'actions', label: '' },
-]
-
 const rows = ref<NsAuthConfigRecord[]>([])
 const pageIndex = ref(0)
 const pageSize = ref(10)
@@ -207,19 +188,23 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 
-function editRow(row: Record<string, unknown>): void {
-  form.nsAuthConfigId = String(row.nsAuthConfigId ?? '')
-  form.description = String(row.description ?? '')
+function savedAuthConfigName(row: NsAuthConfigRecord): string {
+  return row.description?.trim() || row.nsAuthConfigId
+}
+
+function editRow(row: NsAuthConfigRecord): void {
+  form.nsAuthConfigId = row.nsAuthConfigId
+  form.description = row.description ?? ''
   form.authType = normalizeAuthType(row.authType)
-  form.username = String(row.username ?? '')
+  form.username = row.username ?? ''
   form.password = ''
   form.apiToken = ''
-  form.tokenUrl = String(row.tokenUrl ?? '')
-  form.clientId = String(row.clientId ?? '')
-  form.certId = String(row.certId ?? '')
-  form.scope = String(row.scope ?? 'restlets rest_webservices')
+  form.tokenUrl = row.tokenUrl ?? ''
+  form.clientId = row.clientId ?? ''
+  form.certId = row.certId ?? ''
+  form.scope = row.scope ?? 'restlets rest_webservices'
   form.privateKeyPem = ''
-  form.isActive = String(row.isActive ?? 'Y')
+  form.isActive = row.isActive ?? 'Y'
 }
 
 function normalizeAuthType(raw: unknown): AuthType {

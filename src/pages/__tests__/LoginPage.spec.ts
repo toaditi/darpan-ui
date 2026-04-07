@@ -1,0 +1,61 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+
+const replace = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const loginWithCredentials = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  checked: false,
+  error: null as string | null,
+  status: 'unauthenticated' as 'authenticated' | 'unauthenticated' | 'verification-failed',
+  sessionInfo: null as { userId: string; username?: string } | null,
+  get authenticated() {
+    return this.status === 'authenticated'
+  },
+  get userId() {
+    return this.sessionInfo?.userId ?? null
+  },
+  get username() {
+    return this.sessionInfo?.username ?? this.sessionInfo?.userId ?? null
+  },
+}))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => ({
+    query: {},
+  }),
+  useRouter: () => ({
+    replace,
+  }),
+}))
+
+vi.mock('../../lib/auth', () => ({
+  loginWithCredentials,
+  useAuthState: () => authState,
+}))
+
+import LoginPage from '../LoginPage.vue'
+
+describe('LoginPage', () => {
+  beforeEach(() => {
+    replace.mockClear()
+    loginWithCredentials.mockReset()
+    loginWithCredentials.mockResolvedValue(true)
+    authState.error = null
+    authState.status = 'unauthenticated'
+    authState.sessionInfo = null
+  })
+
+  it('submits on Enter from the credential form', async () => {
+    const wrapper = mount(LoginPage)
+
+    expect(wrapper.text()).not.toContain('Sign in to access Darpan. Backend screens are admin-only.')
+
+    await wrapper.get('input[autocomplete="username"]').setValue('john.doe')
+    await wrapper.get('input[autocomplete="current-password"]').setValue('moqui')
+    await wrapper.get('input[autocomplete="current-password"]').trigger('keydown.enter')
+    await flushPromises()
+
+    expect(loginWithCredentials).toHaveBeenCalledWith('john.doe', 'moqui')
+    expect(replace).toHaveBeenCalledWith('/')
+  })
+})
