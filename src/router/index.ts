@@ -15,11 +15,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
-    path: '/auth-required',
-    redirect: { name: 'login' },
-    meta: { public: true },
-  },
-  {
     path: '/roadmap/reconciliation',
     name: 'roadmap-reconciliation',
     component: () => import('../pages/ReconciliationPlaceholderPage.vue'),

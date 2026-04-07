@@ -12,6 +12,7 @@ import type {
   ListSftpServersResponse,
   LoginSessionResponse,
   LlmSettingsResponse,
+  LogoutSessionResponse,
   SaveHcReadDbConfigResponse,
   SaveJsonSchemaTextResponse,
   SaveLlmSettingsResponse,
@@ -26,6 +27,7 @@ import type {
 const AUTH = {
   loginSession: 'facade.AuthFacadeServices.login#Session',
   getSessionInfo: 'facade.AuthFacadeServices.get#SessionInfo',
+  logoutSession: 'facade.AuthFacadeServices.logout#Session',
 }
 
 const SETTINGS = {
@@ -59,6 +61,9 @@ export const authFacade = {
   },
   getSessionInfo(): Promise<SessionInfoResponse> {
     return callService<SessionInfoResponse>(AUTH.getSessionInfo)
+  },
+  logoutSession(): Promise<LogoutSessionResponse> {
+    return callService<LogoutSessionResponse>(AUTH.logoutSession)
   },
 }
 

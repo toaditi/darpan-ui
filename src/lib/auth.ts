@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { ApiCallError } from './api/client'
+import { ApiCallError, clearAuthToken, setAuthTokenContract } from './api/client'
 import { authFacade } from './api/facade'
 
 interface AuthState {
@@ -19,16 +19,6 @@ const authState = reactive<AuthState>({
 })
 
 const authBypass = (import.meta.env.VITE_DARPAN_AUTH_BYPASS ?? '').toLowerCase() === 'true'
-const AUTH_CACHE_KEY = 'darpan-ui-auth-cache'
-
-function clearLegacyAuthState(): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.sessionStorage.removeItem(AUTH_CACHE_KEY)
-  } catch {
-    // ignore storage cleanup failures
-  }
-}
 
 function formatApiError(error: ApiCallError): string {
   const details = (error.details ?? {}) as {
@@ -53,16 +43,26 @@ function setAuthenticated(userId: string | null, username: string | null): void 
   authState.userId = userId
   authState.username = username
   authState.error = null
-  clearLegacyAuthState()
 }
 
-function setUnauthenticated(error: string): void {
+function setUnauthenticated(error: string | null): void {
   authState.checked = true
   authState.authenticated = false
   authState.userId = null
   authState.username = null
   authState.error = error
-  clearLegacyAuthState()
+}
+
+function normalizeAuthenticatedUser(response: { sessionInfo?: { userId?: string; username?: string } }): { userId: string; username: string } {
+  const userId = response.sessionInfo?.userId?.toString()?.trim()
+  if (!userId) {
+    throw new Error('Authenticated response missing sessionInfo.userId')
+  }
+
+  return {
+    userId,
+    username: response.sessionInfo?.username?.toString()?.trim() || userId,
+  }
 }
 
 export async function ensureAuthenticated(force = false): Promise<boolean> {
@@ -78,12 +78,20 @@ export async function ensureAuthenticated(force = false): Promise<boolean> {
   try {
     const response = await authFacade.getSessionInfo()
     if (response.authenticated) {
-      setAuthenticated(response.sessionInfo?.userId ?? null, response.sessionInfo?.username ?? null)
+      const sessionUser = normalizeAuthenticatedUser(response)
+      setAuthenticated(sessionUser.userId, sessionUser.username)
     } else {
+      clearAuthToken()
       setUnauthenticated('No active authenticated session detected.')
     }
     return authState.authenticated
   } catch (error) {
+    if (error instanceof ApiCallError && error.status === 401) {
+      clearAuthToken()
+      setUnauthenticated(error.message)
+      return false
+    }
+
     const formattedError = error instanceof ApiCallError ? formatApiError(error) : 'Unable to verify authentication'
     setUnauthenticated(formattedError)
     return false
@@ -99,14 +107,42 @@ export async function loginWithCredentials(username: string, password: string): 
   try {
     const response = await authFacade.loginSession(username, password)
     if (response.authenticated) {
-      setAuthenticated(response.sessionInfo?.userId ?? null, response.sessionInfo?.username ?? null)
+      const authToken = response.authToken?.toString()?.trim()
+      if (!authToken) {
+        throw new Error('Authenticated login response missing authToken')
+      }
+
+      const sessionUser = normalizeAuthenticatedUser(response)
+      setAuthTokenContract(response)
+      setAuthenticated(sessionUser.userId, sessionUser.username)
       return true
     }
 
+    clearAuthToken()
     setUnauthenticated(response.errors?.[0] ?? 'Login failed')
     return false
   } catch (error) {
+    clearAuthToken()
     setUnauthenticated(error instanceof ApiCallError ? formatApiError(error) : 'Login failed')
+    return false
+  }
+}
+
+export async function logoutSession(): Promise<boolean> {
+  if (authBypass) {
+    clearAuthToken()
+    setUnauthenticated(null)
+    return true
+  }
+
+  try {
+    await authFacade.logoutSession()
+    clearAuthToken()
+    setUnauthenticated(null)
+    return true
+  } catch (error) {
+    clearAuthToken()
+    setUnauthenticated(error instanceof ApiCallError ? formatApiError(error) : 'Logout failed')
     return false
   }
 }

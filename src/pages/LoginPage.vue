@@ -44,7 +44,7 @@ const password = ref('')
 const loading = ref(false)
 const localError = ref<string | null>(null)
 
-const errorText = computed(() => localError.value)
+const errorText = computed(() => localError.value ?? authState.error)
 
 async function submit(): Promise<void> {
   loading.value = true

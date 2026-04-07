@@ -30,14 +30,26 @@ export interface SessionInfo {
   timeZone?: string
 }
 
+export interface AuthTokenContract {
+  authToken?: string
+  authTokenType?: string
+  authTokenHeaderName?: string
+  authTokenExpiresInSeconds?: number
+}
+
 export interface SessionInfoResponse extends ApiEnvelope {
   authenticated: boolean
   sessionInfo?: SessionInfo
 }
 
-export interface LoginSessionResponse extends ApiEnvelope {
+export interface LoginSessionResponse extends ApiEnvelope, AuthTokenContract {
   authenticated: boolean
   sessionInfo?: SessionInfo
+}
+
+export interface LogoutSessionResponse extends ApiEnvelope {
+  authenticated: boolean
+  authTokenRevoked?: boolean
 }
 
 export interface ListEnumOptionsResponse extends ApiEnvelope {
