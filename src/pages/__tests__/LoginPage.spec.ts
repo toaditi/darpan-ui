@@ -45,6 +45,14 @@ describe('LoginPage', () => {
     authState.sessionInfo = null
   })
 
+  it('hides the passive no-session message on first unauthenticated entry', () => {
+    authState.error = 'No active authenticated session detected.'
+
+    const wrapper = mount(LoginPage)
+
+    expect(wrapper.text()).not.toContain('No active authenticated session detected.')
+  })
+
   it('submits on Enter from the credential form', async () => {
     const wrapper = mount(LoginPage)
 
@@ -57,5 +65,20 @@ describe('LoginPage', () => {
 
     expect(loginWithCredentials).toHaveBeenCalledWith('john.doe', 'moqui')
     expect(replace).toHaveBeenCalledWith('/')
+  })
+
+  it('shows actual login errors after a failed submit', async () => {
+    loginWithCredentials.mockResolvedValue(false)
+    authState.error = 'Login failed'
+
+    const wrapper = mount(LoginPage)
+
+    await wrapper.get('input[autocomplete="username"]').setValue('john.doe')
+    await wrapper.get('input[autocomplete="current-password"]').setValue('wrong-password')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Login failed')
+    expect(replace).not.toHaveBeenCalled()
   })
 })

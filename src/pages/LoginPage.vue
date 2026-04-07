@@ -42,7 +42,13 @@ const password = ref('')
 const loading = ref(false)
 const localError = ref<string | null>(null)
 
-const errorText = computed(() => localError.value ?? authState.error)
+const INITIAL_UNAUTHENTICATED_MESSAGE = 'No active authenticated session detected.'
+
+const errorText = computed(() => {
+  if (localError.value) return localError.value
+  if (authState.status === 'unauthenticated' && authState.error === INITIAL_UNAUTHENTICATED_MESSAGE) return null
+  return authState.error
+})
 
 async function submit(): Promise<void> {
   loading.value = true

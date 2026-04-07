@@ -1,4 +1,4 @@
-export type CommandGroup = 'Navigate' | 'Quick Actions'
+export type CommandGroup = 'Navigate'
 
 export interface CommandAction {
   id: string

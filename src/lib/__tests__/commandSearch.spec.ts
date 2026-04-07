@@ -6,36 +6,36 @@ const storageState = vi.hoisted(() => new Map<string, string>())
 
 const actions: CommandAction[] = [
   {
-    id: 'navigate-llm',
-    label: 'Open LLM Settings',
-    description: 'Provider, model, and API key controls.',
+    id: 'navigate-ai-settings',
+    label: 'Open AI Settings',
+    description: 'Manage providers, models, and API keys.',
     group: 'Navigate',
     to: '/connections/llm',
-    aliases: ['connections', 'llm', 'provider'],
+    aliases: ['ai', 'llm', 'openai', 'gemini', 'api key', 'model settings', 'change api key'],
   },
   {
-    id: 'quick-open-llm',
-    label: 'Quick Action: Open LLM Provider',
-    description: 'Open provider model and key settings.',
-    group: 'Quick Actions',
-    to: '/connections/llm',
-    aliases: ['llm', 'provider', 'openai', 'gemini'],
-  },
-  {
-    id: 'navigate-ns-auth',
-    label: 'Open NetSuite Auth',
-    description: 'Configure reusable authentication profiles.',
+    id: 'navigate-schema-library',
+    label: 'Open Schema Library',
+    description: 'Upload, review, and manage saved schemas.',
     group: 'Navigate',
-    to: '/connections/netsuite/auth',
-    aliases: ['netsuite', 'auth', 'token', 'oauth'],
+    to: '/schemas/library',
+    aliases: ['schema', 'schemas', 'upload schema', 'json schema', 'field map', 'data shape'],
   },
   {
-    id: 'quick-run-pilot-diff',
-    label: 'Quick Action: Execute',
-    description: 'Jump straight to the diff flow.',
-    group: 'Quick Actions',
+    id: 'navigate-netsuite-endpoints',
+    label: 'Open NetSuite Endpoints',
+    description: 'Manage NetSuite API URLs and timeout settings.',
+    group: 'Navigate',
+    to: '/connections/netsuite/endpoints',
+    aliases: ['netsuite', 'endpoint', 'api url', 'restlet', 'timeout', 'settings'],
+  },
+  {
+    id: 'navigate-run-reconciliation',
+    label: 'Run Reconciliation',
+    description: 'Compare two files or datasets and review the result.',
+    group: 'Navigate',
     to: '/reconciliation/pilot-diff',
-    aliases: ['execute', 'run diff', 'compare files', 'reconciliation diff'],
+    aliases: ['compare files', 'compare data', 'match records', 'reconcile data', 'run comparison', 'execute', 'diff', 'pilot'],
   },
 ]
 
@@ -43,26 +43,32 @@ describe('rankCommandActions', () => {
   it('prefers exact alias matches over weaker field matches', () => {
     const ranked = rankCommandActions(actions, 'openai')
 
-    expect(ranked.map((action) => action.id)).toEqual(['quick-open-llm'])
+    expect(ranked.map((action) => action.id)).toEqual(['navigate-ai-settings'])
   })
 
-  it('prefers phrase and word-prefix matches for label-driven queries', () => {
-    const ranked = rankCommandActions(actions, 'run diff')
+  it('supports natural-language queries by ignoring filler words', () => {
+    const ranked = rankCommandActions(actions, 'where do i change my open ai key')
 
-    expect(ranked[0]?.id).toBe('quick-run-pilot-diff')
+    expect(ranked[0]?.id).toBe('navigate-ai-settings')
   })
 
-  it('requires all query tokens to be represented across the command fields', () => {
-    const ranked = rankCommandActions(actions, 'netsuite auth')
+  it('tolerates small typos when the intended destination is otherwise clear', () => {
+    const ranked = rankCommandActions(actions, 'scheema uplod')
 
-    expect(ranked.map((action) => action.id)).toEqual(['navigate-ns-auth'])
+    expect(ranked[0]?.id).toBe('navigate-schema-library')
+  })
+
+  it('keeps comparison search discoverable without surfacing legacy wording in the label', () => {
+    const ranked = rankCommandActions(actions, 'compare files')
+
+    expect(ranked[0]?.id).toBe('navigate-run-reconciliation')
   })
 
   it('boosts recently used commands when the textual match is otherwise tied', () => {
-    const ranked = rankCommandActions(actions, 'llm', ['quick-open-llm'])
+    const ranked = rankCommandActions(actions, 'settings', ['navigate-netsuite-endpoints'])
 
-    expect(ranked[0]?.id).toBe('quick-open-llm')
-    expect(ranked[1]?.id).toBe('navigate-llm')
+    expect(ranked[0]?.id).toBe('navigate-netsuite-endpoints')
+    expect(ranked[1]?.id).toBe('navigate-ai-settings')
   })
 })
 
@@ -84,11 +90,11 @@ describe('recent command storage', () => {
   })
 
   it('stores the most recent command first without duplicates', () => {
-    recordRecentCommand('navigate-llm')
-    recordRecentCommand('quick-run-pilot-diff')
-    recordRecentCommand('navigate-llm')
+    recordRecentCommand('navigate-ai-settings')
+    recordRecentCommand('navigate-run-reconciliation')
+    recordRecentCommand('navigate-ai-settings')
 
-    expect(listRecentCommandIds()).toEqual(['navigate-llm', 'quick-run-pilot-diff'])
+    expect(listRecentCommandIds()).toEqual(['navigate-ai-settings', 'navigate-run-reconciliation'])
   })
 
   it('caps the stored recent history to a small bounded list', () => {

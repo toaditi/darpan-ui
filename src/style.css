@@ -69,7 +69,7 @@
   --workflow-action-border: color-mix(in oklab, var(--text) 8%, transparent);
   --floating-actions-right-offset: max(var(--space-6), env(safe-area-inset-right) + var(--space-3));
   --floating-actions-bottom-offset: max(var(--space-6), env(safe-area-inset-bottom) + var(--space-3));
-  --floating-actions-gap: var(--space-4);
+  --floating-actions-gap: calc(var(--space-4) / 2);
   --floating-fab-size: 2.65rem;
   --floating-command-bubble-height: 3rem;
 }
@@ -1319,6 +1319,12 @@ label > span {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.command-item--active {
+  border-color: color-mix(in oklab, var(--accent-ink) 28%, var(--border));
+  background: color-mix(in oklab, var(--accent-ink) 8%, var(--surface-2));
 }
 
 .command-item .muted-copy {

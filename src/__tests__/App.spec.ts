@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
@@ -138,6 +139,12 @@ describe('App shell logout', () => {
     expect(wrapper.find('.home-fab').exists()).toBe(true)
     expect(wrapper.find('.app-shell').classes()).toContain('app-shell--static')
     expect(document.body.classList.contains('surface-mode-static')).toBe(true)
+  })
+
+  it('uses a reduced gap between the floating quick actions and Ask Darpan bubble', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain('--floating-actions-gap: calc(var(--space-4) / 2);')
   })
 
   it('shows only the theme toggle control inside the user menu', async () => {

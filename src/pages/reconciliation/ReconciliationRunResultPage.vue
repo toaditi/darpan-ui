@@ -81,12 +81,25 @@
 
         <div v-if="pagedDiffDetailRows.length > 0" class="pilot-diff-details__table-shell">
           <table class="pilot-diff-table">
+            <colgroup>
+              <col class="pilot-diff-table__id-column" />
+              <col class="pilot-diff-table__json-column" />
+              <col class="pilot-diff-table__action-column" />
+            </colgroup>
             <thead>
               <tr>
-                <th>Record ID</th>
-                <th>
-                  <div class="pilot-diff-table__header-content">
+                <th class="pilot-diff-table__data-header">
+                  <div class="pilot-diff-table__header-slot">
+                    <span>Record ID</span>
+                  </div>
+                </th>
+                <th class="pilot-diff-table__data-header">
+                  <div class="pilot-diff-table__header-slot">
                     <span>Record JSON</span>
+                  </div>
+                </th>
+                <th class="pilot-diff-table__action-header">
+                  <div class="pilot-diff-table__header-slot pilot-diff-table__header-slot--action">
                     <button
                       v-if="downloadableOutputFile"
                       type="button"
@@ -114,6 +127,7 @@
                 <td>
                   <pre class="pilot-diff-table__json">{{ row.jsonText }}</pre>
                 </td>
+                <td class="pilot-diff-table__action-cell" aria-hidden="true"></td>
               </tr>
             </tbody>
           </table>
@@ -634,6 +648,13 @@ watch([reconciliationMappingId, outputFileName], () => {
   color: var(--text);
 }
 
+.pilot-diff-details__search-input:focus,
+.pilot-diff-details__search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--border);
+}
+
 .pilot-diff-details__search-clear {
   position: absolute;
   top: 50%;
@@ -667,9 +688,21 @@ watch([reconciliationMappingId, outputFileName], () => {
 .pilot-diff-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
-.pilot-diff-table th,
+.pilot-diff-table th {
+  padding: 0 1rem;
+  vertical-align: middle;
+  text-align: left;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: color-mix(in oklab, var(--surface-2) 94%, white);
+  border-bottom: 1px solid var(--border-soft);
+}
+
 .pilot-diff-table td {
   padding: 0.95rem 1rem;
   vertical-align: top;
@@ -677,19 +710,19 @@ watch([reconciliationMappingId, outputFileName], () => {
   border-bottom: 1px solid var(--border-soft);
 }
 
-.pilot-diff-table th {
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  background: color-mix(in oklab, var(--surface-2) 94%, white);
-}
-
-.pilot-diff-table__header-content {
+.pilot-diff-table__header-slot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  min-height: 2.6rem;
+}
+
+.pilot-diff-table__data-header {
+  text-align: left;
+  vertical-align: middle;
+}
+
+.pilot-diff-table__header-slot--action {
+  justify-content: flex-end;
 }
 
 .pilot-diff-table__download {
@@ -719,8 +752,26 @@ watch([reconciliationMappingId, outputFileName], () => {
   border-bottom: 0;
 }
 
+.pilot-diff-table__id-column,
 .pilot-diff-table__id-cell {
   width: 13rem;
+}
+
+.pilot-diff-table__json-column {
+  width: auto;
+}
+
+.pilot-diff-table__action-column,
+.pilot-diff-table__action-header,
+.pilot-diff-table__action-cell {
+  width: 4.5rem;
+}
+
+.pilot-diff-table__action-header,
+.pilot-diff-table__action-cell {
+  padding-left: 0.5rem;
+  padding-right: 0.75rem;
+  text-align: right;
 }
 
 .pilot-diff-table__json {
@@ -742,6 +793,7 @@ watch([reconciliationMappingId, outputFileName], () => {
 .pilot-diff-details__pagination p {
   margin: 0;
   color: var(--text-muted);
+  text-align: center;
 }
 
 .run-result-actions {

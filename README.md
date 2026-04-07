@@ -23,7 +23,7 @@ Command-first frontend facade for the Darpan browser pilot.
 
 ## Configuration
 
-Set environment variables in `.env` or CI environment:
+Set environment variables in `.env` for local development:
 
 ```bash
 # Optional in local dev. If omitted, darpan-ui uses same-origin /rpc/json with Vite proxy.
@@ -37,6 +37,21 @@ Set environment variables in `.env` or CI environment:
 VITE_DARPAN_UI_MODE=pilot
 VITE_DARPAN_AUTH_BYPASS=false
 ```
+
+## Firebase Hosting Deployment
+
+Firebase-hosted builds should use the checked-in `.env.firebase` target and the dedicated build command:
+
+```bash
+npm run build:firebase
+firebase deploy --only hosting:dev
+```
+
+Notes:
+
+- `.env.example` is a template only. Vite does not load it.
+- `.env.firebase` overrides local `.env` values during `npm run build:firebase`.
+- `firebase deploy --only hosting:dev` now runs `npm run build:firebase` automatically through `firebase.json`.
 
 ## GitHub Pages Deployment
 

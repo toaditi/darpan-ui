@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "dev": "hotwax-digital-commerce-uat"
+  },
+  "targets": {
+    "hotwax-digital-commerce-uat": {
+      "hosting": {
+        "dev": [
+          "hotwax-darpan-dev"
+        ]
+      }
+    }
+  }
+}
