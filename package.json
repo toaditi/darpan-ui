@@ -1,6 +1,6 @@
 {
   "name": "darpan-ui",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Temporary Darpan UI pilot app (Vue + TypeScript + Vite)",
