@@ -10,10 +10,19 @@
 
     <slot></slot>
 
-    <div class="wizard-actions">
+    <div v-if="hasActions" class="wizard-actions">
       <button v-if="showBack" type="button" class="wizard-back" @click="emit('back')">Back</button>
 
+      <AppSaveAction
+        v-if="showPrimaryAction && primaryLabel === 'Save'"
+        :disabled="submitDisabled"
+        :label="primaryLabel"
+        :test-id="primaryTestId"
+        @click="emit('submit')"
+      />
+
       <button
+        v-else-if="showPrimaryAction"
         type="button"
         class="wizard-next"
         :disabled="submitDisabled"
@@ -23,14 +32,25 @@
         {{ primaryLabel }}
       </button>
 
-      <span v-if="showEnterHint" class="wizard-enter-hint">press <strong>Enter</strong> ↵</span>
+      <AppCancelAction
+        v-if="showCancelAction"
+        :disabled="cancelDisabled"
+        :label="cancelLabel"
+        :test-id="cancelTestId"
+        @click="emit('cancel')"
+      />
+
+      <span v-if="showPrimaryAction && showEnterHint" class="wizard-enter-hint">press <strong>Enter</strong> ↵</span>
       <slot name="actions-after"></slot>
     </div>
   </form>
 </template>
 
 <script setup lang="ts">
+import { computed, useSlots } from 'vue'
 import { requestSubmitOnEnter } from '../../lib/keyboard'
+import AppCancelAction from '../ui/AppCancelAction.vue'
+import AppSaveAction from '../ui/AppSaveAction.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -39,25 +59,45 @@ const props = withDefaults(
     submitDisabled?: boolean
     showBack?: boolean
     showEnterHint?: boolean
+    showPrimaryAction?: boolean
     allowSelectEnter?: boolean
     allowFileEnter?: boolean
     primaryTestId?: string
+    showCancelAction?: boolean
+    cancelDisabled?: boolean
+    cancelLabel?: string
+    cancelTestId?: string
   }>(),
   {
     primaryLabel: 'OK',
     submitDisabled: false,
     showBack: false,
     showEnterHint: true,
+    showPrimaryAction: true,
     allowSelectEnter: false,
     allowFileEnter: false,
     primaryTestId: '',
+    showCancelAction: false,
+    cancelDisabled: false,
+    cancelLabel: 'Cancel',
+    cancelTestId: '',
   },
 )
 
 const emit = defineEmits<{
   submit: []
   back: []
+  cancel: []
 }>()
+
+const slots = useSlots()
+const hasActions = computed(() => (
+  props.showBack
+  || props.showCancelAction
+  || props.showPrimaryAction
+  || (props.showPrimaryAction && props.showEnterHint)
+  || Boolean(slots['actions-after'])
+))
 
 function handleEnter(event: KeyboardEvent): void {
   requestSubmitOnEnter(event, {
@@ -70,13 +110,21 @@ function handleEnter(event: KeyboardEvent): void {
 
 <style scoped>
 .wizard-question-shell {
+  --workflow-form-question-size: var(--workflow-question-size);
+  --workflow-form-question-mobile-size: clamp(1.35rem, 6vw, 1.75rem);
+  --workflow-form-answer-size: var(--workflow-answer-size);
+  --workflow-form-select-size: var(--workflow-select-size);
+  --workflow-form-context-label-size: 0.78rem;
+  --workflow-form-select-padding-top: 0;
+  --workflow-form-select-padding-bottom: 0.35rem;
+  --workflow-form-select-line-height: 1.15;
   width: min(var(--workflow-question-width), 100%);
   display: grid;
   gap: 1rem;
   justify-items: start;
   align-content: start;
   min-height: 0;
-  padding-top: 0;
+  padding-top: var(--workflow-form-top-offset);
   margin-inline: auto;
 }
 
@@ -92,7 +140,7 @@ function handleEnter(event: KeyboardEvent): void {
 
 .wizard-question {
   margin: 0;
-  font-size: var(--workflow-question-size);
+  font-size: var(--workflow-form-question-size);
   line-height: 1.22;
   letter-spacing: -0.015em;
   white-space: normal;
@@ -114,7 +162,7 @@ function handleEnter(event: KeyboardEvent): void {
 .wizard-question-shell :deep(.workflow-context-label) {
   margin: 0;
   color: color-mix(in oklab, var(--text) 55%, transparent);
-  font-size: 0.78rem;
+  font-size: var(--workflow-form-context-label-size);
 }
 
 .wizard-question-shell :deep(.wizard-answer-control) {
@@ -127,7 +175,7 @@ function handleEnter(event: KeyboardEvent): void {
   background: transparent;
   box-shadow: none;
   color: var(--text);
-  font-size: var(--workflow-answer-size);
+  font-size: var(--workflow-form-answer-size);
   line-height: 1.2;
   letter-spacing: -0.015em;
   text-align: left;
@@ -136,9 +184,10 @@ function handleEnter(event: KeyboardEvent): void {
 }
 
 .wizard-question-shell :deep(select.wizard-answer-control) {
-  padding-bottom: 0.35rem;
-  font-size: var(--workflow-select-size);
-  line-height: 1.15;
+  padding-top: var(--workflow-form-select-padding-top);
+  padding-bottom: var(--workflow-form-select-padding-bottom);
+  font-size: var(--workflow-form-select-size);
+  line-height: var(--workflow-form-select-line-height);
   letter-spacing: -0.01em;
   color-scheme: light dark;
 }
@@ -149,16 +198,6 @@ function handleEnter(event: KeyboardEvent): void {
 
 .wizard-question-shell :deep(.wizard-answer-control.empty:not(select)) {
   color: color-mix(in oklab, var(--text) 24%, transparent);
-}
-
-.wizard-question-shell :deep(select.wizard-answer-control option) {
-  color: FieldText;
-  background: Field;
-}
-
-.wizard-question-shell :deep(select.wizard-answer-control option:checked) {
-  color: HighlightText;
-  background: Highlight;
 }
 
 .wizard-question-shell :deep(.wizard-answer-control:focus-visible) {
@@ -247,7 +286,7 @@ function handleEnter(event: KeyboardEvent): void {
   }
 
   .wizard-question {
-    font-size: clamp(1.35rem, 6vw, 1.75rem);
+    font-size: var(--workflow-form-question-mobile-size);
     white-space: normal;
   }
 }

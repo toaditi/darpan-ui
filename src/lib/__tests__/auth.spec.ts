@@ -180,14 +180,14 @@ describe('auth state', () => {
     expect(useAuthState().error).toContain('Auth contract violation')
   })
 
-  it('builds the auth-required redirect when the last auth check was a verification failure', async () => {
+  it('builds the login redirect when the last auth check was a verification failure', async () => {
     getSessionInfo.mockRejectedValue(new Error('network failure'))
 
     const { buildAuthRedirect, ensureAuthenticated } = await import('../auth')
 
     await expect(ensureAuthenticated(true)).resolves.toBe(false)
     expect(buildAuthRedirect('/connections/llm')).toEqual({
-      name: 'auth-required',
+      name: 'login',
       query: { redirect: '/connections/llm' },
     })
   })

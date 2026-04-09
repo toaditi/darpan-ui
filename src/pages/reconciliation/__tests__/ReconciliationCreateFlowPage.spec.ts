@@ -70,6 +70,7 @@ describe('ReconciliationCreateFlowPage', () => {
     listSchemas.mockReset()
     flattenSchema.mockReset()
     createPilotMapping.mockReset()
+    window.history.replaceState({}, '', '/')
 
     listSchemas.mockResolvedValue({
       schemas: [
@@ -140,7 +141,7 @@ describe('ReconciliationCreateFlowPage', () => {
     expect(wrapper.find('.wizard-progress-track').exists()).toBe(true)
     expect(wrapper.find('.workflow-step-shell').exists()).toBe(true)
     expect(wrapper.text()).toContain('Select a JSON Schema')
-    expect(wrapper.text()).toContain('Create a New One')
+    expect(wrapper.text()).toContain('Create a New Schema')
 
     await advanceToNameStep(wrapper)
 
@@ -252,5 +253,27 @@ describe('ReconciliationCreateFlowPage', () => {
       schema2FieldPath: '$.id',
     })
     expect(push).toHaveBeenCalledWith({ name: 'hub' })
+  })
+
+  it('returns to the workflow origin after creating a mapping when a static page launched the flow', async () => {
+    window.history.replaceState(
+      {
+        workflowOriginLabel: 'Runs',
+        workflowOriginPath: '/settings/runs',
+      },
+      '',
+      '/reconciliation/create',
+    )
+
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    await advanceToNameStep(wrapper)
+
+    await wrapper.find('input[name="flowName"]').setValue('Returns vs Shopify')
+    await wrapper.find('[data-testid="create-mapping"]').trigger('click')
+    await flushPromises()
+
+    expect(push).toHaveBeenCalledWith('/settings/runs')
   })
 })

@@ -1,144 +1,177 @@
 <template>
-  <section class="stack-xl">
-    <FormSection
-      title="Schema Editor"
-      description="Edit raw schema text or refine flattened fields, then save through platform services."
-    >
-      <form class="stack-md" @submit.prevent="saveSchemaText" @keydown.enter="requestSubmitOnEnter">
-        <div class="row-between">
-          <p class="muted-copy">Schema ID: <strong>{{ currentSchemaId || '-' }}</strong></p>
-          <div class="action-row">
-            <button type="button" @click="reload" :disabled="loading || !hasTarget">Refresh</button>
-            <button type="button" @click="downloadSchema" :disabled="schemaText.trim().length === 0 || showInitialLoadFailureState">
-              Download
-            </button>
-          </div>
-        </div>
+  <StaticPageFrame>
+    <template #hero>
+      <div class="stack-sm">
+        <h1>{{ heroTitle }}</h1>
+      </div>
+    </template>
 
-        <template v-if="showInitialLoadFailureState">
-          <EmptyState
-            title="Unable to load this schema"
-            description="Retry loading before making changes."
-          />
+    <StaticPageSection>
+      <p v-if="loading && !initialLoadCompleted" class="section-note" data-testid="schema-editor-loading">Loading schema...</p>
 
-          <div class="action-row">
-            <button type="button" @click="reload" :disabled="loading">Retry Loading Schema</button>
-          </div>
-        </template>
-
-        <template v-else>
-          <EmptyState
-            v-if="!hasTarget"
-            title="No schema selected"
-            description="Open a schema from Library or Infer and then return here for direct editor updates."
-          />
-
-          <div class="field-grid two">
-            <label>
-              <span>Schema Name</span>
-              <input v-model="schemaName" type="text" required />
-            </label>
-            <label>
-              <span>Description</span>
-              <input v-model="description" type="text" />
-            </label>
-            <label>
-              <span>System</span>
-              <select v-model="systemEnumId" required>
-                <option value="">Select system</option>
-                <option v-for="option in systemOptions" :key="option.enumId" :value="option.enumId">
-                  {{ option.label || option.description || option.enumId }}
-                </option>
-              </select>
-            </label>
-          </div>
-
-          <label>
-            <span>Raw Schema JSON</span>
-            <textarea v-model="schemaText" rows="14" required />
-          </label>
-
-          <div class="action-row">
-            <button type="submit" :disabled="savingText || !canSaveSchemaText">Save Raw Schema</button>
-          </div>
-        </template>
-      </form>
-    </FormSection>
-
-    <FormSection
-      v-if="!showInitialLoadFailureState"
-      title="Refined Fields"
-      description="Refine flattened field rows and persist back as schema structure."
-    >
-      <form class="stack-md" @submit.prevent="saveRefined" @keydown.enter="requestSubmitOnEnter">
-        <div class="row-between">
-          <h3>Field Rows</h3>
-          <button type="button" @click="addFieldRow">Add Row</button>
-        </div>
-
+      <template v-else-if="showInitialLoadFailureState">
+        <InlineValidation v-if="error" tone="error" :message="error" />
         <EmptyState
-          v-if="fieldRows.length === 0"
-          title="No flattened fields"
-          description="Use the Wizard to infer fields or load an existing schema with flatten data."
+          title="Unable to load this schema"
+          description="Retry loading before refining any fields."
         />
 
-        <div v-else class="sparse-table-wrap">
-          <table class="sparse-table">
-            <thead>
-              <tr>
-                <th>Field Path</th>
-                <th>Type</th>
-                <th>Required</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(row, index) in fieldRows" :key="`${row.fieldPath}-${index}`">
-                <td><input v-model="row.fieldPath" type="text" placeholder="order.items[].sku" /></td>
-                <td>
-                  <select v-model="row.type">
-                    <option v-for="fieldType in fieldTypes" :key="fieldType" :value="fieldType">
-                      {{ fieldType }}
-                    </option>
-                  </select>
-                </td>
-                <td>
-                  <label class="checkbox-inline">
-                    <input v-model="row.required" type="checkbox" />
-                    <span>{{ row.required ? 'Yes' : 'No' }}</span>
-                  </label>
-                </td>
-                <td class="cell-actions">
-                  <button type="button" class="danger-text" @click="removeFieldRow(index)">Remove</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
         <div class="action-row">
-          <button type="submit" :disabled="savingRefined || !canEditTarget || fieldRows.length === 0">
-            Save Refined Fields
+          <button type="button" @click="reload" :disabled="loading">Retry Loading Schema</button>
+        </div>
+      </template>
+
+      <template v-else-if="!hasTarget">
+        <EmptyState
+          title="No schema selected"
+          description="Open a schema from the library to review and refine its fields."
+        />
+
+        <RouterLink class="static-page-action-tile static-page-action-tile--inline" :to="{ name: 'schemas-library' }">
+          Go to Schema Library
+        </RouterLink>
+      </template>
+
+      <template v-else>
+        <div class="static-page-summary-grid">
+          <article class="static-page-summary-card">
+            <span class="static-page-summary-label">Schema ID</span>
+            <strong>{{ currentSchemaId }}</strong>
+          </article>
+          <article class="static-page-summary-card">
+            <span class="static-page-summary-label">System</span>
+            <strong>{{ systemLabel || systemEnumId || 'Unassigned' }}</strong>
+          </article>
+          <article class="static-page-summary-card">
+            <span class="static-page-summary-label">Updated</span>
+            <strong>{{ formatDate(lastUpdatedStamp) }}</strong>
+          </article>
+        </div>
+      </template>
+    </StaticPageSection>
+
+    <StaticPageSection v-if="!showInitialLoadFailureState && hasTarget">
+      <form class="stack-md" @submit.prevent="saveRefinedFields">
+        <AppTableFrame :columns="refinedFieldColumns" :rows="refinedFieldRows">
+          <template #header-actions>
+            <button
+              type="button"
+              class="app-table__header-action"
+              data-testid="schema-editor-download"
+              aria-label="Download schema JSON"
+              :disabled="!schemaText.trim()"
+              @click="downloadSchema"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path
+                  d="M10 2.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5Zm-5 11a.75.75 0 0 1 .75.75v1.5c0 .14.11.25.25.25h8c.14 0 .25-.11.25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 14 17.5H6A1.75 1.75 0 0 1 4.25 15.75v-1.5A.75.75 0 0 1 5 13.5Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+          </template>
+
+          <template #cell-fieldPath="{ row }">
+            <input v-model="row.fieldPath" type="text" placeholder="$.order.id" />
+          </template>
+
+          <template #cell-type="{ row }">
+            <AppSelect
+              :model-value="String(row.type ?? '')"
+              :options="fieldTypeOptions"
+              @update:model-value="row.type = $event as JsonSchemaField['type']"
+            />
+          </template>
+
+          <template #cell-required="{ row }">
+            <div class="app-table__control-wrap app-table__control-wrap--start">
+              <label class="checkbox-inline checkbox-inline--control-only">
+                <input v-model="row.required" class="app-table__checkbox" type="checkbox" aria-label="Required field" />
+              </label>
+            </div>
+          </template>
+
+          <template #cell-actions="{ index }">
+            <div class="app-table__control-wrap app-table__control-wrap--end">
+              <button
+                type="button"
+                :class="rowDeleteActionClass"
+                aria-label="Remove field row"
+                @click="removeFieldRow(index)"
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path :d="trashIconPath" fill="currentColor" />
+                </svg>
+              </button>
+            </div>
+          </template>
+
+          <template #append-row="{ columnCount }">
+            <tr>
+              <td :colspan="columnCount" class="app-table__append-cell">
+                <div class="app-table__append-action">
+                  <button
+                    type="button"
+                    class="app-table__icon-action"
+                    data-testid="schema-editor-add-row"
+                    aria-label="Add field row"
+                    @click="addFieldRow"
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                      <path
+                        d="M10 4.25a.75.75 0 0 1 .75.75v4.25H15a.75.75 0 0 1 0 1.5h-4.25V15a.75.75 0 0 1-1.5 0v-4.25H5a.75.75 0 0 1 0-1.5h4.25V5a.75.75 0 0 1 .75-.75Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </AppTableFrame>
+
+        <div class="action-row schema-editor-footer-row">
+          <AppSaveAction
+            type="submit"
+            class="schema-editor-footer-action"
+            test-id="save-refined-fields"
+            label="Save refined fields"
+            :disabled="footerActionsDisabled"
+          />
+          <button
+            type="button"
+            :class="footerDeleteActionClass"
+            data-testid="delete-schema"
+            aria-label="Delete schema"
+            :disabled="footerActionsDisabled"
+            @click="deleteSchema"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path :d="trashIconPath" :transform="footerTrashIconTransform" fill="currentColor" />
+            </svg>
           </button>
         </div>
       </form>
-    </FormSection>
+    </StaticPageSection>
 
-    <InlineValidation v-if="error" tone="error" :message="error" />
+    <InlineValidation v-if="error && !showInitialLoadFailureState" tone="error" :message="error" />
     <p v-if="success" class="success-copy">{{ success }}</p>
-  </section>
+  </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import AppTableFrame from '../../components/ui/AppTableFrame.vue'
+import AppSaveAction from '../../components/ui/AppSaveAction.vue'
+import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
-import FormSection from '../../components/ui/FormSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
+import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
+import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
-import { requestSubmitOnEnter } from '../../lib/keyboard'
-import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
+import { jsonSchemaFacade } from '../../lib/api/facade'
+import type { JsonSchemaField } from '../../lib/api/types'
 
 interface EditableFieldRow {
   fieldPath: string
@@ -147,40 +180,61 @@ interface EditableFieldRow {
 }
 
 const fieldTypes: JsonSchemaField['type'][] = ['string', 'integer', 'number', 'boolean', 'object', 'array']
+const fieldTypeOptions: AppSelectOption[] = fieldTypes.map((fieldType) => ({ value: fieldType, label: fieldType }))
+const rowDeleteActionClass = 'app-table__icon-action app-table__icon-action--danger schema-editor-row-delete-action'
+const footerDeleteActionClass =
+  'app-icon-action app-icon-action--large app-icon-action--danger schema-editor-footer-action'
+const trashIconPath =
+  'M7.5 3.5A1.5 1.5 0 0 1 9 2h2a1.5 1.5 0 0 1 1.5 1.5V4H15a.75.75 0 0 1 0 1.5h-.57l-.58 9.17A1.75 1.75 0 0 1 12.1 16.5H7.9a1.75 1.75 0 0 1-1.75-1.33L5.57 5.5H5a.75.75 0 0 1 0-1.5h2.5v-.5ZM11 3.5h-2V4h2v-.5ZM7.07 5.5l.56 8.89c.02.19.13.31.27.31h4.2c.14 0 .25-.12.27-.31l.56-8.89H7.07Zm1.68 1.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Zm2.5 0a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Z'
+const footerTrashIconTransform = 'translate(0 0.75)'
 
 const props = defineProps<{
   jsonSchemaId?: string
 }>()
 
 const route = useRoute()
+const router = useRouter()
 
-const currentSchemaId = ref(props.jsonSchemaId ?? '')
+const currentSchemaId = ref(props.jsonSchemaId ?? String(route.params.jsonSchemaId ?? '').trim())
 const schemaName = ref('')
 const description = ref('')
 const systemEnumId = ref('')
+const systemLabel = ref('')
+const lastUpdatedStamp = ref('')
 const schemaText = ref('')
 const fieldRows = ref<EditableFieldRow[]>([])
 const loading = ref(false)
-const savingText = ref(false)
 const savingRefined = ref(false)
+const deletingSchema = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 const initialLoadCompleted = ref(false)
 const initialLoadSucceeded = ref(false)
-const requestedSchemaId = ref('')
-const requestedSchemaName = ref('')
-const systemOptions = ref<EnumOption[]>([])
 
-const hasTarget = computed(() => currentSchemaId.value.length > 0 || schemaName.value.length > 0)
-const hasRequestedTarget = computed(() => requestedSchemaId.value.length > 0 || requestedSchemaName.value.length > 0)
-const canEditTarget = computed(() => {
-  if (!hasRequestedTarget.value) return hasTarget.value
-  return initialLoadSucceeded.value
+const hasTarget = computed(() => currentSchemaId.value.length > 0)
+const canEditTarget = computed(() => hasTarget.value && initialLoadSucceeded.value)
+const showInitialLoadFailureState = computed(() => hasTarget.value && initialLoadCompleted.value && !initialLoadSucceeded.value)
+const footerActionsDisabled = computed(() => !canEditTarget.value || savingRefined.value || deletingSchema.value)
+const heroTitle = computed(() => {
+  if (description.value.trim()) return description.value.trim()
+  if (schemaName.value.trim()) return schemaName.value.trim()
+  return 'Schema Editor'
 })
-const canSaveSchemaText = computed(() => canEditTarget.value && hasTarget.value)
-const showInitialLoadFailureState = computed(() => {
-  return hasRequestedTarget.value && initialLoadCompleted.value && !initialLoadSucceeded.value
-})
+const refinedFieldColumns = [
+  { key: 'fieldPath', label: 'Field Path', cellClass: 'app-table__control-cell' },
+  { key: 'type', label: 'Type', colStyle: { width: '10rem' }, cellClass: 'app-table__control-cell' },
+  { key: 'required', label: 'Required', colStyle: { width: '6.5rem' }, cellClass: 'app-table__control-cell' },
+  {
+    key: 'actions',
+    label: '',
+    headerAlign: 'end' as const,
+    colClass: 'app-table__action-column',
+    colStyle: { width: '4rem' },
+    headerClass: 'app-table__action-header',
+    cellClass: 'app-table__action-cell',
+  },
+]
+const refinedFieldRows = computed(() => fieldRows.value as Array<Record<string, unknown>>)
 
 function parseBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
@@ -196,6 +250,13 @@ function normalizeFieldType(value: unknown): JsonSchemaField['type'] {
   return 'string'
 }
 
+function formatDate(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '-'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed)
+}
+
 function downloadText(filename: string, text: string): void {
   const blob = new Blob([text], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -204,13 +265,6 @@ function downloadText(filename: string, text: string): void {
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
-}
-
-function getTargetParams(): Record<string, string> {
-  const params: Record<string, string> = {}
-  if (currentSchemaId.value.trim()) params.jsonSchemaId = currentSchemaId.value.trim()
-  if (!params.jsonSchemaId && schemaName.value.trim()) params.schemaName = schemaName.value.trim()
-  return params
 }
 
 function addFieldRow(): void {
@@ -225,28 +279,37 @@ function removeFieldRow(index: number): void {
   fieldRows.value.splice(index, 1)
 }
 
-async function loadFlattenedRows(): Promise<void> {
-  const params = getTargetParams()
-  if (!params.jsonSchemaId && !params.schemaName) return
+function downloadSchema(): void {
+  if (!schemaText.value.trim()) return
+  downloadText(`${schemaName.value || 'schema'}.json`, schemaText.value)
+}
 
-  const flattened = await jsonSchemaFacade.flatten(params)
-  fieldRows.value = (flattened.fieldList ?? []).map((item) => ({
+function getSchemaDeleteLabel(): string {
+  return description.value.trim() || schemaName.value.trim() || currentSchemaId.value
+}
+
+async function loadFlattenedRows(): Promise<void> {
+  const response = await jsonSchemaFacade.flatten({ jsonSchemaId: currentSchemaId.value })
+  fieldRows.value = (response.fieldList ?? []).map((item) => ({
     fieldPath: String(item.fieldPath ?? ''),
     type: normalizeFieldType(item.type),
     required: parseBoolean(item.required),
   }))
 }
 
-async function load(): Promise<void> {
-  const params = getTargetParams()
-  if (!params.jsonSchemaId && !params.schemaName) return
+async function loadSchema(): Promise<void> {
+  if (!hasTarget.value) {
+    initialLoadCompleted.value = true
+    return
+  }
 
   loading.value = true
   error.value = null
 
   try {
-    const schemaResponse = await jsonSchemaFacade.get(params)
-    const schemaData = schemaResponse.schemaData
+    const response = await jsonSchemaFacade.get({ jsonSchemaId: currentSchemaId.value })
+    const schemaData = response.schemaData
+
     if (!schemaData) {
       error.value = 'Schema not found.'
       return
@@ -256,51 +319,29 @@ async function load(): Promise<void> {
     schemaName.value = schemaData.schemaName
     description.value = schemaData.description ?? ''
     systemEnumId.value = schemaData.systemEnumId ?? ''
+    systemLabel.value = schemaData.systemLabel ?? ''
+    lastUpdatedStamp.value = schemaData.lastUpdatedStamp ?? ''
     schemaText.value = schemaData.schemaText ?? ''
+
     await loadFlattenedRows()
     initialLoadSucceeded.value = true
   } catch (loadError) {
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load schema.'
   } finally {
-    if (hasRequestedTarget.value && !initialLoadCompleted.value) {
-      initialLoadCompleted.value = true
-    }
+    initialLoadCompleted.value = true
     loading.value = false
   }
 }
 
-async function loadSystemOptions(): Promise<void> {
-  try {
-    const response = await settingsFacade.listEnumOptions('DarpanSystemSource')
-    systemOptions.value = response.options ?? []
-  } catch (loadError) {
-    error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load reconciliation systems.'
-  }
+async function reload(): Promise<void> {
+  initialLoadCompleted.value = false
+  initialLoadSucceeded.value = false
+  await loadSchema()
 }
 
-async function saveSchemaText(): Promise<void> {
-  savingText.value = true
-  error.value = null
-  success.value = null
+async function saveRefinedFields(): Promise<void> {
+  if (!canEditTarget.value) return
 
-  try {
-    const response = await jsonSchemaFacade.saveText({
-      jsonSchemaId: currentSchemaId.value,
-      schemaName: schemaName.value,
-      description: description.value,
-      systemEnumId: systemEnumId.value,
-      schemaText: schemaText.value,
-    })
-    success.value = response.messages?.[0] ?? `Saved schema ${schemaName.value}.`
-    await load()
-  } catch (saveError) {
-    error.value = saveError instanceof ApiCallError ? saveError.message : 'Unable to save schema text.'
-  } finally {
-    savingText.value = false
-  }
-}
-
-async function saveRefined(): Promise<void> {
   savingRefined.value = true
   error.value = null
   success.value = null
@@ -318,34 +359,46 @@ async function saveRefined(): Promise<void> {
       })),
     })
     success.value = response.messages?.[0] ?? `Saved refined schema ${schemaName.value}.`
-    await load()
+    await router.push({ name: 'schemas-library' })
   } catch (saveError) {
-    error.value = saveError instanceof ApiCallError ? saveError.message : 'Unable to save refined schema.'
+    error.value = saveError instanceof ApiCallError ? saveError.message : 'Unable to save refined fields.'
   } finally {
     savingRefined.value = false
   }
 }
 
-async function reload(): Promise<void> {
-  await load()
-}
+async function deleteSchema(): Promise<void> {
+  if (!canEditTarget.value || deletingSchema.value) return
 
-function downloadSchema(): void {
-  const filename = `${(schemaName.value || 'schema').replace(/[^a-zA-Z0-9_-]+/g, '_')}.json`
-  downloadText(filename, schemaText.value)
+  const confirmed = window.confirm(`Delete schema "${getSchemaDeleteLabel()}"?`)
+  if (!confirmed) return
+
+  deletingSchema.value = true
+  error.value = null
+  success.value = null
+
+  try {
+    await jsonSchemaFacade.delete({ jsonSchemaId: currentSchemaId.value })
+    await router.push({ name: 'schemas-library' })
+  } catch (deleteError) {
+    error.value = deleteError instanceof ApiCallError ? deleteError.message : 'Unable to delete schema.'
+  } finally {
+    deletingSchema.value = false
+  }
 }
 
 onMounted(() => {
-  const paramSchemaId = String(route.params.jsonSchemaId ?? '')
-  const querySchemaName = String(route.query.schemaName ?? '')
-  requestedSchemaId.value = paramSchemaId
-  requestedSchemaName.value = querySchemaName
-  if (paramSchemaId) {
-    currentSchemaId.value = paramSchemaId
-  }
-  if (querySchemaName && !schemaName.value) {
-    schemaName.value = querySchemaName
-  }
-  void Promise.all([loadSystemOptions(), load()])
+  void loadSchema()
 })
 </script>
+
+<style scoped>
+.schema-editor-footer-row {
+  justify-content: center;
+}
+
+.schema-editor-row-delete-action {
+  width: 2.2rem;
+  min-height: 2.2rem;
+}
+</style>

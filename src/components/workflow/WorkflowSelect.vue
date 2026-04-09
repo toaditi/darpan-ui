@@ -25,7 +25,11 @@
       @keydown.up.prevent="openMenuAndFocus('last')"
     >
       <span class="workflow-select-trigger-label">{{ selectedLabel || placeholder }}</span>
-      <span class="workflow-select-trigger-icon" aria-hidden="true">▾</span>
+      <span class="workflow-select-trigger-icon" aria-hidden="true">
+        <svg viewBox="0 0 12 8" focusable="false">
+          <polyline points="1 1 6 7 11 1" />
+        </svg>
+      </span>
     </button>
 
     <div
@@ -241,10 +245,21 @@ onBeforeUnmount(() => {
 
 .workflow-select-trigger-icon {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: color-mix(in oklab, var(--text) 58%, transparent);
-  font-size: 0.9rem;
-  line-height: 1;
   transition: transform 140ms ease;
+}
+
+.workflow-select-trigger-icon svg {
+  width: 0.7rem;
+  height: 0.46rem;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
 }
 
 .workflow-select-trigger--open .workflow-select-trigger-icon {

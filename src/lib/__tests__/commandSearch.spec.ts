@@ -10,7 +10,7 @@ const actions: CommandAction[] = [
     label: 'Open AI Settings',
     description: 'Manage providers, models, and API keys.',
     group: 'Navigate',
-    to: '/connections/llm',
+    to: '/settings/ai',
     aliases: ['ai', 'llm', 'openai', 'gemini', 'api key', 'model settings', 'change api key'],
   },
   {
@@ -22,12 +22,20 @@ const actions: CommandAction[] = [
     aliases: ['schema', 'schemas', 'upload schema', 'json schema', 'field map', 'data shape'],
   },
   {
-    id: 'navigate-netsuite-endpoints',
-    label: 'Open NetSuite Endpoints',
-    description: 'Manage NetSuite API URLs and timeout settings.',
+    id: 'navigate-netsuite-settings',
+    label: 'Open NetSuite Settings',
+    description: 'Manage NetSuite auth profiles and endpoint configs.',
     group: 'Navigate',
-    to: '/connections/netsuite/endpoints',
-    aliases: ['netsuite', 'endpoint', 'api url', 'restlet', 'timeout', 'settings'],
+    to: '/settings/netsuite',
+    aliases: ['netsuite', 'endpoint', 'api url', 'restlet', 'timeout', 'settings', 'auth', 'credentials', 'oauth'],
+  },
+  {
+    id: 'navigate-runs-settings',
+    label: 'Open Runs Settings',
+    description: 'Review saved runs and reopen one for edit.',
+    group: 'Navigate',
+    to: '/settings/runs',
+    aliases: ['runs', 'run settings', 'saved runs', 'edit run', 'mapping settings', 'reconciliation settings'],
   },
   {
     id: 'navigate-run-reconciliation',
@@ -64,10 +72,16 @@ describe('rankCommandActions', () => {
     expect(ranked[0]?.id).toBe('navigate-run-reconciliation')
   })
 
-  it('boosts recently used commands when the textual match is otherwise tied', () => {
-    const ranked = rankCommandActions(actions, 'settings', ['navigate-netsuite-endpoints'])
+  it('surfaces the dedicated runs settings page for edit-oriented run queries', () => {
+    const ranked = rankCommandActions(actions, 'edit run settings')
 
-    expect(ranked[0]?.id).toBe('navigate-netsuite-endpoints')
+    expect(ranked[0]?.id).toBe('navigate-runs-settings')
+  })
+
+  it('boosts recently used commands when the textual match is otherwise tied', () => {
+    const ranked = rankCommandActions(actions, 'settings', ['navigate-netsuite-settings'])
+
+    expect(ranked[0]?.id).toBe('navigate-netsuite-settings')
     expect(ranked[1]?.id).toBe('navigate-ai-settings')
   })
 })

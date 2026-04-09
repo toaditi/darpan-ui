@@ -117,7 +117,7 @@ const userMenuWrap = ref<HTMLElement | null>(null)
 const workflowEscapeHintLabel = ref<string | null>(null)
 const workflowEscapeOriginPath = ref<string | null>(null)
 
-const isShelllessRoute = computed(() => route.name === 'login' || route.name === 'auth-required')
+const isShelllessRoute = computed(() => route.name === 'login')
 const surfaceMode = computed<'static' | 'workflow'>(() => (route.meta.surfaceMode === 'workflow' ? 'workflow' : 'static'))
 const userDisplayName = computed(() => authState.username ?? authState.userId ?? 'Unknown user')
 const userStatusText = computed<string | null>(() => {
@@ -142,7 +142,7 @@ const commandActions: CommandAction[] = [
     label: 'Open AI Settings',
     description: 'Manage providers, models, and API keys.',
     group: 'Navigate',
-    to: '/connections/llm',
+    to: '/settings/ai',
     aliases: ['ai', 'llm', 'openai', 'gemini', 'api key', 'model settings', 'change api key'],
   },
   {
@@ -150,24 +150,24 @@ const commandActions: CommandAction[] = [
     label: 'Open SFTP Servers',
     description: 'Set up remote file-transfer connections.',
     group: 'Navigate',
-    to: '/connections/sftp',
+    to: '/settings/sftp',
     aliases: ['sftp', 'file server', 'file transfer', 'ftp', 'server connection'],
   },
   {
-    id: 'navigate-ns-auth',
-    label: 'Open NetSuite Access',
-    description: 'Manage NetSuite sign-in profiles and credentials.',
+    id: 'navigate-netsuite',
+    label: 'Open NetSuite Settings',
+    description: 'Manage NetSuite auth profiles and endpoint configs.',
     group: 'Navigate',
-    to: '/connections/netsuite/auth',
-    aliases: ['netsuite', 'login', 'credentials', 'token', 'oauth', 'auth'],
+    to: '/settings/netsuite',
+    aliases: ['netsuite', 'login', 'credentials', 'token', 'oauth', 'auth', 'endpoint', 'api url', 'restlet', 'timeout', 'settings'],
   },
   {
-    id: 'navigate-ns-endpoint',
-    label: 'Open NetSuite Endpoints',
-    description: 'Manage NetSuite API URLs and timeout settings.',
+    id: 'navigate-runs-settings',
+    label: 'Open Runs Settings',
+    description: 'Review saved runs and reopen one for edit.',
     group: 'Navigate',
-    to: '/connections/netsuite/endpoints',
-    aliases: ['netsuite', 'endpoint', 'api url', 'restlet', 'timeout', 'settings'],
+    to: '/settings/runs',
+    aliases: ['runs', 'run settings', 'saved runs', 'edit run', 'mapping settings', 'reconciliation settings'],
   },
   {
     id: 'navigate-schema-library',
@@ -179,19 +179,11 @@ const commandActions: CommandAction[] = [
   },
   {
     id: 'navigate-schema-infer',
-    label: 'Open Schema Generator',
-    description: 'Create a schema from sample JSON.',
+    label: 'Create Schema',
+    description: 'Upload a file and save a new schema through the guided workflow.',
     group: 'Navigate',
-    to: '/schemas/infer',
-    aliases: ['generate schema', 'infer schema', 'sample json', 'make schema'],
-  },
-  {
-    id: 'navigate-schema-editor',
-    label: 'Open Schema Editor',
-    description: 'Update schema JSON and field definitions.',
-    group: 'Navigate',
-    to: '/schemas/editor',
-    aliases: ['edit schema', 'fix schema', 'schema fields', 'schema columns'],
+    to: '/schemas/create',
+    aliases: ['generate schema', 'infer schema', 'sample json', 'make schema', 'create schema', 'new schema'],
   },
   {
     id: 'navigate-create-reconciliation',
@@ -219,7 +211,7 @@ const commandActions: CommandAction[] = [
   },
 ]
 
-const workflowRoutePaths = new Set(['/reconciliation/create', '/reconciliation/pilot-diff'])
+const workflowRoutePaths = new Set(['/reconciliation/create', '/reconciliation/pilot-diff', '/schemas/create'])
 let workflowEscapeHintTimer: ReturnType<typeof globalThis.setTimeout> | null = null
 
 function openCommandPalette(): void {

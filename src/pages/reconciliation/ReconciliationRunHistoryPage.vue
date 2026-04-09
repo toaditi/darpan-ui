@@ -264,8 +264,10 @@ watch(reconciliationMappingId, () => {
 
 .run-history-tile {
   width: 100%;
+  align-items: flex-start;
   gap: var(--space-3);
   justify-content: flex-start;
+  text-align: left;
 }
 
 .run-history-tile__head,

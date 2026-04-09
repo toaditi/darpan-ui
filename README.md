@@ -116,9 +116,12 @@ DARPAN_BACKEND_PORT=8081 DARPAN_FRONTEND_PORT=5174 npm run dev:stack
 - `/login` (initial screen)
 - `/` (module hub)
 - `/connections/llm`
-- `/connections/sftp`
-- `/connections/netsuite/auth`
-- `/connections/netsuite/endpoints`
+- `/settings/sftp`
+- `/settings/netsuite`
+- `/settings/netsuite/auth/create`
+- `/settings/netsuite/auth/edit/:nsAuthConfigId`
+- `/settings/netsuite/endpoints/create`
+- `/settings/netsuite/endpoints/edit/:nsRestletConfigId`
 - `/schemas/library`
 - `/schemas/infer`
 - `/schemas/editor/:jsonSchemaId`

@@ -112,11 +112,10 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('"order_id": "1001"')
     expect(wrapper.get('[data-testid="run-result-download"]').attributes('aria-label')).toBe('Download saved result')
-    expect(wrapper.findAll('.pilot-diff-table colgroup col')).toHaveLength(3)
-    expect(wrapper.get('.pilot-diff-table colgroup col').classes()).toContain('pilot-diff-table__id-column')
-    expect(
-      wrapper.findAll('.pilot-diff-table colgroup col').at(2)?.classes(),
-    ).toContain('pilot-diff-table__action-column')
+    const tableColumns = wrapper.findAll('.app-table colgroup col')
+    expect(tableColumns).toHaveLength(3)
+    expect(tableColumns[0]?.attributes('style')).toContain('width: 13rem;')
+    expect(tableColumns[2]?.classes()).toContain('app-table__action-column')
     expect(JSON.parse(wrapper.get('[data-testid="run-result-view-history"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-run-history',
       params: {
@@ -203,29 +202,17 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.text()).toContain('Unable to load saved result.')
   })
 
-  it('does not show a focus highlight around the diff details search input', async () => {
-    const source = readFileSync('src/pages/reconciliation/ReconciliationRunResultPage.vue', 'utf8')
-
-    expect(source).toContain('.pilot-diff-details__search-input:focus')
-    expect(source).toContain('.pilot-diff-details__search-input:focus-visible')
-    expect(source).toContain('outline: none;')
-    expect(source).toContain('box-shadow: none;')
-  })
-
-  it('builds the record headers with explicit vertically centered header slots without changing search or pagination layout', () => {
+  it('renders diff details through the shared app table frame instead of a page-local table shell', () => {
     const source = readFileSync('src/pages/reconciliation/ReconciliationRunResultPage.vue', 'utf8')
 
     expect(source).toContain('.pilot-diff-details__toolbar')
     expect(source).toContain('justify-content: space-between;')
     expect(source).toContain('.pilot-diff-details__pagination')
     expect(source).toContain('justify-content: space-between;')
-    expect(source).toContain('.pilot-diff-table__data-header')
-    expect(source).toContain('.pilot-diff-table__header-slot')
-    expect(source).toContain('display: flex;')
-    expect(source).toContain('align-items: center;')
-    expect(source).toContain('min-height: 2.6rem;')
-    expect(source).toContain('text-align: left;')
-    expect(source).toContain('<span>Record ID</span>')
-    expect(source).toContain('<span>Record JSON</span>')
+    expect(source).toContain("import AppTableFrame from '../../components/ui/AppTableFrame.vue'")
+    expect(source).toContain('<AppTableFrame')
+    expect(source).toContain("label: 'Record ID'")
+    expect(source).toContain("label: 'Record JSON'")
+    expect(source).not.toContain('class="pilot-diff-table"')
   })
 })

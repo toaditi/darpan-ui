@@ -256,7 +256,10 @@ describe('PilotGenericDiffPage', () => {
     const wrapper = mount(PilotGenericDiffPage)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Upload the OMS file for Order ID')
+    expect(wrapper.text()).toContain('Upload the OMS file')
+    expect(wrapper.text()).not.toContain('Upload the OMS file for Order ID')
+    expect(wrapper.find('.wizard-question strong').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Choose the OMS file to upload...')
     expect(wrapper.find('[data-testid="mapping-select"]').exists()).toBe(false)
 
     const file1Input = wrapper.get('[data-testid="file1-input"]')
@@ -268,7 +271,9 @@ describe('PilotGenericDiffPage', () => {
     await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Upload the SHOPIFY file for Order ID')
+    expect(wrapper.text()).toContain('Upload the SHOPIFY file')
+    expect(wrapper.text()).not.toContain('Upload the SHOPIFY file for Order ID')
+    expect(wrapper.text()).toContain('Choose the SHOPIFY file to upload...')
 
     const file2Input = wrapper.get('[data-testid="file2-input"]')
     Object.defineProperty(file2Input.element, 'files', {
@@ -324,7 +329,9 @@ describe('PilotGenericDiffPage', () => {
     await file1Input.trigger('keydown.enter')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Upload the SHOPIFY file for Order ID')
+    expect(wrapper.text()).toContain('Upload the SHOPIFY file')
+    expect(wrapper.text()).not.toContain('Upload the SHOPIFY file for Order ID')
+    expect(wrapper.text()).toContain('Choose the SHOPIFY file to upload...')
   })
 
   it('surfaces schema validation feedback when the backend blocks an invalid diff run', async () => {

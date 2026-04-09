@@ -15,12 +15,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, surfaceMode: 'static', staticPageLabel: 'Dashboard' },
   },
   {
-    path: '/auth-required',
-    name: 'auth-required',
-    component: () => import('../pages/AuthRequiredPage.vue'),
-    meta: { public: true },
-  },
-  {
     path: '/roadmap/reconciliation',
     name: 'roadmap-reconciliation',
     component: () => import('../pages/ReconciliationPlaceholderPage.vue'),
@@ -52,68 +46,161 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/connections',
-    component: () => import('../pages/settings/SettingsLayoutPage.vue'),
-    meta: { requiresAuth: true, section: 'connections' },
-    children: [
-      {
-        path: '',
-        redirect: { name: 'connections-llm' },
-      },
-      {
-        path: 'llm',
-        name: 'connections-llm',
-        component: () => import('../pages/settings/LlmSettingsPage.vue'),
-        meta: { section: 'connections', staticPageLabel: 'LLM Settings' },
-      },
-      {
-        path: 'sftp',
-        name: 'connections-sftp',
-        component: () => import('../pages/settings/SftpServersPage.vue'),
-        meta: { section: 'connections', staticPageLabel: 'SFTP Servers' },
-      },
-      {
-        path: 'netsuite/auth',
-        name: 'connections-netsuite-auth',
-        component: () => import('../pages/settings/NetSuiteAuthPage.vue'),
-        meta: { section: 'connections', staticPageLabel: 'NetSuite Auth' },
-      },
-      {
-        path: 'netsuite/endpoints',
-        name: 'connections-netsuite-endpoints',
-        component: () => import('../pages/settings/NetSuiteEndpointsPage.vue'),
-        meta: { section: 'connections', staticPageLabel: 'NetSuite Endpoints' },
-      },
-    ],
+    redirect: { name: 'settings-ai' },
+  },
+  {
+    path: '/connections/llm',
+    name: 'connections-llm',
+    redirect: { name: 'settings-ai' },
+  },
+  {
+    path: '/connections/sftp',
+    name: 'connections-sftp',
+    redirect: (to) => {
+      if (String(to.query.focus ?? '') === 'create') {
+        return { name: 'settings-sftp-create' }
+      }
+      return { name: 'settings-sftp' }
+    },
+  },
+  {
+    path: '/connections/netsuite/auth',
+    name: 'connections-netsuite-auth',
+    redirect: { name: 'settings-netsuite' },
+  },
+  {
+    path: '/connections/netsuite/endpoints',
+    name: 'connections-netsuite-endpoints',
+    redirect: { name: 'settings-netsuite' },
+  },
+  {
+    path: '/connections/netsuite',
+    name: 'connections-netsuite',
+    redirect: { name: 'settings-netsuite' },
+  },
+  {
+    path: '/connections/runs',
+    name: 'connections-runs',
+    redirect: { name: 'settings-runs' },
+  },
+  {
+    path: '/settings/ai',
+    name: 'settings-ai',
+    component: () => import('../pages/settings/LlmSettingsPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'static', staticPageLabel: 'AI' },
+  },
+  {
+    path: '/settings/ai/create',
+    name: 'settings-ai-create',
+    component: () => import('../pages/settings/LlmSettingsWorkflowPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/ai/edit/:llmProvider',
+    name: 'settings-ai-edit',
+    component: () => import('../pages/settings/LlmSettingsWorkflowPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/netsuite',
+    name: 'settings-netsuite',
+    component: () => import('../pages/settings/NetSuiteSettingsPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'static', staticPageLabel: 'NetSuite' },
+  },
+  {
+    path: '/settings/runs',
+    name: 'settings-runs',
+    component: () => import('../pages/settings/RunsSettingsPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'static', staticPageLabel: 'Run Editor' },
+  },
+  {
+    path: '/settings/runs/edit/:reconciliationMappingId',
+    name: 'settings-runs-edit',
+    component: () => import('../pages/settings/RunsSettingsWorkflowPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/sftp',
+    name: 'settings-sftp',
+    component: () => import('../pages/settings/SftpServersPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'static', staticPageLabel: 'SFTP Servers' },
+  },
+  {
+    path: '/settings/sftp/create',
+    name: 'settings-sftp-create',
+    component: () => import('../pages/settings/SftpServerWorkflowPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/sftp/edit/:sftpServerId',
+    name: 'settings-sftp-edit',
+    component: () => import('../pages/settings/SftpServerWorkflowPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/netsuite/auth/create',
+    name: 'settings-netsuite-auth-create',
+    component: () => import('../pages/settings/NetSuiteAuthWorkflowPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/netsuite/auth/edit/:nsAuthConfigId',
+    name: 'settings-netsuite-auth-edit',
+    component: () => import('../pages/settings/NetSuiteAuthWorkflowPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/netsuite/endpoints/create',
+    name: 'settings-netsuite-endpoints-create',
+    component: () => import('../pages/settings/NetSuiteEndpointWorkflowPage.vue'),
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/settings/netsuite/endpoints/edit/:nsRestletConfigId',
+    name: 'settings-netsuite-endpoints-edit',
+    component: () => import('../pages/settings/NetSuiteEndpointWorkflowPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/schemas',
-    component: () => import('../pages/jsonschema/JsonSchemaLayoutPage.vue'),
-    meta: { requiresAuth: true, section: 'schemas' },
-    children: [
-      {
-        path: '',
-        redirect: { name: 'schemas-library' },
+    redirect: { name: 'schemas-library' },
+  },
+  {
+    path: '/schemas/library',
+    name: 'schemas-library',
+    component: () => import('../pages/jsonschema/JsonSchemaBrowsePage.vue'),
+    meta: { requiresAuth: true, section: 'schemas', surfaceMode: 'static', staticPageLabel: 'Schema Library' },
+  },
+  {
+    path: '/schemas/create',
+    name: 'schemas-create',
+    component: () => import('../pages/jsonschema/JsonSchemaWizardPage.vue'),
+    meta: { requiresAuth: true, section: 'schemas', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/schemas/infer',
+    redirect: { name: 'schemas-create' },
+  },
+  {
+    path: '/schemas/editor/:jsonSchemaId?',
+    name: 'schemas-editor',
+    component: () => import('../pages/jsonschema/JsonSchemaEditorPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, section: 'schemas', surfaceMode: 'static', staticPageLabel: 'Schema Editor' },
+  },
+  {
+    path: '/schemas/edit/:jsonSchemaId',
+    redirect: (to) => ({
+      name: 'schemas-editor',
+      params: {
+        jsonSchemaId: to.params.jsonSchemaId,
       },
-      {
-        path: 'library',
-        name: 'schemas-library',
-        component: () => import('../pages/jsonschema/JsonSchemaBrowsePage.vue'),
-        meta: { section: 'schemas', staticPageLabel: 'Schema Library' },
-      },
-      {
-        path: 'infer',
-        name: 'schemas-infer',
-        component: () => import('../pages/jsonschema/JsonSchemaWizardPage.vue'),
-        meta: { section: 'schemas', staticPageLabel: 'Schema Infer' },
-      },
-      {
-        path: 'editor/:jsonSchemaId?',
-        name: 'schemas-editor',
-        component: () => import('../pages/jsonschema/JsonSchemaEditorPage.vue'),
-        props: true,
-        meta: { section: 'schemas', staticPageLabel: 'Schema Editor' },
-      },
-    ],
+    }),
   },
   {
     path: '/:pathMatch(.*)*',

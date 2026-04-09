@@ -23,16 +23,6 @@
             @submit="handlePrimaryAction"
             @back="goBack"
           >
-            <template #question>
-              <template v-if="currentStep.id === 'file-1'">
-                Upload the <strong>{{ file1PromptSystemName }} file</strong> for {{ activeRunName }}
-              </template>
-              <template v-else-if="currentStep.id === 'file-2'">
-                Upload the <strong>{{ file2PromptSystemName }} file</strong> for {{ activeRunName }}
-              </template>
-              <template v-else>{{ currentQuestion }}</template>
-            </template>
-
             <label v-if="currentStep.id === 'mapping'" class="wizard-input-shell">
               <WorkflowSelect
                 v-model="selectedMappingId"
@@ -263,18 +253,20 @@ const currentQuestion = computed(() => {
     case 'system-1':
       return `Select the first system for ${activeRunName.value}`
     case 'file-1':
-      return `Upload the ${file1PromptSystemName.value} file for ${activeRunName.value}`
+      return `Upload the ${file1PromptSystemName.value} file`
     case 'system-2':
       return `Select the second system for ${activeRunName.value}`
     case 'file-2':
-      return `Upload the ${file2PromptSystemName.value} file for ${activeRunName.value}`
+      return `Upload the ${file2PromptSystemName.value} file`
     default:
       return 'Select a Run'
   }
 })
 const activeFile = computed(() => (currentStep.value.id === 'file-1' ? file1.value : file2.value))
 const activeFilePlaceholder = computed(() =>
-  currentStep.value.id === 'file-1' ? 'Choose file one...' : 'Choose file two...',
+  currentStep.value.id === 'file-1'
+    ? `Choose the ${file1PromptSystemName.value} file to upload...`
+    : `Choose the ${file2PromptSystemName.value} file to upload...`,
 )
 const canContinue = computed(() => {
   switch (currentStep.value.id) {

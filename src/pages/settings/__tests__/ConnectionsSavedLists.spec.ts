@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 const route = vi.hoisted(() => ({
-  query: {},
+  fullPath: '/settings/netsuite',
 }))
 
 const listSftpServers = vi.hoisted(() => vi.fn())
@@ -13,6 +13,10 @@ const listNsRestletConfigs = vi.hoisted(() => vi.fn())
 const saveNsRestletConfig = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-router', () => ({
+  RouterLink: {
+    props: ['to'],
+    template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)" v-bind="$attrs"><slot /></a>',
+  },
   useRoute: () => route,
 }))
 
@@ -27,13 +31,11 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
-import NetSuiteAuthPage from '../NetSuiteAuthPage.vue'
-import NetSuiteEndpointsPage from '../NetSuiteEndpointsPage.vue'
-import SftpServersPage from '../SftpServersPage.vue'
+import NetSuiteSettingsPage from '../NetSuiteSettingsPage.vue'
 
 describe('connections saved-name lists', () => {
   beforeEach(() => {
-    route.query = {}
+    route.fullPath = '/settings/netsuite'
 
     listSftpServers.mockReset()
     saveSftpServer.mockReset()
@@ -43,40 +45,7 @@ describe('connections saved-name lists', () => {
     saveNsRestletConfig.mockReset()
   })
 
-  it('renders SFTP saved records as name-only tiles that can be reopened for edit', async () => {
-    listSftpServers.mockResolvedValue({
-      ok: true,
-      messages: [],
-      errors: [],
-      servers: [
-        {
-          sftpServerId: 'sftp-primary',
-          description: 'Primary SFTP',
-          host: 'sftp.example.com',
-          port: 22,
-          username: 'etl-user',
-          hasPassword: true,
-          hasPrivateKey: false,
-        },
-      ],
-      pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
-    })
-
-    const wrapper = mount(SftpServersPage)
-    await flushPromises()
-
-    expect(wrapper.find('.sparse-table').exists()).toBe(false)
-    expect(wrapper.findAll('.settings-record-tile')).toHaveLength(1)
-    const tile = wrapper.get('.settings-record-tile')
-    expect(tile.text()).toBe('Primary SFTP')
-
-    await tile.trigger('click')
-    await flushPromises()
-
-    expect((wrapper.find('input').element as HTMLInputElement).value).toBe('sftp-primary')
-  })
-
-  it('renders NetSuite auth configs as name-only tiles that can be reopened for edit', async () => {
+  it('renders the auth section as saved-record tiles that open the auth edit workflow', async () => {
     listNsAuthConfigs.mockResolvedValue({
       ok: true,
       messages: [],
@@ -95,22 +64,36 @@ describe('connections saved-name lists', () => {
       ],
       pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
     })
+    listNsRestletConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      restletConfigs: [],
+      pagination: { pageIndex: 0, pageSize: 10, totalCount: 0, pageCount: 1 },
+    })
 
-    const wrapper = mount(NetSuiteAuthPage)
+    const wrapper = mount(NetSuiteSettingsPage)
     await flushPromises()
 
+    expect(wrapper.find('.static-page-frame').exists()).toBe(true)
+    expect(wrapper.find('.settings-module-tile').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('connections // static_surface')
+    expect(wrapper.text()).not.toContain('Saved records stay secondary until you need to reopen one.')
+    expect(wrapper.text()).not.toContain('Save reusable NetSuite auth profiles')
     expect(wrapper.find('.sparse-table').exists()).toBe(false)
-    expect(wrapper.findAll('.settings-record-tile')).toHaveLength(1)
-    const tile = wrapper.get('.settings-record-tile')
+    expect(wrapper.findAll('.static-page-record-tile')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Auth')
+    const tile = wrapper.get('[data-testid="netsuite-auth-tile"]')
     expect(tile.text()).toBe('Primary Auth')
-
-    await tile.trigger('click')
-    await flushPromises()
-
-    expect((wrapper.find('input').element as HTMLInputElement).value).toBe('auth-primary')
+    expect(wrapper.get('[data-testid="saved-auth-configs"]').classes()).toContain('static-page-record-grid--fixed')
+    expect(tile.attributes('data-to')).toContain('"name":"settings-netsuite-auth-edit"')
+    expect(tile.attributes('data-to')).toContain('"nsAuthConfigId":"auth-primary"')
+    expect(wrapper.get('[data-testid="netsuite-auth-create-action"]').attributes('data-to')).toContain(
+      '"name":"settings-netsuite-auth-create"',
+    )
   })
 
-  it('renders NetSuite endpoint configs as name-only tiles that can be reopened for edit', async () => {
+  it('renders the endpoint section as saved-record tiles that open the endpoint edit workflow', async () => {
     listNsAuthConfigs.mockResolvedValue({
       ok: true,
       messages: [],
@@ -127,7 +110,7 @@ describe('connections saved-name lists', () => {
           hasPrivateKeyPem: false,
         },
       ],
-      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+      pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
     })
     listNsRestletConfigs.mockResolvedValue({
       ok: true,
@@ -149,17 +132,18 @@ describe('connections saved-name lists', () => {
       pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
     })
 
-    const wrapper = mount(NetSuiteEndpointsPage)
+    const wrapper = mount(NetSuiteSettingsPage)
     await flushPromises()
 
-    expect(wrapper.find('.sparse-table').exists()).toBe(false)
-    expect(wrapper.findAll('.settings-record-tile')).toHaveLength(1)
-    const tile = wrapper.get('.settings-record-tile')
+    expect(wrapper.text()).toContain('Endpoints')
+    const tile = wrapper.get('[data-testid="netsuite-endpoint-tile"]')
     expect(tile.text()).toBe('Invoice Export')
-
-    await tile.trigger('click')
-    await flushPromises()
-
-    expect((wrapper.find('input').element as HTMLInputElement).value).toBe('endpoint-primary')
+    expect(wrapper.text()).not.toContain('Configure NetSuite endpoint URLs')
+    expect(wrapper.get('[data-testid="saved-endpoint-configs"]').classes()).toContain('static-page-record-grid--fixed')
+    expect(tile.attributes('data-to')).toContain('"name":"settings-netsuite-endpoints-edit"')
+    expect(tile.attributes('data-to')).toContain('"nsRestletConfigId":"endpoint-primary"')
+    expect(wrapper.get('[data-testid="netsuite-endpoint-create-action"]').attributes('data-to')).toContain(
+      '"name":"settings-netsuite-endpoints-create"',
+    )
   })
 })

@@ -23,10 +23,7 @@ Object.defineProperty(window, 'scrollTo', {
 })
 
 vi.mock('../../lib/auth', () => ({
-  buildAuthRedirect: (redirect: string) =>
-    authState.status === 'verification-failed'
-      ? { name: 'auth-required', query: { redirect } }
-      : { name: 'login', query: { redirect } },
+  buildAuthRedirect: (redirect: string) => ({ name: 'login', query: { redirect } }),
   ensureAuthenticated,
   useAuthState: () => authState,
 }))
@@ -48,29 +45,38 @@ describe('router auth guard', () => {
     ensureAuthenticated.mockResolvedValue(false)
     authState.error = 'No active authenticated session detected.'
     authState.status = 'unauthenticated'
-    await router.push('/connections/llm')
+    await router.push('/settings/sftp')
 
     expect(router.currentRoute.value.name).toBe('login')
-    expect(router.currentRoute.value.query.redirect).toBe('/connections/llm')
+    expect(router.currentRoute.value.query.redirect).toBe('/settings/sftp')
   })
 
-  it('routes auth bootstrap failures to auth-required instead of login', async () => {
+  it('routes auth bootstrap failures to login', async () => {
     ensureAuthenticated.mockResolvedValue(false)
     authState.error = 'Unable to verify authentication'
     authState.status = 'verification-failed'
 
-    await router.push('/connections/llm')
+    await router.push('/settings/sftp')
 
-    expect(router.currentRoute.value.name).toBe('auth-required')
-    expect(router.currentRoute.value.query.redirect).toBe('/connections/llm')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirect).toBe('/settings/sftp')
   })
 
-  it('allows authenticated users to open protected routes', async () => {
+  it('allows authenticated users to open the standalone SFTP dashboard', async () => {
     ensureAuthenticated.mockResolvedValue(true)
     authState.status = 'authenticated'
     authState.sessionInfo = { userId: '100000', username: 'pilot.customer' }
-    await router.push('/connections/llm')
+    await router.push('/settings/sftp')
 
-    expect(router.currentRoute.value.name).toBe('connections-llm')
+    expect(router.currentRoute.value.name).toBe('settings-sftp')
+  })
+
+  it('redirects the legacy SFTP route to the standalone dashboard for authenticated users', async () => {
+    ensureAuthenticated.mockResolvedValue(true)
+    authState.status = 'authenticated'
+    authState.sessionInfo = { userId: '100000', username: 'pilot.customer' }
+    await router.push('/connections/sftp')
+
+    expect(router.currentRoute.value.name).toBe('settings-sftp')
   })
 })

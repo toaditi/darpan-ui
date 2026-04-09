@@ -30,15 +30,17 @@
   --accent-ink: #111111;
   --success: #d0d0d0;
   --warning: #b5b5b5;
-  --danger: #d7a7a7;
+  --danger: #989898;
   --shadow: 0 0 0 rgba(0, 0, 0, 0);
+  --selection-bg: color-mix(in oklab, var(--accent) 28%, var(--surface));
+  --selection-text: var(--text);
 
   /* Static system: boards, dashboards, editors */
   --static-frame-width: 920px;
   --static-shell-padding-y: var(--space-3);
   --static-surface-radius: var(--radius-md);
   --static-surface-padding: var(--space-5);
-  --static-board-min-height: 26rem;
+  --static-board-min-height: 0;
   --static-section-gap: var(--space-4);
   --static-tile-gap: var(--space-3);
   --static-tile-min-height: 4.6rem;
@@ -48,6 +50,7 @@
   --static-heading-size: 0.92rem;
   --static-action-tile-bg: color-mix(in oklab, var(--surface-3) 82%, var(--text) 18%);
   --static-action-tile-border: color-mix(in oklab, var(--border) 72%, var(--text) 28%);
+  --icon-container-radius: var(--radius-sm);
 
   /* Workflow system: guided creation, upload, run flows */
   --workflow-page-padding-bottom: 4rem;
@@ -57,6 +60,7 @@
   --workflow-section-width: 920px;
   --workflow-panel-width: 72rem;
   --workflow-progress-width: min(1170px, calc(100vw - 7rem));
+  --workflow-form-top-offset: var(--space-6);
   --workflow-question-width: 720px;
   --workflow-question-size: clamp(1.65rem, 2vw, 2.15rem);
   --workflow-answer-size: clamp(1.5rem, 1.9vw, 1.9rem);
@@ -91,8 +95,10 @@
   --accent-ink: #ffffff;
   --success: #3c3c3c;
   --warning: #5d5d5d;
-  --danger: #8d4a4a;
+  --danger: #555555;
   --shadow: 0 0 0 rgba(0, 0, 0, 0);
+  --selection-bg: color-mix(in oklab, var(--accent) 18%, white);
+  --selection-text: var(--text);
 }
 
 *,
@@ -112,6 +118,16 @@ body {
   color: var(--text);
   background: var(--bg);
   text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+}
+
+::-moz-selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
 }
 
 h1,
@@ -177,13 +193,50 @@ select {
   min-height: 2.55rem;
 }
 
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--text-soft);
+}
+
+select:not([multiple]):not([size]) {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 43%, var(--text-dim) 43%, var(--text-dim) 57%, transparent 57%),
+    linear-gradient(-45deg, transparent 43%, var(--text-dim) 43%, var(--text-dim) 57%, transparent 57%);
+  background-position:
+    calc(100% - 1.03rem) 50%,
+    calc(100% - 0.7rem) 50%;
+  background-repeat: no-repeat;
+  background-size: 0.36rem 0.36rem, 0.36rem 0.36rem;
+  padding-right: 2.2rem;
+}
+
 textarea {
   resize: vertical;
 }
 
-input:focus-visible,
-textarea:focus-visible,
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']):not([type='color']):focus,
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']):not([type='color']):focus-visible,
+select:focus,
 select:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none;
+  outline-offset: 0;
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+select option {
+  color: var(--text);
+  background: var(--surface);
+}
+
+select option:checked {
+  color: var(--text);
+  background: color-mix(in oklab, var(--surface-2) 94%, white);
+}
+
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible {
@@ -249,26 +302,26 @@ button:disabled {
   min-height: 0;
   height: 1.5rem;
   padding: 0;
-  border: 1px solid #c6ced8;
+  border: 1px solid color-mix(in oklab, var(--border) 74%, var(--text) 18%);
   border-radius: 999px;
-  background: #dbe1e8;
+  background: color-mix(in oklab, var(--surface-2) 92%, var(--surface));
   display: block;
   overflow: hidden;
   transition: background-color 180ms ease, border-color 180ms ease;
 }
 
 .theme-toggle:hover {
-  border-color: #b8c1cd;
-  background: #d2d9e1;
+  border-color: color-mix(in oklab, var(--border) 64%, var(--text) 24%);
+  background: color-mix(in oklab, var(--surface-2) 84%, var(--text) 16%);
 }
 
 .theme-toggle.dark {
-  border-color: #1c1c1c;
-  background: #060606;
+  border-color: color-mix(in oklab, var(--border) 78%, var(--text) 12%);
+  background: color-mix(in oklab, var(--surface) 94%, black);
 }
 
 .theme-toggle.dark:hover {
-  background: #121212;
+  background: color-mix(in oklab, var(--surface) 88%, var(--text) 12%);
 }
 
 .theme-toggle-icon {
@@ -296,11 +349,11 @@ button:disabled {
 }
 
 .theme-toggle.light .theme-toggle-icon {
-  color: #5f6b79;
+  color: var(--text-muted);
 }
 
 .theme-toggle.dark .theme-toggle-icon {
-  color: rgba(255, 255, 255, 0.7);
+  color: color-mix(in oklab, var(--text) 72%, transparent);
 }
 
 .theme-toggle-sun {
@@ -323,8 +376,8 @@ button:disabled {
   width: 1.2rem;
   height: 1.2rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.78);
-  background: #f7f7f7;
+  border: 1px solid color-mix(in oklab, var(--text) 28%, transparent);
+  background: color-mix(in oklab, var(--surface) 88%, var(--text) 12%);
   transition: left 200ms ease;
 }
 
@@ -334,7 +387,7 @@ button:disabled {
 
 .theme-toggle.light .theme-toggle-sun,
 .theme-toggle.dark .theme-toggle-moon {
-  color: #111111;
+  color: var(--text);
   opacity: 1;
 }
 
@@ -446,7 +499,8 @@ button:disabled {
 
 .static-page-frame {
   min-height: 70vh;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
 }
 
 .static-page-shell {
@@ -475,6 +529,7 @@ button:disabled {
 
 .static-page-board {
   display: grid;
+  align-content: start;
   gap: var(--static-section-gap);
   min-height: var(--static-board-min-height);
 }
@@ -525,8 +580,12 @@ button:disabled {
   gap: var(--static-tile-gap);
 }
 
-.settings-record-grid {
+.static-page-record-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.static-page-record-grid--fixed {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .static-page-drop-zone {
@@ -555,9 +614,10 @@ button:disabled {
 .static-page-action-tile,
 .static-page-control-tile {
   display: inline-flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
   flex-direction: column;
+  gap: var(--space-2);
   min-height: var(--static-tile-min-height);
   padding: var(--space-3);
   border: 1px solid var(--static-tile-border);
@@ -566,19 +626,21 @@ button:disabled {
   color: var(--text);
   text-decoration: none;
   font-size: var(--static-tile-text-size);
+  text-align: center;
 }
 
 .static-page-tile-title {
-  width: 100%;
+  max-width: 100%;
 }
 
 .static-page-tile-status {
   font-size: 0.78rem;
   color: var(--text-muted);
+  text-align: center;
 }
 
 .static-page-action-tile {
-  width: calc((100% - (var(--space-3) * 2)) / 3);
+  width: calc((100% - (var(--static-tile-gap) * 2)) / 3);
   justify-self: start;
   justify-content: center;
   align-items: center;
@@ -587,7 +649,7 @@ button:disabled {
 }
 
 .static-page-action-tile--inline {
-  width: calc((100% - (var(--space-3) * 2)) / 3);
+  width: calc((100% - (var(--static-tile-gap) * 2)) / 3);
 }
 
 .static-page-control-tile {
@@ -595,16 +657,79 @@ button:disabled {
   cursor: pointer;
 }
 
-.settings-record-tile {
+.static-page-record-tile {
   width: 100%;
-  min-height: 0;
-  justify-content: center;
-  text-align: left;
+  min-height: var(--static-tile-min-height);
 }
 
-.settings-record-tile:hover {
+.static-page-list-tile {
+  width: 100%;
+  min-height: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  gap: var(--space-2);
+}
+
+.static-page-list-tile__title {
+  width: 100%;
+}
+
+.static-page-list-tile__meta {
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  text-wrap: balance;
+}
+
+.static-page-module-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.static-page-module-tile {
+  width: 100%;
+  min-height: 0;
+  gap: var(--space-2);
+}
+
+.static-page-module-tile--active {
+  border-color: color-mix(in oklab, var(--static-tile-border) 58%, var(--accent));
+  background: color-mix(in oklab, var(--static-tile-bg) 76%, var(--accent));
+}
+
+.static-page-module-copy {
+  color: var(--text-soft);
+  text-wrap: balance;
+}
+
+.static-page-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.9rem;
+}
+
+.static-page-summary-card {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface-2);
+}
+
+.static-page-summary-label {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.static-page-record-tile:hover {
   border-color: color-mix(in oklab, var(--static-tile-border) 64%, var(--accent));
   background: color-mix(in oklab, var(--static-tile-bg) 88%, var(--accent));
+}
+
+.static-page-create-action {
+  height: var(--static-tile-min-height);
 }
 
 .page-root.narrow {
@@ -806,6 +931,113 @@ button:disabled {
   font-size: 0.98rem;
 }
 
+.workflow-form--compact {
+  --workflow-form-answer-size: clamp(1.18rem, 1.4vw, 1.45rem);
+  --workflow-form-select-size: var(--workflow-form-answer-size);
+  --workflow-form-select-padding-top: 0.15rem;
+  --workflow-form-select-padding-bottom: 0.55rem;
+  --workflow-form-select-line-height: 1.2;
+}
+
+.workflow-form--edit-single-page {
+  --workflow-form-question-size: clamp(1.24rem, 1.5vw, 1.61rem);
+  --workflow-form-question-mobile-size: clamp(1.01rem, 4.5vw, 1.31rem);
+  --workflow-form-answer-size: clamp(0.89rem, 1.05vw, 1.09rem);
+  --workflow-form-select-size: var(--workflow-form-answer-size);
+  --workflow-form-context-label-size: 0.62rem;
+}
+
+.workflow-form-grid {
+  width: 100%;
+  display: grid;
+  gap: 1rem;
+}
+
+.workflow-form-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workflow-form-grid--compact {
+  grid-template-columns: minmax(0, 2fr) minmax(7rem, 0.8fr) minmax(9rem, 0.9fr);
+  align-items: start;
+}
+
+.workflow-choice-grid {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.workflow-choice-option {
+  width: auto;
+  min-width: min(100%, 10.5rem);
+  max-width: min(100%, 14rem);
+  min-height: 2.35rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.workflow-choice-option:hover {
+  border-color: color-mix(in oklab, var(--border) 72%, var(--text) 18%);
+  background: color-mix(in oklab, var(--surface-2) 88%, var(--text) 12%);
+}
+
+.workflow-choice-option input {
+  margin: 0;
+}
+
+.workflow-choice-label {
+  font-size: 0.88rem;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.workflow-choice-option--filter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  min-height: 0;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border: 1px solid var(--border-soft);
+  background: color-mix(in oklab, var(--surface-2) 95%, white);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.workflow-choice-option--filter:hover {
+  transform: translateY(-1px);
+}
+
+.workflow-choice-option--filter input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  min-height: 1rem;
+  flex: 0 0 1rem;
+}
+
+.workflow-choice-option--filter.workflow-choice-option--active {
+  border-color: color-mix(in oklab, var(--accent) 58%, var(--border));
+  background: color-mix(in oklab, var(--surface-2) 80%, var(--accent));
+}
+
+.workflow-form-textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.workflow-form-textarea--single-row {
+  min-height: 2.2rem;
+}
+
 .workflow-feedback-board {
   display: grid;
   gap: var(--space-3);
@@ -882,19 +1114,22 @@ label > span {
   align-items: center;
 }
 
-.row-between {
+.row-between,
+.static-page-list-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
 }
 
-.row-between h3 {
+.row-between h3,
+.static-page-list-toolbar h3 {
   margin: 0;
   font-size: 1rem;
 }
 
-.page-controls {
+.page-controls,
+.static-page-pager {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -1045,35 +1280,196 @@ label > span {
   border-color: color-mix(in oklab, var(--danger) 42%, var(--border));
 }
 
-.sparse-table-wrap {
+.app-table-shell {
   overflow-x: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
 }
 
-.sparse-table {
+.app-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 720px;
+  table-layout: fixed;
 }
 
-.sparse-table th,
-.sparse-table td {
+.app-table th,
+.app-table td {
   text-align: left;
-  padding: 0.68rem 0.58rem;
-  vertical-align: middle;
   border-bottom: 1px solid var(--border-soft);
 }
 
-.sparse-table th {
+.app-table th {
+  padding: 0 1rem;
+  vertical-align: middle;
   color: var(--text-muted);
-  font-size: 0.77rem;
+  font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  background: color-mix(in oklab, var(--surface-2) 94%, white);
 }
 
-.sparse-table td input,
-.sparse-table td select {
+.app-table td {
+  padding: 0.95rem 1rem;
+  vertical-align: top;
+}
+
+.app-table__header-slot {
+  display: flex;
+  align-items: center;
+  min-height: 2.6rem;
+}
+
+.app-table__header-slot--action {
+  justify-content: flex-end;
+}
+
+.app-table__header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.95rem;
+  min-height: 1.95rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--icon-container-radius);
+  background: transparent;
+  color: color-mix(in oklab, var(--danger) 82%, var(--text));
+}
+
+.app-table__header-action svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.app-table__header-action:hover {
+  background: color-mix(in oklab, var(--surface-2) 78%, var(--accent));
+  color: var(--text);
+}
+
+.app-table__action-column {
+  width: 4.5rem;
+}
+
+.app-table__action-header,
+.app-table__action-cell {
+  padding-left: 0.5rem;
+  padding-right: 0.75rem;
+  text-align: right;
+}
+
+.app-table td.app-table__action-cell {
+  vertical-align: middle;
+  line-height: 0;
+}
+
+.app-table td.app-table__control-cell {
+  vertical-align: middle;
+}
+
+.app-table__control-wrap {
+  display: flex;
+  align-items: center;
+  min-height: 2.2rem;
+  line-height: 0;
+}
+
+.app-table__control-wrap--start {
+  justify-content: flex-start;
+}
+
+.app-table__control-wrap--end {
+  justify-content: flex-end;
+}
+
+.app-table__append-cell {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  background: color-mix(in oklab, var(--surface-2) 94%, white);
+}
+
+.app-table__append-action {
+  display: flex;
+  justify-content: center;
+}
+
+.app-icon-action,
+.app-table__icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--icon-container-radius);
+  background: var(--surface);
+  color: color-mix(in oklab, var(--danger) 82%, var(--text));
+  text-decoration: none;
+}
+
+.app-icon-action svg,
+.app-table__icon-action svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.app-icon-action--large {
+  width: 2.8rem;
+  min-height: 2.8rem;
+}
+
+.app-icon-action--large svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.app-icon-action:hover,
+.app-table__icon-action:hover {
+  border-color: color-mix(in oklab, var(--accent) 42%, var(--border));
+  background: color-mix(in oklab, var(--surface) 84%, var(--accent));
+  color: var(--text);
+}
+
+.app-icon-action:disabled,
+.app-table__icon-action:disabled,
+.app-icon-action[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.app-icon-action--primary {}
+
+.app-icon-action--danger,
+.app-table__icon-action--danger {
+  color: color-mix(in oklab, var(--danger) 82%, var(--text));
+}
+
+.app-icon-action--danger:hover,
+.app-table__icon-action--danger:hover {
+  border-color: color-mix(in oklab, var(--danger) 42%, var(--border));
+  background: color-mix(in oklab, var(--surface) 84%, var(--danger));
+  color: var(--danger);
+}
+
+.app-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.app-table td input,
+.app-table td select {
   min-height: 2.2rem;
   padding: 0.5rem 0.62rem;
+}
+
+.app-table td .app-select-trigger {
+  min-height: 2.2rem;
+  padding: 0.5rem 0.62rem;
+}
+
+.app-table td select {
+  padding-right: 2rem;
 }
 
 .actions-tight {
@@ -1093,19 +1489,72 @@ label > span {
   color: var(--text-muted);
 }
 
-.danger-text {
-  color: var(--danger);
-}
-
 .checkbox-inline {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
 }
 
-.checkbox-inline input {
+.checkbox-inline input:not(.app-table__checkbox) {
   width: auto;
   min-height: auto;
+}
+
+.app-table__checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 2.2rem;
+  height: 2.2rem;
+  min-height: 2.2rem;
+  flex: 0 0 2.2rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--icon-container-radius);
+  background: var(--surface);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.app-table__checkbox:hover {
+  border-color: color-mix(in oklab, var(--accent) 42%, var(--border));
+  background: color-mix(in oklab, var(--surface) 84%, var(--accent));
+}
+
+.app-table__checkbox:focus-visible {
+  outline: none;
+  border-color: var(--text-soft);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--text-soft) 18%, transparent);
+}
+
+.app-table__checkbox::after {
+  content: '';
+  width: 0.42rem;
+  height: 0.82rem;
+  border-right: 0.12rem solid transparent;
+  border-bottom: 0.12rem solid transparent;
+  opacity: 0;
+  transform: rotate(45deg) scale(0.8);
+  transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease;
+}
+
+.app-table__checkbox:checked {
+  border-color: var(--text-soft);
+  background: var(--text-soft);
+}
+
+.app-table__checkbox:checked::after {
+  border-right-color: var(--surface);
+  border-bottom-color: var(--surface);
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+.checkbox-inline--control-only {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .mono-list {
@@ -1303,6 +1752,11 @@ label > span {
   gap: var(--space-2);
 }
 
+.command-results {
+  display: grid;
+  gap: var(--space-3);
+}
+
 .command-group-label {
   margin: 0;
   font-size: 0.76rem;
@@ -1312,6 +1766,7 @@ label > span {
 }
 
 .command-item {
+  appearance: none;
   text-align: left;
   display: grid;
   gap: 0.22rem;
@@ -1322,9 +1777,26 @@ label > span {
   transition: border-color 160ms ease, background-color 160ms ease;
 }
 
+.command-panel--keyboard .command-item:hover:not(.command-item--active) {
+  border-color: var(--border);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
 .command-item--active {
-  border-color: color-mix(in oklab, var(--accent-ink) 28%, var(--border));
-  background: color-mix(in oklab, var(--accent-ink) 8%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--border) 70%, var(--accent));
+  background: color-mix(in oklab, var(--surface-2) 88%, var(--accent));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.command-item--active .muted-copy {
+  color: var(--text-soft);
+}
+
+.command-item:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklab, var(--accent-ink) 46%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-ink) 18%, transparent);
 }
 
 .command-item .muted-copy {
@@ -1387,6 +1859,10 @@ label > span {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .static-page-record-grid--fixed {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .static-page-action-tile {
     width: calc((100% - var(--space-3)) / 2);
   }
@@ -1412,13 +1888,15 @@ label > span {
   }
 
   .row-between,
+  .static-page-list-toolbar,
   .action-track-item,
   .command-head {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .page-controls {
+  .page-controls,
+  .static-page-pager {
     flex-wrap: wrap;
   }
 
@@ -1441,6 +1919,10 @@ label > span {
     grid-template-columns: 1fr;
   }
 
+  .static-page-record-grid--fixed {
+    grid-template-columns: 1fr;
+  }
+
   .static-page-action-tile {
     width: 100%;
   }
@@ -1454,12 +1936,21 @@ label > span {
     padding: 1rem 1.25rem 3rem;
   }
 
+  :root {
+    --workflow-form-top-offset: var(--space-5);
+  }
+
   .workflow-shell,
   .workflow-step-wrapper {
     width: 100%;
   }
 
   .workflow-card-grid--three {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-form-grid--two,
+  .workflow-form-grid--compact {
     grid-template-columns: 1fr;
   }
 

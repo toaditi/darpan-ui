@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
@@ -57,7 +57,7 @@ vi.mock('../components/shell/CommandPalette.vue', () => ({
 
 vi.mock('../lib/auth', () => ({
   buildAuthRedirect: vi.fn((redirect: unknown) => ({
-    name: authState.status === 'verification-failed' ? 'auth-required' : 'login',
+    name: 'login',
     query: { redirect },
   })),
   ensureAuthenticated,
@@ -141,10 +141,383 @@ describe('App shell logout', () => {
     expect(document.body.classList.contains('surface-mode-static')).toBe(true)
   })
 
+  it('keeps Ask Darpan schema navigation limited to valid schema entry points', () => {
+    const source = readFileSync('src/App.vue', 'utf8')
+
+    expect(source).toContain("id: 'navigate-schema-library'")
+    expect(source).toContain("label: 'Open Schema Library'")
+    expect(source).toContain("id: 'navigate-schema-infer'")
+    expect(source).toContain("label: 'Create Schema'")
+    expect(source).not.toContain("id: 'navigate-schema-editor'")
+    expect(source).not.toContain("label: 'Open Schema Editor'")
+    expect(source).not.toContain("to: '/schemas/editor'")
+  })
+
   it('uses a reduced gap between the floating quick actions and Ask Darpan bubble', () => {
     const source = readFileSync('src/style.css', 'utf8')
 
     expect(source).toContain('--floating-actions-gap: calc(var(--space-4) / 2);')
+  })
+
+  it('keeps dashboard tile copy centered through the shared static-page tile contract', () => {
+    const sharedStyleSource = readFileSync('src/style.css', 'utf8')
+    const homeSource = readFileSync('src/pages/HomePage.vue', 'utf8')
+    const runHistorySource = readFileSync('src/pages/reconciliation/ReconciliationRunHistoryPage.vue', 'utf8')
+
+    expect(sharedStyleSource).toContain('.static-page-tile,')
+    expect(sharedStyleSource).toContain('align-items: center;')
+    expect(sharedStyleSource).toContain('justify-content: center;')
+    expect(sharedStyleSource).toContain('text-align: center;')
+    expect(sharedStyleSource).toContain('.static-page-tile-status {')
+    expect(sharedStyleSource).toContain('max-width: 100%;')
+    expect(homeSource).not.toContain('.static-page-tile {')
+    expect(homeSource).not.toContain('.static-page-tile-title {')
+    expect(homeSource).not.toContain('.static-page-tile-status {')
+    expect(runHistorySource).toContain('.run-history-tile {')
+    expect(runHistorySource).toContain('align-items: flex-start;')
+    expect(runHistorySource).toContain('text-align: left;')
+  })
+
+  it('anchors static-page board content to the top so single-section dashboards do not stretch internal spacing', () => {
+    const sharedStyleSource = readFileSync('src/style.css', 'utf8')
+
+    expect(sharedStyleSource).toContain('.static-page-frame {')
+    expect(sharedStyleSource).toContain('justify-items: center;')
+    expect(sharedStyleSource).toContain('align-items: start;')
+    expect(sharedStyleSource).toContain('.static-page-board {')
+    expect(sharedStyleSource).toContain('align-content: start;')
+    expect(sharedStyleSource).toContain('min-height: var(--static-board-min-height);')
+  })
+
+  it('does not apply an accent focus highlight to editable form controls in the shared design system', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+    const textFieldFocusSelector =
+      "input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']):not([type='color']):focus"
+
+    expect(source).toContain(textFieldFocusSelector)
+    expect(source).toContain('select:focus,')
+    expect(source).toContain("textarea:focus-visible")
+    expect(source).toContain('select option:checked')
+    expect(source).toContain('outline: none;')
+    expect(source).toContain('box-shadow: none;')
+    expect(source).toContain('border-color: var(--border);')
+    expect(source).not.toContain('input:focus-visible,')
+    expect(source).not.toContain('select:focus-visible,\nbutton:focus-visible,')
+  })
+
+  it('keeps shared checkbox and radio controls on grayscale accent tokens', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain("input[type='checkbox']")
+    expect(source).toContain("input[type='radio']")
+    expect(source).toContain('accent-color: var(--text-soft);')
+  })
+
+  it('uses a shared chevron-style select arrow inset away from the right border', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain('select:not([multiple]):not([size])')
+    expect(source).toContain('appearance: none;')
+    expect(source).toContain('background-image:')
+    expect(source).toContain('transparent 43%')
+    expect(source).toContain('calc(100% - 1.03rem)')
+    expect(source).toContain('padding-right: 2.2rem;')
+    expect(source).toContain('.app-table td select')
+    expect(source).toContain('padding-right: 2rem;')
+  })
+
+  it('routes current editable dropdown surfaces through app-controlled select components instead of native select menus', () => {
+    const sharedSelectSource = readFileSync('src/components/ui/AppSelect.vue', 'utf8')
+    const runsWorkflowSource = readFileSync('src/pages/settings/RunsSettingsWorkflowPage.vue', 'utf8')
+    const sftpWorkflowSource = readFileSync('src/pages/settings/SftpServerWorkflowPage.vue', 'utf8')
+    const llmWorkflowSource = readFileSync('src/pages/settings/LlmSettingsWorkflowPage.vue', 'utf8')
+    const authSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
+    const endpointsSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+    const schemaEditorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
+
+    expect(sharedSelectSource).toContain('app-select-option--selected')
+    expect(sharedSelectSource).not.toContain('var(--accent)')
+    expect(runsWorkflowSource).toContain('<AppSelect')
+    expect(runsWorkflowSource).not.toContain('<select')
+    expect(sftpWorkflowSource).toContain('<WorkflowSelect')
+    expect(sftpWorkflowSource).not.toContain('<select')
+    expect(llmWorkflowSource).toContain('<AppSelect')
+    expect(llmWorkflowSource).toContain('<WorkflowSelect')
+    expect(llmWorkflowSource).not.toContain('<select')
+    expect(authSource).toContain('<AppSelect')
+    expect(authSource).not.toContain('<select')
+    expect(endpointsSource).toContain('<AppSelect')
+    expect(endpointsSource).not.toContain('<select')
+    expect(schemaEditorSource).toContain('<AppSelect')
+    expect(schemaEditorSource).not.toContain('<select')
+  })
+
+  it('routes current save actions through the shared icon-only save control', () => {
+    const saveActionSource = readFileSync('src/components/ui/AppSaveAction.vue', 'utf8')
+    const workflowStepFormSource = readFileSync('src/components/workflow/WorkflowStepForm.vue', 'utf8')
+    const runsWorkflowSource = readFileSync('src/pages/settings/RunsSettingsWorkflowPage.vue', 'utf8')
+    const llmWorkflowSource = readFileSync('src/pages/settings/LlmSettingsWorkflowPage.vue', 'utf8')
+    const authSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
+    const endpointsSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+    const schemaEditorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
+
+    expect(saveActionSource).toContain('app-icon-action app-icon-action--large app-icon-action--primary')
+    expect(saveActionSource).toContain('aria-label')
+    expect(workflowStepFormSource).toContain('<AppSaveAction')
+    expect(workflowStepFormSource).toContain("primaryLabel === 'Save'")
+    expect(runsWorkflowSource).toContain('<WorkflowStepForm')
+    expect(runsWorkflowSource).toContain('primary-label="Save"')
+    expect(llmWorkflowSource).toContain('<WorkflowStepForm')
+    expect(llmWorkflowSource).toContain(':primary-label="primaryLabel"')
+    expect(llmWorkflowSource).toContain("? 'Save'")
+    expect(authSource).toContain('<WorkflowStepForm')
+    expect(authSource).toContain(':primary-label="primaryLabel"')
+    expect(authSource).toContain("? 'Save'")
+    expect(endpointsSource).toContain('<WorkflowStepForm')
+    expect(endpointsSource).toContain(':primary-label="primaryLabel"')
+    expect(endpointsSource).toContain("? 'Save'")
+    expect(schemaEditorSource).toContain('<AppSaveAction')
+  })
+
+  it('routes edit-workflow cancel actions through the shared icon-only X control', () => {
+    const cancelActionSource = readFileSync('src/components/ui/AppCancelAction.vue', 'utf8')
+    const workflowStepFormSource = readFileSync('src/components/workflow/WorkflowStepForm.vue', 'utf8')
+    const runsWorkflowSource = readFileSync('src/pages/settings/RunsSettingsWorkflowPage.vue', 'utf8')
+    const sftpWorkflowSource = readFileSync('src/pages/settings/SftpServerWorkflowPage.vue', 'utf8')
+    const authSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
+    const endpointsSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+
+    expect(cancelActionSource).toContain('class="app-icon-action app-icon-action--large"')
+    expect(cancelActionSource).toContain('<line x1="5" y1="5" x2="15" y2="15"')
+    expect(cancelActionSource).toContain('<line x1="15" y1="5" x2="5" y2="15"')
+    expect(workflowStepFormSource).toContain('<AppCancelAction')
+    expect(workflowStepFormSource).toContain("showCancelAction: false")
+    expect(runsWorkflowSource).toContain(':show-cancel-action="true"')
+    expect(sftpWorkflowSource).toContain(':show-cancel-action="isEditing"')
+    expect(authSource).toContain(':show-cancel-action="isEditing"')
+    expect(endpointsSource).toContain(':show-cancel-action="isEditing"')
+  })
+
+  it('provides shared settings-dashboard layout utilities while static pages inherit dynamic board height globally', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+    const sftpPageSource = readFileSync('src/pages/settings/SftpServersPage.vue', 'utf8')
+    const netsuiteSource = readFileSync('src/pages/settings/NetSuiteSettingsPage.vue', 'utf8')
+
+    expect(source).toContain('--static-board-min-height: 0;')
+    expect(source).toContain('.static-page-record-grid {')
+    expect(source).toContain('.static-page-record-grid--fixed {')
+    expect(source).toContain('.static-page-record-tile {')
+    expect(source).toContain('min-height: var(--static-tile-min-height);')
+    expect(source).toContain('.static-page-create-action {')
+    expect(source).toContain('width: calc((100% - (var(--static-tile-gap) * 2)) / 3);')
+    expect(sftpPageSource).not.toContain('static-page-frame--records')
+    expect(sftpPageSource).not.toContain('<style scoped>')
+    expect(netsuiteSource).toContain('static-page-record-grid')
+    expect(netsuiteSource).toContain('static-page-record-tile')
+  })
+
+  it('provides a shared compact workflow-form contract for multi-input settings workflows', () => {
+    const styleSource = readFileSync('src/style.css', 'utf8')
+    const workflowSource = readFileSync('src/components/workflow/WorkflowStepForm.vue', 'utf8')
+    const runsWorkflowSource = readFileSync('src/pages/settings/RunsSettingsWorkflowPage.vue', 'utf8')
+    const sftpWorkflowSource = readFileSync('src/pages/settings/SftpServerWorkflowPage.vue', 'utf8')
+    const authWorkflowSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
+    const endpointWorkflowSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+
+    expect(styleSource).toContain('.workflow-form--compact {')
+    expect(styleSource).toContain('.workflow-form-grid {')
+    expect(styleSource).toContain('.workflow-form-grid--two {')
+    expect(styleSource).toContain('.workflow-form-grid--compact {')
+    expect(styleSource).toContain('.workflow-form-textarea {')
+    expect(workflowSource).toContain('--workflow-form-answer-size: var(--workflow-answer-size);')
+    expect(workflowSource).toContain('--workflow-form-select-size: var(--workflow-select-size);')
+    expect(workflowSource).toContain('font-size: var(--workflow-form-answer-size);')
+    expect(workflowSource).toContain('font-size: var(--workflow-form-select-size);')
+    expect(runsWorkflowSource).toContain("'workflow-form--compact'")
+    expect(runsWorkflowSource).toContain("'workflow-form--edit-single-page'")
+    expect(runsWorkflowSource).toContain(':show-enter-hint="false"')
+    expect(sftpWorkflowSource).toContain("'workflow-form--compact'")
+    expect(sftpWorkflowSource).toContain("'workflow-form--edit-single-page': isEditing")
+    expect(sftpWorkflowSource).toContain(':show-enter-hint="!isEditing"')
+    expect(authWorkflowSource).toContain(':show-enter-hint="!isEditing"')
+    expect(endpointWorkflowSource).toContain(':show-enter-hint="!isEditing"')
+    expect(sftpWorkflowSource).not.toContain('settings-workflow-form')
+  })
+
+  it('left-aligns checkbox-only table controls in the shared table system', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+    const schemaEditorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
+
+    expect(source).toContain('.checkbox-inline--control-only')
+    expect(source).toContain('justify-content: flex-start;')
+    expect(source).toContain('.checkbox-inline input:not(.app-table__checkbox)')
+    expect(source).toContain('.app-table__checkbox')
+    expect(source).toMatch(/\.app-table__checkbox\s*\{[^}]*appearance: none;/)
+    expect(source).toMatch(/\.app-table__checkbox\s*\{[^}]*width: 2.2rem;/)
+    expect(source).toMatch(/\.app-table__checkbox\s*\{[^}]*height: 2.2rem;/)
+    expect(source).toMatch(/\.app-table__checkbox\s*\{[^}]*padding: 0;/)
+    expect(source).toMatch(/\.app-table__checkbox\s*\{[^}]*border-radius: var\(--icon-container-radius\);/)
+    expect(source).toContain('.app-table__checkbox::after')
+    expect(schemaEditorSource).toContain('class="app-table__checkbox"')
+  })
+
+  it('vertically centers shared table action cells for icon-only row actions', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toMatch(/\.app-table td\.app-table__action-cell\s*\{[^}]*vertical-align: middle;/)
+    expect(source).toMatch(/\.app-table td\.app-table__action-cell\s*\{[^}]*line-height: 0;/)
+  })
+
+  it('provides a shared control-cell contract for vertically centering boxed controls within table rows', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+    const schemaEditorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
+
+    expect(source).toContain('.app-table__control-cell')
+    expect(source).toMatch(/\.app-table td\.app-table__control-cell\s*\{[^}]*vertical-align: middle;/)
+    expect(source).toContain('.app-table__control-wrap')
+    expect(source).toContain('align-items: center;')
+    expect(source).toContain('min-height: 2.2rem;')
+    expect(source).toMatch(/\.app-table__control-wrap\s*\{[^}]*line-height: 0;/)
+    expect(source).toContain('.app-table__control-wrap--start')
+    expect(source).toContain('.app-table__control-wrap--end')
+    expect(schemaEditorSource).toContain("cellClass: 'app-table__control-cell'")
+    expect(schemaEditorSource).toContain('app-table__control-wrap app-table__control-wrap--start')
+    expect(schemaEditorSource).toContain('app-table__control-wrap app-table__control-wrap--end')
+    expect(schemaEditorSource).not.toContain('transform: translateY(2px);')
+  })
+
+  it('provides shared static-page list, module, summary, and pager contracts for future settings migrations', () => {
+    const styleSource = readFileSync('src/style.css', 'utf8')
+    const sftpPageSource = readFileSync('src/pages/settings/SftpServersPage.vue', 'utf8')
+    const netsuiteSource = readFileSync('src/pages/settings/NetSuiteSettingsPage.vue', 'utf8')
+    const browseSource = readFileSync('src/pages/jsonschema/JsonSchemaBrowsePage.vue', 'utf8')
+    const layoutSource = readFileSync('src/pages/jsonschema/JsonSchemaLayoutPage.vue', 'utf8')
+    const editorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
+
+    expect(styleSource).toContain('.static-page-list-toolbar')
+    expect(styleSource).toContain('.static-page-pager')
+    expect(styleSource).toContain('.static-page-list-tile')
+    expect(styleSource).toContain('.static-page-list-tile__meta')
+    expect(styleSource).toContain('.static-page-module-grid')
+    expect(styleSource).toContain('.static-page-module-tile')
+    expect(styleSource).toContain('.static-page-summary-grid')
+    expect(styleSource).toContain('.static-page-summary-card')
+    expect(styleSource).toContain('.static-page-summary-label')
+    expect(sftpPageSource).toContain('class="static-page-pager"')
+    expect(netsuiteSource).toContain('class="static-page-pager"')
+    expect(netsuiteSource).toContain('static-page-record-grid--fixed')
+    expect(netsuiteSource).not.toContain('class="static-page-list-toolbar"')
+    expect(browseSource).toContain('static-page-list-tile')
+    expect(browseSource).not.toContain('<style scoped>')
+    expect(layoutSource).toContain('static-page-module-grid')
+    expect(layoutSource).toContain('static-page-module-tile')
+    expect(layoutSource).not.toContain('<style scoped>')
+    expect(layoutSource).toContain("to: '/schemas/create'")
+    expect(layoutSource).toContain("routeName === 'schemas-create'")
+    expect(editorSource).toContain('static-page-summary-grid')
+    expect(editorSource).toContain('static-page-summary-card')
+    expect(editorSource).toContain('static-page-summary-label')
+  })
+
+  it('centers shared append-row actions inside the table frame', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain('.app-table__append-action')
+    expect(source).toContain('justify-content: center;')
+  })
+
+  it('uses a shared rectangular radius token for shared icon containers without changing floating FABs', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain('--icon-container-radius: var(--radius-sm);')
+    expect(source).toMatch(/\.app-table__header-action\s*\{[^}]*border-radius: var\(--icon-container-radius\);/)
+    expect(source).toMatch(
+      /\.app-table__header-action\s*\{[^}]*color: color-mix\(in oklab, var\(--danger\) 82%, var\(--text\)\);/,
+    )
+    expect(source).toMatch(/\.app-icon-action,\s*\.app-table__icon-action\s*\{[^}]*border-radius: var\(--icon-container-radius\);/)
+    expect(source).toMatch(
+      /\.app-icon-action,\s*\.app-table__icon-action\s*\{[^}]*color: color-mix\(in oklab, var\(--danger\) 82%, var\(--text\)\);/,
+    )
+    expect(source).toMatch(/\.user-fab,\s*\.home-fab\s*\{[^}]*border-radius: 999px;/)
+  })
+
+  it('keeps the semantic primary save-action class without overriding the base icon-action visuals', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+    const saveActionSource = readFileSync('src/components/ui/AppSaveAction.vue', 'utf8')
+
+    expect(saveActionSource).toContain('app-icon-action--primary')
+    expect(source).toContain('.app-icon-action--primary {}')
+    expect(source).not.toContain('.app-icon-action--primary:hover')
+    expect(source).not.toContain('.app-icon-action--primary:disabled')
+  })
+
+  it('provides a shared large icon action variant for oversized footer controls', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain('.app-icon-action--large')
+    expect(source).toContain('width: 2.8rem;')
+    expect(source).toContain('min-height: 2.8rem;')
+    expect(source).toContain('.app-icon-action--large svg')
+    expect(source).toContain('width: 1.35rem;')
+    expect(source).toContain('height: 1.35rem;')
+  })
+
+  it('provides a shared danger icon action variant for destructive icon-only controls', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain('.app-icon-action--danger')
+    expect(source).toContain('.app-table__icon-action--danger')
+    expect(source).toContain('color: color-mix(in oklab, var(--danger) 82%, var(--text));')
+  })
+
+  it('keeps the shared theme palette strictly grayscale in both light and dark modes', () => {
+    const source = readFileSync('src/style.css', 'utf8')
+    const grayscaleTokens = [
+      '--bg',
+      '--bg-soft',
+      '--surface',
+      '--surface-2',
+      '--surface-3',
+      '--border',
+      '--border-soft',
+      '--text',
+      '--text-soft',
+      '--text-muted',
+      '--text-dim',
+      '--accent',
+      '--accent-ink',
+      '--success',
+      '--warning',
+      '--danger',
+    ]
+    const themeBlocks = [
+      source.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1],
+      source.match(/:root\[data-theme='light']\s*\{([\s\S]*?)\n\}/)?.[1],
+    ]
+
+    themeBlocks.forEach((block) => {
+      expect(block).toBeTruthy()
+
+      grayscaleTokens.forEach((token) => {
+        const match = block?.match(new RegExp(`${token}:\\s*(#[0-9a-fA-F]{6})`))
+        expect(match).toBeTruthy()
+
+        const value = match?.[1] ?? ''
+        const channels = value.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/)
+
+        expect(channels).toBeTruthy()
+        expect(channels?.[1]).toBe(channels?.[2])
+        expect(channels?.[2]).toBe(channels?.[3])
+      })
+    })
+
+    expect(source).toContain('border: 1px solid color-mix(in oklab, var(--border) 74%, var(--text) 18%);')
+    expect(source).toContain('background: color-mix(in oklab, var(--surface-2) 92%, var(--surface));')
+    expect(source).not.toContain('#d7a7a7')
+    expect(source).not.toContain('#8d4a4a')
+    expect(source).not.toContain('#c6ced8')
+    expect(source).not.toContain('#dbe1e8')
+    expect(source).not.toContain('#5f6b79')
   })
 
   it('shows only the theme toggle control inside the user menu', async () => {
@@ -196,9 +569,9 @@ describe('App shell logout', () => {
   })
 
   it('routes the floating home action back to the hub on non-hub routes', async () => {
-    route.name = 'connections-llm'
-    route.path = '/connections/llm'
-    route.fullPath = '/connections/llm'
+    route.name = 'settings-ai'
+    route.path = '/settings/ai'
+    route.fullPath = '/settings/ai'
     route.meta = {}
 
     const wrapper = mountApp()
@@ -293,9 +666,9 @@ describe('App shell logout', () => {
   })
 
   it('does not navigate home on Escape for non-workflow routes', async () => {
-    route.name = 'connections-llm'
-    route.path = '/connections/llm'
-    route.fullPath = '/connections/llm'
+    route.name = 'settings-ai'
+    route.path = '/settings/ai'
+    route.fullPath = '/settings/ai'
     route.meta = {}
 
     mountApp()
@@ -307,7 +680,7 @@ describe('App shell logout', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
-  it('re-checks auth on auth-required events and routes verification failures to auth-required', async () => {
+  it('re-checks auth on auth-required events and routes verification failures to login', async () => {
     ensureAuthenticated.mockResolvedValue(false)
     authState.error = 'Unable to verify authentication'
     authState.status = 'verification-failed'
@@ -321,8 +694,18 @@ describe('App shell logout', () => {
 
     expect(ensureAuthenticated).toHaveBeenCalled()
     expect(replace).toHaveBeenCalledWith({
-      name: 'auth-required',
+      name: 'login',
       query: { redirect: '/' },
     })
+  })
+
+  it('removes the standalone auth-required fallback route and page from the active app shell', () => {
+    const routerSource = readFileSync('src/router/index.ts', 'utf8')
+    const appSource = readFileSync('src/App.vue', 'utf8')
+
+    expect(routerSource).not.toContain("path: '/auth-required'")
+    expect(routerSource).not.toContain("name: 'auth-required'")
+    expect(appSource).not.toContain("route.name === 'auth-required'")
+    expect(existsSync('src/pages/AuthRequiredPage.vue')).toBe(false)
   })
 })

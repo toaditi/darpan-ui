@@ -4,6 +4,7 @@ import type {
   DeleteJsonSchemaResponse,
   DeletePilotGeneratedOutputResponse,
   FlattenJsonSchemaResponse,
+  GetPilotMappingResponse,
   GetPilotGeneratedOutputResponse,
   GetJsonSchemaResponse,
   InferJsonSchemaResponse,
@@ -21,6 +22,8 @@ import type {
   SaveJsonSchemaTextResponse,
   SaveLlmSettingsResponse,
   SaveNsAuthConfigResponse,
+  SaveDashboardPinnedMappingsResponse,
+  SavePilotMappingResponse,
   SaveNsRestletConfigResponse,
   SaveRefinedSchemaResponse,
   SaveSftpServerResponse,
@@ -60,6 +63,9 @@ const JSON_SCHEMA = {
 const RECONCILIATION = {
   createPilotMapping: 'facade.ReconciliationFacadeServices.create#PilotMapping',
   listPilotMappings: 'facade.ReconciliationFacadeServices.list#PilotMappings',
+  getPilotMapping: 'facade.ReconciliationFacadeServices.get#PilotMapping',
+  savePilotMapping: 'facade.ReconciliationFacadeServices.save#PilotMapping',
+  saveDashboardPinnedMappings: 'facade.ReconciliationFacadeServices.save#DashboardPinnedMappings',
   runPilotGenericDiff: 'facade.ReconciliationFacadeServices.run#PilotGenericDiff',
   listPilotGeneratedOutputs: 'facade.ReconciliationFacadeServices.list#PilotGeneratedOutputs',
   getPilotGeneratedOutput: 'facade.ReconciliationFacadeServices.get#PilotGeneratedOutput',
@@ -82,8 +88,8 @@ export const settingsFacade = {
   listEnumOptions(enumTypeId: string): Promise<ListEnumOptionsResponse> {
     return callService<ListEnumOptionsResponse>(SETTINGS.listEnumOptions, { enumTypeId })
   },
-  getLlmSettings(): Promise<LlmSettingsResponse> {
-    return callService<LlmSettingsResponse>(SETTINGS.getLlmSettings)
+  getLlmSettings(payload?: Record<string, unknown>): Promise<LlmSettingsResponse> {
+    return callService<LlmSettingsResponse>(SETTINGS.getLlmSettings, payload)
   },
   saveLlmSettings(payload: Record<string, unknown>): Promise<SaveLlmSettingsResponse> {
     return callService<SaveLlmSettingsResponse>(SETTINGS.saveLlmSettings, payload)
@@ -141,6 +147,15 @@ export const reconciliationFacade = {
   },
   listPilotMappings(payload: Record<string, unknown>): Promise<ListPilotMappingsResponse> {
     return callService<ListPilotMappingsResponse>(RECONCILIATION.listPilotMappings, payload)
+  },
+  getPilotMapping(payload: Record<string, unknown>): Promise<GetPilotMappingResponse> {
+    return callService<GetPilotMappingResponse>(RECONCILIATION.getPilotMapping, payload)
+  },
+  savePilotMapping(payload: Record<string, unknown>): Promise<SavePilotMappingResponse> {
+    return callService<SavePilotMappingResponse>(RECONCILIATION.savePilotMapping, payload)
+  },
+  saveDashboardPinnedMappings(payload: Record<string, unknown>): Promise<SaveDashboardPinnedMappingsResponse> {
+    return callService<SaveDashboardPinnedMappingsResponse>(RECONCILIATION.saveDashboardPinnedMappings, payload)
   },
   runPilotGenericDiff(payload: Record<string, unknown>): Promise<RunPilotGenericDiffResponse> {
     return callService<RunPilotGenericDiffResponse>(RECONCILIATION.runPilotGenericDiff, payload)

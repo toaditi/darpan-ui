@@ -1,0 +1,55 @@
+import { describe, expect, it } from 'vitest'
+import { mount } from '@vue/test-utils'
+import AppTableFrame from '../AppTableFrame.vue'
+
+describe('AppTableFrame', () => {
+  it('renders shared header slots, colgroup classes, row ids, and append rows', () => {
+    const wrapper = mount(AppTableFrame, {
+      props: {
+        columns: [
+          {
+            key: 'recordId',
+            label: 'Record ID',
+            colClass: 'record-id-column',
+            colStyle: { width: '16rem' },
+            cellClass: 'record-id-cell',
+          },
+          { key: 'status', label: 'Status', headerAlign: 'end', colClass: 'status-column', cellClass: 'status-cell-wrap' },
+        ],
+        rows: [
+          { recordId: '1001', status: 'Active' },
+          { recordId: '1002', status: 'Pending' },
+        ],
+        rowTestId: 'app-table-row',
+      },
+      slots: {
+        'cell-status': `<template #default="{ row, index }">
+          <span class="status-cell">{{ index }}-{{ row.status }}</span>
+        </template>`,
+        'append-row': `<template #default="{ columnCount }">
+          <tr class="append-row">
+            <td :colspan="columnCount">Append action</td>
+          </tr>
+        </template>`,
+      },
+    })
+
+    const headerSlots = wrapper.findAll('.app-table__header-slot')
+    expect(headerSlots).toHaveLength(2)
+    expect(headerSlots[0]?.text()).toBe('Record ID')
+    expect(headerSlots[1]?.text()).toBe('Status')
+    expect(headerSlots[1]?.classes()).toContain('app-table__header-slot--action')
+    expect(wrapper.findAll('.app-table colgroup col')).toHaveLength(2)
+    expect(wrapper.get('.app-table colgroup col').classes()).toContain('record-id-column')
+    expect(wrapper.get('.app-table colgroup col').attributes('style')).toContain('width: 16rem;')
+    expect(wrapper.findAll('tbody td')[0]?.classes()).toContain('record-id-cell')
+    expect(wrapper.findAll('tbody td')[1]?.classes()).toContain('status-cell-wrap')
+    expect(wrapper.findAll('[data-testid="app-table-row"]')).toHaveLength(2)
+
+    const statusCells = wrapper.findAll('.status-cell')
+    expect(statusCells[0]?.text()).toBe('0-Active')
+    expect(statusCells[1]?.text()).toBe('1-Pending')
+    expect(wrapper.get('.append-row td').attributes('colspan')).toBe('2')
+    expect(wrapper.get('.append-row').text()).toBe('Append action')
+  })
+})

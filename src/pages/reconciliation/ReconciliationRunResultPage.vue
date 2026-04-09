@@ -79,59 +79,43 @@
           </button>
         </div>
 
-        <div v-if="pagedDiffDetailRows.length > 0" class="pilot-diff-details__table-shell">
-          <table class="pilot-diff-table">
-            <colgroup>
-              <col class="pilot-diff-table__id-column" />
-              <col class="pilot-diff-table__json-column" />
-              <col class="pilot-diff-table__action-column" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th class="pilot-diff-table__data-header">
-                  <div class="pilot-diff-table__header-slot">
-                    <span>Record ID</span>
-                  </div>
-                </th>
-                <th class="pilot-diff-table__data-header">
-                  <div class="pilot-diff-table__header-slot">
-                    <span>Record JSON</span>
-                  </div>
-                </th>
-                <th class="pilot-diff-table__action-header">
-                  <div class="pilot-diff-table__header-slot pilot-diff-table__header-slot--action">
-                    <button
-                      v-if="downloadableOutputFile"
-                      type="button"
-                      class="pilot-diff-table__download"
-                      data-testid="run-result-download"
-                      aria-label="Download saved result"
-                      @click="downloadSavedResult"
-                    >
-                      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                        <path
-                          d="M10 2.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5Zm-5 11a.75.75 0 0 1 .75.75v1.5c0 .14.11.25.25.25h8c.14 0 .25-.11.25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 14 17.5H6A1.75 1.75 0 0 1 4.25 15.75v-1.5A.75.75 0 0 1 5 13.5Z"
-                          fill="currentColor"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in pagedDiffDetailRows" :key="row.rowKey" data-testid="diff-details-row">
-                <td class="pilot-diff-table__id-cell">
-                  <strong>{{ row.recordId }}</strong>
-                </td>
-                <td>
-                  <pre class="pilot-diff-table__json">{{ row.jsonText }}</pre>
-                </td>
-                <td class="pilot-diff-table__action-cell" aria-hidden="true"></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <AppTableFrame
+          v-if="pagedDiffDetailRows.length > 0"
+          :columns="diffDetailColumns"
+          :rows="pagedDiffDetailRowsAsRows"
+          row-key="rowKey"
+          row-test-id="diff-details-row"
+        >
+          <template #header-actions>
+            <button
+              v-if="downloadableOutputFile"
+              type="button"
+              class="app-table__header-action"
+              data-testid="run-result-download"
+              aria-label="Download saved result"
+              @click="downloadSavedResult"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path
+                  d="M10 2.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5Zm-5 11a.75.75 0 0 1 .75.75v1.5c0 .14.11.25.25.25h8c.14 0 .25-.11.25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 14 17.5H6A1.75 1.75 0 0 1 4.25 15.75v-1.5A.75.75 0 0 1 5 13.5Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+          </template>
+
+          <template #cell-recordId="{ row }">
+            <strong>{{ row.recordId }}</strong>
+          </template>
+
+          <template #cell-jsonText="{ row }">
+            <pre class="run-result-table__json">{{ row.jsonText }}</pre>
+          </template>
+
+          <template #cell-actions>
+            <span aria-hidden="true"></span>
+          </template>
+        </AppTableFrame>
         <p v-else data-testid="diff-details-empty" class="section-note">
           {{ diffDetailsEmptyMessage }}
         </p>
@@ -160,6 +144,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, type RouteLocationRaw } from 'vue-router'
+import AppTableFrame from '../../components/ui/AppTableFrame.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -204,6 +189,26 @@ interface NormalizedDiffDetailRow {
   missingBucket: DiffBucketKey
   jsonText: string
 }
+
+const diffDetailColumns = [
+  {
+    key: 'recordId',
+    label: 'Record ID',
+    colStyle: { width: '13rem' },
+  },
+  {
+    key: 'jsonText',
+    label: 'Record JSON',
+  },
+  {
+    key: 'actions',
+    label: '',
+    headerAlign: 'end' as const,
+    colClass: 'app-table__action-column',
+    headerClass: 'app-table__action-header',
+    cellClass: 'app-table__action-cell',
+  },
+]
 
 const route = useRoute()
 const loading = ref(false)
@@ -315,6 +320,7 @@ const pagedDiffDetailRows = computed(() => {
   const start = diffDetailsPageIndex.value * DIFF_DETAILS_PAGE_SIZE
   return filteredDiffDetailRows.value.slice(start, start + DIFF_DETAILS_PAGE_SIZE)
 })
+const pagedDiffDetailRowsAsRows = computed(() => pagedDiffDetailRows.value as Array<Record<string, unknown>>)
 
 function normalizeDiffLabel(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -648,13 +654,6 @@ watch([reconciliationMappingId, outputFileName], () => {
   color: var(--text);
 }
 
-.pilot-diff-details__search-input:focus,
-.pilot-diff-details__search-input:focus-visible {
-  outline: none;
-  box-shadow: none;
-  border-color: var(--border);
-}
-
 .pilot-diff-details__search-clear {
   position: absolute;
   top: 50%;
@@ -679,102 +678,7 @@ watch([reconciliationMappingId, outputFileName], () => {
   color: var(--text);
 }
 
-.pilot-diff-details__table-shell {
-  overflow: auto;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-}
-
-.pilot-diff-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-.pilot-diff-table th {
-  padding: 0 1rem;
-  vertical-align: middle;
-  text-align: left;
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  background: color-mix(in oklab, var(--surface-2) 94%, white);
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.pilot-diff-table td {
-  padding: 0.95rem 1rem;
-  vertical-align: top;
-  text-align: left;
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.pilot-diff-table__header-slot {
-  display: flex;
-  align-items: center;
-  min-height: 2.6rem;
-}
-
-.pilot-diff-table__data-header {
-  text-align: left;
-  vertical-align: middle;
-}
-
-.pilot-diff-table__header-slot--action {
-  justify-content: flex-end;
-}
-
-.pilot-diff-table__download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.95rem;
-  min-height: 1.95rem;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-dim);
-}
-
-.pilot-diff-table__download svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.pilot-diff-table__download:hover {
-  background: color-mix(in oklab, var(--surface-2) 78%, var(--accent));
-  color: var(--text);
-}
-
-.pilot-diff-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.pilot-diff-table__id-column,
-.pilot-diff-table__id-cell {
-  width: 13rem;
-}
-
-.pilot-diff-table__json-column {
-  width: auto;
-}
-
-.pilot-diff-table__action-column,
-.pilot-diff-table__action-header,
-.pilot-diff-table__action-cell {
-  width: 4.5rem;
-}
-
-.pilot-diff-table__action-header,
-.pilot-diff-table__action-cell {
-  padding-left: 0.5rem;
-  padding-right: 0.75rem;
-  text-align: right;
-}
-
-.pilot-diff-table__json {
+.run-result-table__json {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
@@ -823,7 +727,7 @@ watch([reconciliationMappingId, outputFileName], () => {
     grid-template-columns: 1fr;
   }
 
-  .pilot-diff-table__id-cell {
+  .run-result-table__id-cell {
     width: auto;
   }
 }

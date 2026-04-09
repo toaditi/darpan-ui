@@ -79,11 +79,11 @@ import StaticPageSection from '../components/ui/StaticPageSection.vue'
 import { buildAuthRedirect, ensureAuthenticated } from '../lib/auth'
 import { reconciliationFacade } from '../lib/api/facade'
 import type { PilotMappingSummary } from '../lib/api/types'
-import { listPinnedRunIds, savePinnedRunIds } from '../lib/pinnedRuns'
 import { buildWorkflowOriginState } from '../lib/workflowOrigin'
 
 interface DashboardFlowCard {
   id: string
+  mappingId: string
   title: string
   statusLabel?: string
   to: RouteLocationRaw
@@ -98,7 +98,7 @@ function resolveSystemLabel(mapping: PilotMappingSummary, enumId?: string): stri
 const route = useRoute()
 const router = useRouter()
 const mappings = ref<PilotMappingSummary[]>([])
-const pinnedRunIds = ref<string[]>([])
+const pinnedMappingIds = ref<string[]>([])
 const showAllOtherRuns = ref(false)
 const dashboardWorkflowOriginState = buildWorkflowOriginState('Dashboard', '/')
 const createFlowRoute: RouteLocationRaw = {
@@ -109,6 +109,7 @@ const createFlowRoute: RouteLocationRaw = {
 const mappingCards = computed<DashboardFlowCard[]>(() =>
   mappings.value.map((mapping) => ({
     id: `mapping:${mapping.reconciliationMappingId}`,
+    mappingId: mapping.reconciliationMappingId,
     title: mapping.mappingName,
     to: {
       name: 'reconciliation-pilot-diff',
@@ -126,15 +127,15 @@ const mappingCards = computed<DashboardFlowCard[]>(() =>
 const flowCards = computed<DashboardFlowCard[]>(() => mappingCards.value)
 
 const pinnedFlowCards = computed<DashboardFlowCard[]>(() => {
-  const flowCardMap = new Map(flowCards.value.map((card) => [card.id, card]))
-  return pinnedRunIds.value
-    .map((runId) => flowCardMap.get(runId) ?? null)
+  const flowCardMap = new Map(flowCards.value.map((card) => [card.mappingId, card]))
+  return pinnedMappingIds.value
+    .map((mappingId) => flowCardMap.get(mappingId) ?? null)
     .filter((card): card is DashboardFlowCard => card !== null)
 })
 
 const otherFlowCards = computed<DashboardFlowCard[]>(() => {
-  const pinnedSet = new Set(pinnedRunIds.value)
-  return flowCards.value.filter((card) => !pinnedSet.has(card.id))
+  const pinnedSet = new Set(pinnedMappingIds.value)
+  return flowCards.value.filter((card) => !pinnedSet.has(card.mappingId))
 })
 
 const visibleOtherFlowCards = computed<DashboardFlowCard[]>(() => {
@@ -147,32 +148,38 @@ const hasMoreOtherRuns = computed(() => {
 
 const hasOtherRuns = computed(() => otherFlowCards.value.length > 0)
 
-function syncPinnedRuns(): void {
-  const validRunIds = new Set(flowCards.value.map((card) => card.id))
-  const nextPinnedRunIds = pinnedRunIds.value.filter((runId) => validRunIds.has(runId))
-  if (nextPinnedRunIds.length === pinnedRunIds.value.length) return
-  pinnedRunIds.value = nextPinnedRunIds
-  savePinnedRunIds(nextPinnedRunIds)
-}
-
 function handleDragStart(flowId: string, event: DragEvent): void {
   if (!event.dataTransfer) return
   event.dataTransfer.effectAllowed = 'move'
   event.dataTransfer.setData('text/plain', flowId)
 }
 
-function handleDrop(target: 'pinned' | 'other', event: DragEvent): void {
+async function savePinnedMappings(nextPinnedMappingIds: string[], previousPinnedMappingIds: string[]): Promise<void> {
+  pinnedMappingIds.value = nextPinnedMappingIds
+
+  try {
+    const response = await reconciliationFacade.saveDashboardPinnedMappings({
+      pinnedReconciliationMappingIds: nextPinnedMappingIds,
+    })
+    pinnedMappingIds.value = response.pinnedReconciliationMappingIds ?? nextPinnedMappingIds
+  } catch {
+    pinnedMappingIds.value = previousPinnedMappingIds
+  }
+}
+
+async function handleDrop(target: 'pinned' | 'other', event: DragEvent): Promise<void> {
   const droppedFlowId = event.dataTransfer?.getData('text/plain')?.trim()
   if (!droppedFlowId) return
-  if (!flowCards.value.some((card) => card.id === droppedFlowId)) return
+  const droppedCard = flowCards.value.find((card) => card.id === droppedFlowId)
+  if (!droppedCard) return
 
-  const nextPinnedRunIds =
+  const previousPinnedMappingIds = [...pinnedMappingIds.value]
+  const nextPinnedMappingIds =
     target === 'pinned'
-      ? [...pinnedRunIds.value.filter((runId) => runId !== droppedFlowId), droppedFlowId]
-      : pinnedRunIds.value.filter((runId) => runId !== droppedFlowId)
+      ? [...pinnedMappingIds.value.filter((mappingId) => mappingId !== droppedCard.mappingId), droppedCard.mappingId]
+      : pinnedMappingIds.value.filter((mappingId) => mappingId !== droppedCard.mappingId)
 
-  pinnedRunIds.value = nextPinnedRunIds
-  savePinnedRunIds(nextPinnedRunIds)
+  await savePinnedMappings(nextPinnedMappingIds, previousPinnedMappingIds)
 }
 
 async function loadDashboard(): Promise<void> {
@@ -183,7 +190,7 @@ async function loadDashboard(): Promise<void> {
   }
 
   showAllOtherRuns.value = false
-  pinnedRunIds.value = listPinnedRunIds()
+  pinnedMappingIds.value = []
   mappings.value = []
 
   try {
@@ -192,32 +199,15 @@ async function loadDashboard(): Promise<void> {
       pageSize: 12,
       query: '',
     })
+    pinnedMappingIds.value = response.pinnedReconciliationMappingIds ?? []
     mappings.value = response.mappings ?? []
   } catch {
+    pinnedMappingIds.value = []
     mappings.value = []
   }
-
-  syncPinnedRuns()
 }
 
 onMounted(() => {
   void loadDashboard()
 })
 </script>
-
-<style scoped>
-.static-page-tile {
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: var(--space-2);
-}
-
-.static-page-tile-title {
-  width: auto;
-}
-
-.static-page-tile-status {
-  text-align: center;
-}
-</style>

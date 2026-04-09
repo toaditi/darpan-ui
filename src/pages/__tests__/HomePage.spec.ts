@@ -4,8 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 const ensureAuthenticated = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const replace = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listPilotMappings = vi.hoisted(() => vi.fn())
-const listPinnedRunIds = vi.hoisted(() => vi.fn())
-const savePinnedRunIds = vi.hoisted(() => vi.fn())
+const saveDashboardPinnedMappings = vi.hoisted(() => vi.fn())
 const route = vi.hoisted(() => ({
   name: 'hub',
   path: '/',
@@ -39,12 +38,8 @@ vi.mock('../../lib/auth', () => ({
 vi.mock('../../lib/api/facade', () => ({
   reconciliationFacade: {
     listPilotMappings,
+    saveDashboardPinnedMappings,
   },
-}))
-
-vi.mock('../../lib/pinnedRuns', () => ({
-  listPinnedRunIds,
-  savePinnedRunIds,
 }))
 
 import HomePage from '../HomePage.vue'
@@ -54,10 +49,10 @@ describe('HomePage', () => {
     ensureAuthenticated.mockClear()
     replace.mockClear()
     listPilotMappings.mockReset()
-    listPinnedRunIds.mockReset()
-    savePinnedRunIds.mockReset()
+    saveDashboardPinnedMappings.mockReset()
 
     listPilotMappings.mockResolvedValue({
+      pinnedReconciliationMappingIds: ['Map8'],
       mappings: Array.from({ length: 8 }, (_, index) => ({
         reconciliationMappingId: `Map${index + 1}`,
         mappingName: `Reconciliation ${index + 1}`,
@@ -71,7 +66,12 @@ describe('HomePage', () => {
         ],
       })),
     })
-    listPinnedRunIds.mockReturnValue(['mapping:Map8'])
+    saveDashboardPinnedMappings.mockImplementation(async ({ pinnedReconciliationMappingIds }) => ({
+      ok: true,
+      messages: [],
+      errors: [],
+      pinnedReconciliationMappingIds,
+    }))
   })
 
   it('shows mapping runs with pagination for the other runs list', async () => {
@@ -120,7 +120,6 @@ describe('HomePage', () => {
       pageSize: 12,
       query: '',
     })
-    expect(listPinnedRunIds).toHaveBeenCalled()
 
     await wrapper.get('[data-testid="other-runs-more"]').trigger('click')
     await flushPromises()
@@ -148,16 +147,42 @@ describe('HomePage', () => {
     await wrapper.find('[data-testid="pinned-runs"]').trigger('drop', { dataTransfer })
     await flushPromises()
 
-    expect(savePinnedRunIds).toHaveBeenLastCalledWith(['mapping:Map8', 'mapping:Map1'])
+    expect(saveDashboardPinnedMappings).toHaveBeenLastCalledWith({
+      pinnedReconciliationMappingIds: ['Map8', 'Map1'],
+    })
     expect(wrapper.find('[data-testid="pinned-runs"]').text()).toContain('Reconciliation 1')
     expect(wrapper.find('[data-testid="other-runs"]').text()).not.toContain('Reconciliation 1')
   })
 
+  it('restores the previous pin state when saving fails', async () => {
+    saveDashboardPinnedMappings.mockRejectedValueOnce(new Error('save failed'))
+
+    const wrapper = mount(HomePage)
+    await flushPromises()
+
+    const transferStore = new Map<string, string>()
+    const dataTransfer = {
+      effectAllowed: 'move',
+      setData: (type: string, value: string) => {
+        transferStore.set(type, value)
+      },
+      getData: (type: string) => transferStore.get(type) ?? '',
+    }
+
+    await wrapper.find('[data-flow-id="mapping:Map1"]').trigger('dragstart', { dataTransfer })
+    await wrapper.find('[data-testid="pinned-runs"]').trigger('drop', { dataTransfer })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="pinned-runs"]').text()).not.toContain('Reconciliation 1')
+    expect(wrapper.find('[data-testid="pinned-runs"]').text()).toContain('Reconciliation 8')
+    expect(wrapper.find('[data-testid="other-runs"]').text()).toContain('Reconciliation 1')
+  })
+
   it('shows the pinned drop hint and in-section create action when there are no runs', async () => {
     listPilotMappings.mockResolvedValue({
+      pinnedReconciliationMappingIds: [],
       mappings: [],
     })
-    listPinnedRunIds.mockReturnValue([])
 
     const wrapper = mount(HomePage)
     await flushPromises()

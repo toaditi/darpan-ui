@@ -25,25 +25,28 @@ describe('SettingsLayoutPage', () => {
     route.path = '/connections/llm'
   })
 
-  it('renders the connections layout inside the static page frame', () => {
+  it('renders the selected module hero and the remaining shared module tiles inside the static page frame', () => {
     const wrapper = mount(SettingsLayoutPage)
 
     expect(wrapper.find('.static-page-frame').exists()).toBe(true)
-    expect(wrapper.find('.static-page-hero').text()).toContain('Connections')
+    expect(wrapper.find('.module-nav').exists()).toBe(false)
+    expect(wrapper.find('.static-page-hero').text()).toContain('LLM Settings')
+    expect(wrapper.findAll('.settings-module-tile')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('SFTP Servers')
+    expect(wrapper.text()).not.toContain('NetSuite')
     expect(wrapper.find('[data-testid="router-view"]').exists()).toBe(true)
   })
 
-  it('keeps the netsuite auth tab active for its route', () => {
-    route.name = 'connections-netsuite-auth'
-    route.path = '/connections/netsuite/auth'
+  it('keeps only the llm tile in the shared connections layout', () => {
+    route.name = 'connections-llm'
+    route.path = '/connections/llm'
 
     const wrapper = mount(SettingsLayoutPage)
     const links = wrapper.findAll('a')
-    const authLink = links.find((link) => link.text() === 'NetSuite Auth')
+    const llmLink = links.find((link) => link.text().includes('LLM Settings'))
 
-    expect(authLink).toBeDefined()
-    expect(authLink!.classes()).toContain('router-link-active')
-    expect(authLink!.classes()).toContain('router-link-exact-active')
-    expect(authLink!.attributes('aria-current')).toBe('page')
+    expect(llmLink).toBeDefined()
+    expect(llmLink!.classes()).toContain('settings-module-tile--active')
+    expect(llmLink!.attributes('aria-current')).toBe('page')
   })
 })

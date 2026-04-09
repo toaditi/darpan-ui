@@ -27,7 +27,7 @@
         <InlineValidation v-if="sourceSelectionError" tone="error" :message="sourceSelectionError" />
 
         <p class="wizard-or">or</p>
-        <RouterLink class="wizard-secondary-link" to="/schemas/infer">Create a New One</RouterLink>
+        <RouterLink class="wizard-secondary-link" to="/schemas/create">Create a New Schema</RouterLink>
       </template>
 
       <template v-else-if="currentStep.id === 'fields-1' || currentStep.id === 'fields-2'">
@@ -68,6 +68,7 @@ import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, reconciliationFacade } from '../../lib/api/facade'
 import { invokePrimaryActionOnEnter } from '../../lib/keyboard'
 import type { JsonSchemaField, JsonSchemaSummary } from '../../lib/api/types'
+import { readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
 interface WizardStep {
   id: 'schema-1' | 'fields-1' | 'schema-2' | 'fields-2' | 'name'
@@ -296,7 +297,8 @@ async function createMapping(): Promise<void> {
     if (!response.savedMapping?.reconciliationMappingId) {
       throw new Error('Missing saved mapping identifier.')
     }
-    await router.push({ name: 'hub' })
+    const workflowOrigin = readWorkflowOriginFromHistoryState()
+    await router.push(workflowOrigin?.path ?? { name: 'hub' })
   } catch (error) {
     pageError.value = error instanceof ApiCallError ? error.message : 'Unable to create reconciliation flow.'
   }

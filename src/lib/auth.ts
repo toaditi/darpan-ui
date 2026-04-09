@@ -106,12 +106,6 @@ function applyAuthResponse(response: SessionInfoResponse | LoginSessionResponse,
 
 export function buildAuthRedirect(redirectTarget: unknown): RouteLocationRaw {
   const redirect = resolveInternalRedirectTarget(redirectTarget)
-  if (authState.status === 'verification-failed') {
-    return {
-      name: 'auth-required',
-      query: { redirect },
-    }
-  }
   return {
     name: 'login',
     query: { redirect },

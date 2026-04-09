@@ -159,6 +159,21 @@ export interface PilotMappingSummary {
   systemOptions: PilotMappingSystemOption[]
 }
 
+export interface PilotMappingDetailMember {
+  mappingMemberId: string
+  systemEnumId?: string
+  systemLabel?: string
+  jsonSchemaId?: string
+  schemaName?: string
+  fieldPath?: string
+}
+
+export interface PilotMappingDetail {
+  reconciliationMappingId: string
+  mappingName: string
+  members: PilotMappingDetailMember[]
+}
+
 export interface SavedPilotMapping {
   reconciliationMappingId: string
   mappingName: string
@@ -223,7 +238,12 @@ export interface ListNsRestletConfigsResponse extends PaginatedResponse {
 }
 
 export interface ListPilotMappingsResponse extends PaginatedResponse {
+  pinnedReconciliationMappingIds?: string[]
   mappings: PilotMappingSummary[]
+}
+
+export interface SaveDashboardPinnedMappingsResponse extends ApiEnvelope {
+  pinnedReconciliationMappingIds?: string[]
 }
 
 export interface RunPilotGenericDiffResponse extends ApiEnvelope {
@@ -233,6 +253,14 @@ export interface RunPilotGenericDiffResponse extends ApiEnvelope {
 }
 
 export interface CreatePilotMappingResponse extends ApiEnvelope {
+  savedMapping?: SavedPilotMapping
+}
+
+export interface GetPilotMappingResponse extends ApiEnvelope {
+  pilotMapping?: PilotMappingDetail
+}
+
+export interface SavePilotMappingResponse extends ApiEnvelope {
   savedMapping?: SavedPilotMapping
 }
 
