@@ -4,6 +4,15 @@ import { flushPromises, mount } from '@vue/test-utils'
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const inferFromText = vi.hoisted(() => vi.fn())
 const saveText = vi.hoisted(() => vi.fn())
+const listEnumOptions = vi.hoisted(() => vi.fn())
+const inferredSchemaText = JSON.stringify({
+  type: 'object',
+  properties: {
+    orderId: { type: 'string' },
+    status: { type: 'string' },
+  },
+  required: ['orderId'],
+})
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -16,9 +25,21 @@ vi.mock('../../../lib/api/facade', () => ({
     inferFromText,
     saveText,
   },
+  settingsFacade: {
+    listEnumOptions,
+  },
 }))
 
 import JsonSchemaWizardPage from '../JsonSchemaWizardPage.vue'
+
+async function chooseAppSelectOption(
+  wrapper: ReturnType<typeof mount>,
+  testId: string,
+  value: string,
+): Promise<void> {
+  await wrapper.get(`[data-testid="${testId}"]`).trigger('click')
+  await wrapper.get(`[data-testid="app-select-option"][data-option-value="${value}"]`).trigger('click')
+}
 
 function stubFileReader(fileText = '{"orderId":"1001"}'): void {
   class MockFileReader {
@@ -40,10 +61,17 @@ describe('JsonSchemaWizardPage', () => {
     push.mockClear()
     inferFromText.mockReset()
     saveText.mockReset()
+    listEnumOptions.mockReset()
 
     stubFileReader()
+    listEnumOptions.mockResolvedValue({
+      options: [
+        { enumId: 'DarSysOms', label: 'OMS' },
+        { enumId: 'DarSysShopify', label: 'SHOPIFY' },
+      ],
+    })
     inferFromText.mockResolvedValue({
-      jsonSchemaString: '{"type":"object"}',
+      jsonSchemaString: inferredSchemaText,
       fieldList: [
         { fieldPath: '$.orderId', type: 'string', required: true },
         { fieldPath: '$.status', type: 'string', required: false },
@@ -60,7 +88,7 @@ describe('JsonSchemaWizardPage', () => {
     })
   })
 
-  it('creates a schema from a sample file through the workflow steps and saves it on Enter from the final naming step', async () => {
+  it('creates a schema from a sample file through the workflow steps, assigns the system, and saves it on Enter from the final naming step', async () => {
     const wrapper = mount(JsonSchemaWizardPage)
     await flushPromises()
 
@@ -101,7 +129,21 @@ describe('JsonSchemaWizardPage', () => {
     expect(wrapper.text()).toContain('Verify the schema')
     expect(wrapper.text()).toContain('$.orderId')
     expect(wrapper.text()).not.toContain('Uploaded file:')
+    const tableColumns = wrapper.findAll('.app-table colgroup col')
+    expect(tableColumns[0]?.attributes('style')).toContain('width: calc(100% - 15rem);')
+    expect(tableColumns[1]?.attributes('style')).toContain('width: 8.5rem;')
+    expect(tableColumns[2]?.attributes('style')).toContain('width: 6.5rem;')
+    expect(wrapper.get('[data-testid="schema-verify-field-path-0"]').attributes('title')).toBe('$.orderId')
+    const requiredCheckboxes = wrapper.findAll('tbody input[type="checkbox"]')
+    expect(requiredCheckboxes).toHaveLength(2)
+    expect((requiredCheckboxes[0]!.element as HTMLInputElement).checked).toBe(true)
+    expect((requiredCheckboxes[1]!.element as HTMLInputElement).checked).toBe(false)
+    await requiredCheckboxes[1]!.setValue(true)
 
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
+    await chooseAppSelectOption(wrapper, 'schema-wizard-system', 'DarSysOms')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await flushPromises()
 
@@ -112,11 +154,14 @@ describe('JsonSchemaWizardPage', () => {
     await nameInput.trigger('keydown.enter')
     await flushPromises()
 
-    expect(saveText).toHaveBeenCalledWith({
+    expect(saveText).toHaveBeenCalledWith(expect.objectContaining({
       schemaName: 'orders',
-      schemaText: '{"type":"object"}',
+      systemEnumId: 'DarSysOms',
       overwrite: false,
-    })
+    }))
+    const savePayload = saveText.mock.calls[0]?.[0] as Record<string, unknown>
+    const savedSchema = JSON.parse(String(savePayload.schemaText))
+    expect(savedSchema.required).toEqual(['orderId', 'status'])
     expect(push).toHaveBeenCalledWith({ name: 'schemas-library' })
     wrapper.unmount()
   })
@@ -146,6 +191,10 @@ describe('JsonSchemaWizardPage', () => {
     await flushPromises()
 
     expect(inferFromText).not.toHaveBeenCalled()
+    await chooseAppSelectOption(wrapper, 'schema-wizard-system', 'DarSysOms')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
     expect(wrapper.text()).toContain('Name the schema')
     expect(wrapper.text()).not.toContain('Uploaded file:')
 
@@ -156,10 +205,40 @@ describe('JsonSchemaWizardPage', () => {
 
     expect(saveText).toHaveBeenCalledWith({
       schemaName: 'orders-schema',
+      systemEnumId: 'DarSysOms',
       schemaText: '{"type":"object","properties":{"orderId":{"type":"string"}}}',
       overwrite: false,
     })
     expect(push).toHaveBeenCalledWith({ name: 'schemas-library' })
     wrapper.unmount()
+  })
+
+  it('keeps the workflow blocked on the system step until a system is selected', async () => {
+    const wrapper = mount(JsonSchemaWizardPage)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="upload-intent-sample"]').trigger('click')
+    await flushPromises()
+
+    const fileInput = wrapper.get('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['{"orderId":"1001"}'], 'orders.json', { type: 'application/json' })],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Assign the system')
+    expect(wrapper.get('[data-testid="wizard-next"]').attributes('disabled')).toBeDefined()
+
+    await chooseAppSelectOption(wrapper, 'schema-wizard-system', 'DarSysShopify')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Name the schema')
+    expect(wrapper.get('[data-testid="save-schema"]').attributes('disabled')).toBeUndefined()
   })
 })

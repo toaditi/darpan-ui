@@ -7,6 +7,7 @@ const get = vi.hoisted(() => vi.fn())
 const flatten = vi.hoisted(() => vi.fn())
 const saveRefined = vi.hoisted(() => vi.fn())
 const deleteSchema = vi.hoisted(() => vi.fn())
+const listEnumOptions = vi.hoisted(() => vi.fn())
 const route = vi.hoisted(() => ({
   params: {} as Record<string, string>,
   fullPath: '/schemas/editor',
@@ -18,6 +19,9 @@ vi.mock('../../../lib/api/facade', () => ({
     flatten,
     saveRefined,
     delete: deleteSchema,
+  },
+  settingsFacade: {
+    listEnumOptions,
   },
 }))
 
@@ -34,6 +38,15 @@ vi.mock('vue-router', () => ({
 
 import JsonSchemaEditorPage from '../JsonSchemaEditorPage.vue'
 
+async function chooseAppSelectOption(
+  wrapper: ReturnType<typeof mount>,
+  testId: string,
+  value: string,
+): Promise<void> {
+  await wrapper.get(`[data-testid="${testId}"]`).trigger('click')
+  await wrapper.get(`[data-testid="app-select-option"][data-option-value="${value}"]`).trigger('click')
+}
+
 describe('JsonSchemaEditorPage', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -48,6 +61,13 @@ describe('JsonSchemaEditorPage', () => {
     flatten.mockReset()
     saveRefined.mockReset()
     deleteSchema.mockReset()
+    listEnumOptions.mockReset()
+    listEnumOptions.mockResolvedValue({
+      options: [
+        { enumId: 'DarSysOms', label: 'OMS' },
+        { enumId: 'DarSysShopify', label: 'SHOPIFY' },
+      ],
+    })
   })
 
   it('moves parameterized routes into a retry state until the initial load succeeds', async () => {
@@ -111,6 +131,9 @@ describe('JsonSchemaEditorPage', () => {
     expect(wrapper.find('.static-page-hero .static-page-section-description').exists()).toBe(false)
     expect(wrapper.findAll('.static-page-summary-card')).toHaveLength(3)
     expect(wrapper.findAll('.static-page-summary-label').map((item) => item.text())).toEqual(['Schema ID', 'System', 'Updated'])
+    const summaryCards = wrapper.findAll('.static-page-summary-card')
+    expect(summaryCards[1]?.find('[data-testid="schema-editor-system"]').exists()).toBe(true)
+    expect(wrapper.find('.schema-editor-system-panel').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Status')
     expect(wrapper.text()).not.toContain('Active')
     expect(wrapper.text()).not.toContain('Update field paths, types, and required flags without exposing raw schema JSON.')
@@ -274,5 +297,47 @@ describe('JsonSchemaEditorPage', () => {
     expect(confirmSpy).toHaveBeenCalledWith('Delete schema "Orders schema"?')
     expect(deleteSchema).not.toHaveBeenCalled()
     expect(push).not.toHaveBeenCalled()
+  })
+
+  it('allows assigning an unassigned schema system before saving refined fields', async () => {
+    route.params = { jsonSchemaId: 'test-schema' }
+    route.fullPath = '/schemas/editor/test-schema'
+    get.mockResolvedValue({
+      schemaData: {
+        jsonSchemaId: 'test-schema',
+        schemaName: 'orders',
+        description: 'Orders schema',
+        systemEnumId: '',
+        systemLabel: '',
+        statusId: 'Active',
+        lastUpdatedStamp: '2026-04-08T10:00:00Z',
+        schemaText: '{"type":"object"}',
+      },
+    })
+    flatten.mockResolvedValue({
+      fieldList: [{ fieldPath: '$.orderId', type: 'string', required: true }],
+    })
+    saveRefined.mockResolvedValue({
+      ok: true,
+      messages: ['Saved refined schema orders.'],
+      errors: [],
+    })
+
+    const wrapper = mount(JsonSchemaEditorPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Select system')
+
+    await chooseAppSelectOption(wrapper, 'schema-editor-system', 'DarSysShopify')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(saveRefined).toHaveBeenCalledWith({
+      jsonSchemaId: 'test-schema',
+      schemaName: 'orders',
+      description: 'Orders schema',
+      systemEnumId: 'DarSysShopify',
+      fieldList: [{ fieldPath: '$.orderId', type: 'string', required: true }],
+    })
   })
 })

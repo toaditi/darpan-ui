@@ -38,9 +38,16 @@
             <span class="static-page-summary-label">Schema ID</span>
             <strong>{{ currentSchemaId }}</strong>
           </article>
-          <article class="static-page-summary-card">
+          <article class="static-page-summary-card schema-editor-summary-card--system">
             <span class="static-page-summary-label">System</span>
-            <strong>{{ systemLabel || systemEnumId || 'Unassigned' }}</strong>
+            <AppSelect
+              v-model="systemEnumId"
+              class="schema-editor-summary-select"
+              :options="systemOptions"
+              :disabled="loading || systemOptions.length === 0"
+              placeholder="Select system"
+              test-id="schema-editor-system"
+            />
           </article>
           <article class="static-page-summary-card">
             <span class="static-page-summary-label">Updated</span>
@@ -170,8 +177,8 @@ import InlineValidation from '../../components/ui/InlineValidation.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { jsonSchemaFacade } from '../../lib/api/facade'
-import type { JsonSchemaField } from '../../lib/api/types'
+import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
+import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
 
 interface EditableFieldRow {
   fieldPath: string
@@ -200,6 +207,7 @@ const schemaName = ref('')
 const description = ref('')
 const systemEnumId = ref('')
 const systemLabel = ref('')
+const systemOptions = ref<AppSelectOption[]>([])
 const lastUpdatedStamp = ref('')
 const schemaText = ref('')
 const fieldRows = ref<EditableFieldRow[]>([])
@@ -255,6 +263,13 @@ function formatDate(value: unknown): string {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return value
   return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed)
+}
+
+function toSystemOption(option: EnumOption): AppSelectOption {
+  return {
+    value: option.enumId,
+    label: option.label || option.enumCode || option.description || option.enumId,
+  }
 }
 
 function downloadText(filename: string, text: string): void {
@@ -339,6 +354,22 @@ async function reload(): Promise<void> {
   await loadSchema()
 }
 
+async function loadSystemOptions(): Promise<void> {
+  try {
+    const response = await settingsFacade.listEnumOptions('DarpanSystemSource')
+    const resolvedOptions = (response.options ?? []).map(toSystemOption)
+    if (systemEnumId.value && !resolvedOptions.some((option) => option.value === systemEnumId.value)) {
+      resolvedOptions.unshift({
+        value: systemEnumId.value,
+        label: systemLabel.value || systemEnumId.value,
+      })
+    }
+    systemOptions.value = resolvedOptions
+  } catch (loadError) {
+    error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load reconciliation systems.'
+  }
+}
+
 async function saveRefinedFields(): Promise<void> {
   if (!canEditTarget.value) return
 
@@ -388,7 +419,7 @@ async function deleteSchema(): Promise<void> {
 }
 
 onMounted(() => {
-  void loadSchema()
+  void Promise.all([loadSchema(), loadSystemOptions()])
 })
 </script>
 
@@ -400,5 +431,13 @@ onMounted(() => {
 .schema-editor-row-delete-action {
   width: 2.2rem;
   min-height: 2.2rem;
+}
+
+.schema-editor-summary-card--system {
+  align-content: start;
+}
+
+.schema-editor-summary-select {
+  margin-top: 0.1rem;
 }
 </style>
