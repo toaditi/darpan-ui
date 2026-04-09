@@ -102,6 +102,7 @@ import { shouldAbortWorkflowOnEscape } from './lib/keyboard'
 import { purgeLegacyReconciliationDrafts } from './lib/reconciliationDrafts'
 import { useTheme } from './lib/theme'
 import type { CommandAction } from './lib/types/ux'
+import { DISMISS_INLINE_MENUS_EVENT } from './lib/uiEvents'
 import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState, resolveStaticPageLabel } from './lib/workflowOrigin'
 
 const route = useRoute()
@@ -216,6 +217,7 @@ let workflowEscapeHintTimer: ReturnType<typeof globalThis.setTimeout> | null = n
 
 function openCommandPalette(): void {
   isUserMenuOpen.value = false
+  document.dispatchEvent(new Event(DISMISS_INLINE_MENUS_EVENT))
   isCommandPaletteOpen.value = true
 }
 
@@ -310,7 +312,7 @@ function handleKeyboard(event: KeyboardEvent): void {
 
   if (launcherPressed) {
     event.preventDefault()
-    isCommandPaletteOpen.value = true
+    openCommandPalette()
     return
   }
 

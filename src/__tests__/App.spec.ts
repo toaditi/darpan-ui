@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { DISMISS_INLINE_MENUS_EVENT } from '../lib/uiEvents'
 
 const ensureAuthenticated = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const logoutSession = vi.hoisted(() => vi.fn().mockResolvedValue(true))
@@ -139,6 +140,19 @@ describe('App shell logout', () => {
     expect(wrapper.find('.home-fab').exists()).toBe(true)
     expect(wrapper.find('.app-shell').classes()).toContain('app-shell--static')
     expect(document.body.classList.contains('surface-mode-static')).toBe(true)
+  })
+
+  it('dismisses open inline menus before opening Ask Darpan', async () => {
+    const wrapper = mountApp()
+    await flushPromises()
+
+    const handleDismiss = vi.fn()
+    document.addEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismiss)
+
+    await wrapper.get('.command-bubble').trigger('click')
+
+    document.removeEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismiss)
+    expect(handleDismiss).toHaveBeenCalledTimes(1)
   })
 
   it('keeps Ask Darpan schema navigation limited to valid schema entry points', () => {

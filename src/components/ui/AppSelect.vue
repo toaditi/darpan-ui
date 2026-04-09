@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, ref, type ComponentPublicInstance } from 'vue'
+import { DISMISS_INLINE_MENUS_EVENT, INLINE_MENU_OPEN_EVENT } from '../../lib/uiEvents'
 
 export interface AppSelectOption {
   value: string
@@ -115,9 +116,19 @@ function closeMenu(): void {
   isOpen.value = false
 }
 
+function openMenu(): void {
+  if (isOpen.value) return
+  document.dispatchEvent(new CustomEvent<string>(INLINE_MENU_OPEN_EVENT, { detail: listboxId }))
+  isOpen.value = true
+}
+
 function toggleMenu(): void {
   if (props.disabled || props.options.length === 0) return
-  isOpen.value = !isOpen.value
+  if (isOpen.value) {
+    closeMenu()
+    return
+  }
+  openMenu()
 }
 
 function focusOption(index: number): void {
@@ -133,7 +144,7 @@ function focusRelative(currentIndex: number, delta: number): void {
 
 async function openMenuAndFocus(target: 'selected' | 'last'): Promise<void> {
   if (props.disabled || props.options.length === 0) return
-  isOpen.value = true
+  openMenu()
   await nextTick()
 
   if (target === 'last') {
@@ -164,12 +175,26 @@ function handleDocumentPointerDown(event: MouseEvent): void {
   closeMenu()
 }
 
+function handlePeerOpen(event: Event): void {
+  const openEvent = event as CustomEvent<string>
+  if (openEvent.detail === listboxId) return
+  closeMenu()
+}
+
+function handleDismissInlineMenus(): void {
+  closeMenu()
+}
+
 onMounted(() => {
   document.addEventListener('mousedown', handleDocumentPointerDown)
+  document.addEventListener(INLINE_MENU_OPEN_EVENT, handlePeerOpen)
+  document.addEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismissInlineMenus)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleDocumentPointerDown)
+  document.removeEventListener(INLINE_MENU_OPEN_EVENT, handlePeerOpen)
+  document.removeEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismissInlineMenus)
 })
 </script>
 

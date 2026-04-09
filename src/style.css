@@ -1572,7 +1572,7 @@ label > span {
   display: grid;
   place-items: flex-start center;
   padding: min(16vh, 8rem) var(--space-3) var(--space-3);
-  z-index: 50;
+  z-index: 90;
 }
 
 .floating-actions {

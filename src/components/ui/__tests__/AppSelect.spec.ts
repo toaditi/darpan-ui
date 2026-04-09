@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { defineComponent, ref } from 'vue'
 import AppSelect from '../AppSelect.vue'
+import { DISMISS_INLINE_MENUS_EVENT } from '../../../lib/uiEvents'
 
 describe('AppSelect', () => {
   it('renders a stroked chevron icon instead of a filled triangle glyph', () => {
@@ -66,5 +68,74 @@ describe('AppSelect', () => {
     const selectedOption = wrapper.get('[data-testid="app-select-option"][data-option-value="bearer"]')
     expect(selectedOption.classes()).toContain('app-select-option--selected')
     expect(document.activeElement).toBe(selectedOption.element)
+  })
+
+  it('closes an already-open select when another AppSelect opens', async () => {
+    const TestHarness = defineComponent({
+      components: { AppSelect },
+      setup() {
+        const firstValue = ref('shopify')
+        const secondValue = ref('id')
+
+        return {
+          firstValue,
+          secondValue,
+          schemaOptions: [
+            { value: 'shopify', label: 'Shopify' },
+            { value: 'oms', label: 'OMS' },
+          ],
+          fieldOptions: [
+            { value: 'id', label: '$.id' },
+            { value: 'legacyResourceId', label: '$.legacyResourceId' },
+          ],
+        }
+      },
+      template: `
+        <div>
+          <AppSelect v-model="firstValue" test-id="first-select" :options="schemaOptions" />
+          <AppSelect v-model="secondValue" test-id="second-select" :options="fieldOptions" />
+        </div>
+      `,
+    })
+
+    const wrapper = mount(TestHarness, {
+      attachTo: document.body,
+    })
+
+    await wrapper.get('[data-testid="first-select"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="app-select-option"]')).toHaveLength(2)
+
+    await wrapper.get('[data-testid="second-select"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="first-select"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="second-select"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.findAll('[data-testid="app-select-option"]')).toHaveLength(2)
+    expect(
+      wrapper.find('[data-testid="app-select-option"][data-option-value="shopify"]').exists(),
+    ).toBe(false)
+  })
+
+  it('closes when inline menus are dismissed globally', async () => {
+    const wrapper = mount(AppSelect, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'auth-primary',
+        options: [
+          { value: 'auth-primary', label: 'Primary Auth' },
+          { value: 'auth-backup', label: 'Backup Auth' },
+        ],
+        testId: 'auth-config-select',
+      },
+    })
+
+    await wrapper.get('[data-testid="auth-config-select"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="app-select-option"]')).toHaveLength(2)
+
+    document.dispatchEvent(new Event(DISMISS_INLINE_MENUS_EVENT))
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="auth-config-select"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="app-select-option"]').exists()).toBe(false)
   })
 })
