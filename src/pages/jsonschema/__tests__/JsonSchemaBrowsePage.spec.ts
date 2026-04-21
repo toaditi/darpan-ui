@@ -5,6 +5,13 @@ const list = vi.hoisted(() => vi.fn())
 const route = vi.hoisted(() => ({
   fullPath: '/schemas/library',
 }))
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'john.doe',
+    isSuperAdmin: false,
+    availableCompanies: [] as Array<{ userGroupId: string; label?: string }>,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   RouterLink: {
@@ -20,12 +27,21 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
+}))
+
 import JsonSchemaBrowsePage from '../JsonSchemaBrowsePage.vue'
 
 describe('JsonSchemaBrowsePage', () => {
   beforeEach(() => {
     route.fullPath = '/schemas/library'
     list.mockReset()
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: false,
+      availableCompanies: [],
+    }
     list.mockResolvedValue({
       schemas: Array.from({ length: 7 }, (_, index) => ({
         jsonSchemaId: `schema-${index + 1}`,
@@ -119,5 +135,34 @@ describe('JsonSchemaBrowsePage', () => {
         workflowOriginPath: '/schemas/library',
       },
     })
+  })
+
+  it('does not render tenant labels on schema tiles for super-admin sessions', async () => {
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: true,
+      availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+    }
+    list.mockResolvedValueOnce({
+      schemas: [
+        {
+          jsonSchemaId: 'schema-1',
+          schemaName: 'Schema 1',
+          description: 'Description 1',
+          systemEnumId: 'DarSysOms',
+          systemLabel: 'OMS',
+          companyUserGroupId: 'KREWE',
+          statusId: 'Active',
+          lastUpdatedStamp: '2026-04-08T10:00:00Z',
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 12, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(JsonSchemaBrowsePage)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="schema-library-tile"]').text()).toContain('Description 1')
+    expect(wrapper.get('[data-testid="schema-library-tile"]').text()).not.toContain('Krewe')
   })
 })

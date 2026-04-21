@@ -55,6 +55,11 @@ export interface SessionInfoResponse extends ApiEnvelope {
   sessionInfo?: SessionInfo | null
 }
 
+export interface SaveActiveCompanyResponse extends ApiEnvelope {
+  authenticated: boolean
+  sessionInfo?: SessionInfo | null
+}
+
 export interface LoginSessionResponse extends ApiEnvelope, AuthTokenContract {
   authenticated: boolean
   sessionInfo?: SessionInfo | null
@@ -92,6 +97,8 @@ export interface SaveLlmSettingsResponse extends ApiEnvelope {
 export interface SftpServerRecord {
   sftpServerId: string
   description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
   host: string
   port: number
   username: string
@@ -107,6 +114,8 @@ export interface SaveSftpServerResponse extends ApiEnvelope {
 export interface NsAuthConfigRecord {
   nsAuthConfigId: string
   description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
   authType: string
   username?: string
   tokenUrl?: string
@@ -126,6 +135,8 @@ export interface SaveNsAuthConfigResponse extends ApiEnvelope {
 export interface NsRestletConfigRecord {
   nsRestletConfigId: string
   description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
   endpointUrl: string
   httpMethod: string
   nsAuthConfigId: string
@@ -161,6 +172,8 @@ export interface PilotMappingSummary {
   reconciliationMappingId: string
   mappingName: string
   description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
   requiresSystemSelection: boolean
   defaultFile1SystemEnumId?: string
   defaultFile2SystemEnumId?: string
@@ -185,6 +198,8 @@ export interface PilotMappingDetail {
 export interface SavedPilotMapping {
   reconciliationMappingId: string
   mappingName: string
+  companyUserGroupId?: string
+  companyLabel?: string
   file1SystemEnumId?: string
   file2SystemEnumId?: string
   file1SchemaName?: string
@@ -292,6 +307,8 @@ export interface JsonSchemaSummary {
   description?: string
   systemEnumId?: string
   systemLabel?: string
+  companyUserGroupId?: string
+  companyLabel?: string
   statusId?: string
   createdDate?: string
   lastUpdatedStamp?: string

@@ -5,9 +5,17 @@ import { DISMISS_INLINE_MENUS_EVENT } from '../lib/uiEvents'
 
 const ensureAuthenticated = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const logoutSession = vi.hoisted(() => vi.fn().mockResolvedValue(true))
+const saveActiveCompany = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const replace = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const toggleTheme = vi.hoisted(() => vi.fn())
+type AuthSessionInfo = {
+  userId: string
+  username?: string
+  activeCompanyUserGroupId?: string
+  activeCompanyLabel?: string
+  availableCompanies?: Array<{ userGroupId: string; label?: string }>
+}
 const authState = vi.hoisted(() => ({
   checked: true,
   error: null as string | null,
@@ -15,7 +23,7 @@ const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: '100000',
     username: 'pilot.customer',
-  } as { userId: string; username?: string } | null,
+  } as AuthSessionInfo | null,
   get authenticated() {
     return this.status === 'authenticated'
   },
@@ -63,6 +71,7 @@ vi.mock('../lib/auth', () => ({
   })),
   ensureAuthenticated,
   logoutSession,
+  saveActiveCompany,
   useAuthState: () => authState,
 }))
 
@@ -89,6 +98,7 @@ describe('App shell logout', () => {
   beforeEach(() => {
     ensureAuthenticated.mockClear()
     logoutSession.mockClear()
+    saveActiveCompany.mockClear()
     replace.mockClear()
     push.mockClear()
     toggleTheme.mockClear()
@@ -534,7 +544,7 @@ describe('App shell logout', () => {
     expect(source).not.toContain('#5f6b79')
   })
 
-  it('shows only the theme toggle control inside the user menu', async () => {
+  it('keeps extra helper copy out of the user menu when no company switcher is available', async () => {
     const wrapper = mountApp()
     await flushPromises()
 
@@ -545,11 +555,48 @@ describe('App shell logout', () => {
     expect(wrapper.text()).not.toContain('Theme')
     expect(wrapper.text()).not.toContain('Signed in')
     expect(wrapper.text()).not.toContain('Ask Darpan shortcut: Cmd/Ctrl+K')
+    expect(wrapper.find('.user-menu-company').exists()).toBe(false)
 
     const themeToggle = wrapper.get('.theme-toggle')
     await themeToggle.trigger('click')
 
     expect(toggleTheme).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows available companies and saves a new active company from the user menu', async () => {
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'pilot.customer',
+      activeCompanyUserGroupId: 'KREWE',
+      activeCompanyLabel: 'Krewe',
+      availableCompanies: [
+        { userGroupId: 'KREWE', label: 'Krewe' },
+        { userGroupId: 'GORJANA', label: 'Gorjana' },
+      ],
+    }
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await wrapper.get('.user-fab').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.user-menu-company-active').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="user-company-select"]').text()).toContain('Krewe')
+
+    await wrapper.get('[data-testid="user-company-select"]').trigger('click')
+    await flushPromises()
+
+    const companyOptions = wrapper.findAll('[data-testid="app-select-option"]')
+    expect(companyOptions).toHaveLength(2)
+    expect(companyOptions[0]?.classes()).toContain('app-select-option--selected')
+
+    await wrapper.get('[data-testid="app-select-option"][data-option-value="GORJANA"]').trigger('click')
+    await flushPromises()
+
+    expect(saveActiveCompany).toHaveBeenCalledWith('GORJANA')
+    expect(wrapper.find('.user-menu-card').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="user-company-select"]').text()).toContain('Gorjana')
   })
 
   it('keeps the page visible by avoiding a full-screen user-menu backdrop', async () => {

@@ -2,7 +2,13 @@ import { reactive } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { ApiCallError, clearAuthToken, setAuthTokenContract } from './api/client'
 import { authFacade } from './api/facade'
-import type { LoginSessionResponse, SessionCompanyOption, SessionInfo, SessionInfoResponse } from './api/types'
+import type {
+  LoginSessionResponse,
+  SaveActiveCompanyResponse,
+  SessionCompanyOption,
+  SessionInfo,
+  SessionInfoResponse,
+} from './api/types'
 import { resolveInternalRedirectTarget } from './navigation'
 
 export type AuthStatus = 'authenticated' | 'unauthenticated' | 'verification-failed'
@@ -104,6 +110,14 @@ function normalizeSessionInfo(sessionInfo: SessionInfo | null | undefined): Sess
   }
 }
 
+function applyAuthenticatedSession(sessionInfo: SessionInfo | null | undefined, error: string | null = null): void {
+  applyAuthState({
+    status: 'authenticated',
+    error,
+    sessionInfo: normalizeSessionInfo(sessionInfo),
+  })
+}
+
 function applyAuthState(nextState: {
   status: AuthStatus
   error?: string | null
@@ -122,10 +136,7 @@ function buildContractViolationError(error: unknown): string {
 
 function applyAuthResponse(response: SessionInfoResponse | LoginSessionResponse, unauthenticatedMessage: string): boolean {
   if (response.authenticated) {
-    applyAuthState({
-      status: 'authenticated',
-      sessionInfo: normalizeSessionInfo(response.sessionInfo),
-    })
+    applyAuthenticatedSession(response.sessionInfo)
     return true
   }
 
@@ -239,6 +250,44 @@ export async function logoutSession(): Promise<boolean> {
     applyAuthState({
       status: 'unauthenticated',
       error: error instanceof ApiCallError ? formatApiError(error) : 'Logout failed',
+    })
+    return false
+  }
+}
+
+export async function saveActiveCompany(activeCompanyUserGroupId: string): Promise<boolean> {
+  if (authBypass) {
+    return true
+  }
+
+  try {
+    const response: SaveActiveCompanyResponse = await authFacade.saveActiveCompany(activeCompanyUserGroupId)
+    if (response.authenticated) {
+      const errorMessage = response.ok ? null : response.errors?.[0] ?? 'Unable to switch company.'
+      applyAuthenticatedSession(response.sessionInfo, errorMessage)
+      return response.ok
+    }
+
+    clearAuthToken()
+    applyAuthState({
+      status: 'unauthenticated',
+      error: response.errors?.[0] ?? 'Authentication required to change the active company.',
+    })
+    return false
+  } catch (error) {
+    if (error instanceof ApiCallError && error.status === 401) {
+      clearAuthToken()
+      applyAuthState({
+        status: 'unauthenticated',
+        error: error.message,
+      })
+      return false
+    }
+
+    applyAuthState({
+      status: authState.authenticated ? 'authenticated' : 'verification-failed',
+      error: error instanceof ApiCallError ? formatApiError(error) : buildContractViolationError(error),
+      sessionInfo: authState.sessionInfo,
     })
     return false
   }

@@ -7,6 +7,13 @@ const route = vi.hoisted(() => ({
 }))
 
 const listSftpServers = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'john.doe',
+    isSuperAdmin: false,
+    availableCompanies: [] as Array<{ userGroupId: string; label?: string }>,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   RouterLink: {
@@ -22,12 +29,21 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
+}))
+
 import SftpServersPage from '../SftpServersPage.vue'
 
 describe('SftpServersPage', () => {
   beforeEach(() => {
     route.fullPath = '/settings/sftp'
     listSftpServers.mockReset()
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: false,
+      availableCompanies: [],
+    }
   })
 
   it('renders saved SFTP records as dashboard tiles and links the primary action to the workflow', async () => {
@@ -81,6 +97,37 @@ describe('SftpServersPage', () => {
         workflowOriginPath: '/settings/sftp',
       },
     })
+  })
+
+  it('does not render tenant labels on saved tiles even for super-admin sessions', async () => {
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: true,
+      availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+    }
+    listSftpServers.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      servers: [
+        {
+          sftpServerId: 'sftp-primary',
+          description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
+          host: 'sftp.example.com',
+          port: 22,
+          username: 'etl-user',
+          hasPassword: true,
+          hasPrivateKey: false,
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 12, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(SftpServersPage)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="sftp-server-tile"]').text()).toBe('Primary SFTP')
   })
 
   it('shows an empty-state create action when no SFTP servers exist', async () => {

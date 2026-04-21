@@ -7,6 +7,13 @@ const route = vi.hoisted(() => ({
 }))
 
 const listPilotMappings = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'john.doe',
+    isSuperAdmin: false,
+    availableCompanies: [] as Array<{ userGroupId: string; label?: string }>,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   RouterLink: {
@@ -22,12 +29,21 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
+}))
+
 import RunsSettingsPage from '../RunsSettingsPage.vue'
 
 describe('RunsSettingsPage', () => {
   beforeEach(() => {
     route.fullPath = '/settings/runs'
     listPilotMappings.mockReset()
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: false,
+      availableCompanies: [],
+    }
   })
 
   it('renders saved runs as dashboard tiles and launches the existing create workflow with runs origin state', async () => {
@@ -96,6 +112,37 @@ describe('RunsSettingsPage', () => {
         workflowOriginPath: '/settings/runs',
       },
     })
+  })
+
+  it('does not render tenant labels on saved runs even for super-admin sessions', async () => {
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: true,
+      availableCompanies: [{ userGroupId: 'GORJANA', label: 'Gorjana' }],
+    }
+    listPilotMappings.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      mappings: [
+        {
+          reconciliationMappingId: 'OrderIdMap',
+          mappingName: 'Order ID',
+          description: 'Order ID',
+          companyUserGroupId: 'GORJANA',
+          requiresSystemSelection: false,
+          defaultFile1SystemEnumId: 'OMS',
+          defaultFile2SystemEnumId: 'SHOPIFY',
+          systemOptions: [],
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 12, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(RunsSettingsPage)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="run-tile"]').text()).toBe('Order ID')
   })
 
   it('keeps the runs page on the shared static dashboard contract without page-local styling', () => {

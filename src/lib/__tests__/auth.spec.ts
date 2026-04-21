@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getSessionInfo = vi.hoisted(() => vi.fn())
 const loginSession = vi.hoisted(() => vi.fn())
+const saveActiveCompanyRpc = vi.hoisted(() => vi.fn())
 const logoutSessionRpc = vi.hoisted(() => vi.fn())
 
 function installLocalStorageStub(): void {
@@ -27,6 +28,7 @@ vi.mock('../api/facade', () => ({
   authFacade: {
     getSessionInfo,
     loginSession,
+    saveActiveCompany: saveActiveCompanyRpc,
     logoutSession: logoutSessionRpc,
   },
 }))
@@ -36,6 +38,7 @@ describe('auth state', () => {
     vi.resetModules()
     getSessionInfo.mockReset()
     loginSession.mockReset()
+    saveActiveCompanyRpc.mockReset()
     logoutSessionRpc.mockReset()
     installLocalStorageStub()
   })
@@ -124,6 +127,37 @@ describe('auth state', () => {
     expect(getAuthToken()).toBeNull()
     expect(useAuthState().authenticated).toBe(false)
     expect(useAuthState().status).toBe('unauthenticated')
+    expect(useAuthState().error).toBeNull()
+  })
+
+  it('updates the authenticated session when the active company changes', async () => {
+    saveActiveCompanyRpc.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      authenticated: true,
+      sessionInfo: {
+        userId: 'backend-user',
+        username: 'backend',
+        scopeType: 'COMPANY',
+        customerScopeId: 'GORJANA',
+        activeCompanyUserGroupId: 'GORJANA',
+        activeCompanyLabel: 'Gorjana',
+        availableCompanies: [
+          { userGroupId: 'GORJANA', label: 'Gorjana' },
+          { userGroupId: 'KREWE', label: 'Krewe' },
+        ],
+        isSuperAdmin: false,
+      },
+    })
+
+    const { saveActiveCompany, useAuthState } = await import('../auth')
+
+    await expect(saveActiveCompany('GORJANA')).resolves.toBe(true)
+    expect(saveActiveCompanyRpc).toHaveBeenCalledWith('GORJANA')
+    expect(useAuthState().status).toBe('authenticated')
+    expect(useAuthState().sessionInfo?.activeCompanyUserGroupId).toBe('GORJANA')
+    expect(useAuthState().sessionInfo?.activeCompanyLabel).toBe('Gorjana')
     expect(useAuthState().error).toBeNull()
   })
 

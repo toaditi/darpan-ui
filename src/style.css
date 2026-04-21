@@ -662,6 +662,12 @@ button:disabled {
   min-height: var(--static-tile-min-height);
 }
 
+.static-page-record-tile__meta {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  text-wrap: balance;
+}
+
 .static-page-list-tile {
   width: 100%;
   min-height: 0;
@@ -679,6 +685,10 @@ button:disabled {
   color: var(--text-soft);
   font-size: 0.85rem;
   text-wrap: balance;
+}
+
+.static-page-list-tile__meta--tenant {
+  color: var(--text-muted);
 }
 
 .static-page-module-grid {
@@ -1653,6 +1663,11 @@ label > span {
 .user-menu-name {
   margin: 0;
   font-size: 1.02rem;
+}
+
+.user-menu-company {
+  display: grid;
+  width: 100%;
 }
 
 .user-menu-row {

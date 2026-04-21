@@ -23,6 +23,7 @@ import type {
   SaveLlmSettingsResponse,
   SaveNsAuthConfigResponse,
   SaveDashboardPinnedMappingsResponse,
+  SaveActiveCompanyResponse,
   SavePilotMappingResponse,
   SaveNsRestletConfigResponse,
   SaveRefinedSchemaResponse,
@@ -34,6 +35,7 @@ import type {
 const AUTH = {
   loginSession: 'facade.AuthFacadeServices.login#Session',
   getSessionInfo: 'facade.AuthFacadeServices.get#SessionInfo',
+  saveActiveCompany: 'facade.AuthFacadeServices.save#ActiveCompany',
   logoutSession: 'facade.AuthFacadeServices.logout#Session',
 }
 
@@ -78,6 +80,9 @@ export const authFacade = {
   },
   getSessionInfo(): Promise<SessionInfoResponse> {
     return callService<SessionInfoResponse>(AUTH.getSessionInfo)
+  },
+  saveActiveCompany(activeCompanyUserGroupId: string): Promise<SaveActiveCompanyResponse> {
+    return callService<SaveActiveCompanyResponse>(AUTH.saveActiveCompany, { activeCompanyUserGroupId })
   },
   logoutSession(): Promise<LogoutSessionResponse> {
     return callService<LogoutSessionResponse>(AUTH.logoutSession)

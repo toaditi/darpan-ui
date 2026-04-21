@@ -3,7 +3,7 @@
 
   <div :class="['app-shell', `app-shell--${surfaceMode}`]">
     <section id="main-content" :class="['content-shell', `content-shell--${surfaceMode}`]" tabindex="-1">
-      <RouterView />
+      <RouterView :key="routerViewKey" />
     </section>
   </div>
 
@@ -39,6 +39,16 @@
         <section v-if="isUserMenuOpen" class="user-menu-card" role="dialog" aria-label="User details and settings">
           <p class="user-menu-name">{{ userDisplayName }}</p>
           <p v-if="userStatusText" class="mono-copy">{{ userStatusText }}</p>
+
+          <div v-if="showCompanySwitcher" class="user-menu-company">
+            <AppSelect
+              test-id="user-company-select"
+              :model-value="selectedCompanyUserGroupId"
+              :options="companySelectOptions"
+              :disabled="isCompanySwitcherDisabled"
+              @update:model-value="handleActiveCompanyChange"
+            />
+          </div>
 
           <div class="user-menu-row">
             <button
@@ -95,7 +105,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import CommandPalette from './components/shell/CommandPalette.vue'
-import { buildAuthRedirect, ensureAuthenticated, logoutSession, useAuthState } from './lib/auth'
+import AppSelect from './components/ui/AppSelect.vue'
+import { buildAuthRedirect, ensureAuthenticated, logoutSession, saveActiveCompany, useAuthState } from './lib/auth'
 import { AUTH_REQUIRED_EVENT } from './lib/api/client'
 import { listRecentCommandIds, recordRecentCommand } from './lib/commandSearch'
 import { shouldAbortWorkflowOnEscape } from './lib/keyboard'
@@ -113,16 +124,35 @@ const { theme, toggleTheme } = useTheme()
 const isCommandPaletteOpen = ref(false)
 const isUserMenuOpen = ref(false)
 const isLoggingOut = ref(false)
+const isSwitchingCompany = ref(false)
 const recentCommandIds = ref<string[]>([])
+const selectedCompanyUserGroupId = ref('')
 const userMenuWrap = ref<HTMLElement | null>(null)
 const workflowEscapeHintLabel = ref<string | null>(null)
 const workflowEscapeOriginPath = ref<string | null>(null)
 
 const isShelllessRoute = computed(() => route.name === 'login')
 const surfaceMode = computed<'static' | 'workflow'>(() => (route.meta.surfaceMode === 'workflow' ? 'workflow' : 'static'))
+const routerViewKey = computed(
+  () => `${route.fullPath}::${authState.sessionInfo?.activeCompanyUserGroupId ?? authState.sessionInfo?.scopeType ?? 'anonymous'}`,
+)
 const userDisplayName = computed(() => authState.username ?? authState.userId ?? 'Unknown user')
+const availableCompanies = computed(() => authState.sessionInfo?.availableCompanies ?? [])
+const activeCompanyUserGroupId = computed(() => authState.sessionInfo?.activeCompanyUserGroupId ?? null)
+const companySelectOptions = computed(() =>
+  availableCompanies.value.map((company) => ({
+    value: company.userGroupId,
+    label: company.label || company.userGroupId,
+  })),
+)
+const showCompanySwitcher = computed(() => availableCompanies.value.length > 0)
+const isCompanySwitcherDisabled = computed(
+  () => isSwitchingCompany.value || isLoggingOut.value || availableCompanies.value.length < 2,
+)
 const userStatusText = computed<string | null>(() => {
   if (isLoggingOut.value) return 'Signing out'
+  if (isSwitchingCompany.value) return 'Switching company'
+  if (authState.error) return authState.error
   if (authState.authenticated) return null
   if (authState.status === 'verification-failed') return 'Session check failed'
   if (authState.checked) return 'Not signed in'
@@ -291,6 +321,26 @@ async function handleLogout(): Promise<void> {
   }
 }
 
+async function handleActiveCompanyChange(nextCompanyUserGroupId: string): Promise<void> {
+  if (isSwitchingCompany.value || isLoggingOut.value) return
+  if (!nextCompanyUserGroupId || nextCompanyUserGroupId === activeCompanyUserGroupId.value) return
+
+  const previousCompanyUserGroupId = activeCompanyUserGroupId.value ?? availableCompanies.value[0]?.userGroupId ?? ''
+  selectedCompanyUserGroupId.value = nextCompanyUserGroupId
+  isSwitchingCompany.value = true
+  try {
+    const saved = await saveActiveCompany(nextCompanyUserGroupId)
+    if (!saved) {
+      selectedCompanyUserGroupId.value = previousCompanyUserGroupId
+      return
+    }
+
+    await nextTick()
+  } finally {
+    isSwitchingCompany.value = false
+  }
+}
+
 async function executeCommand(action: CommandAction): Promise<void> {
   isCommandPaletteOpen.value = false
   recentCommandIds.value = recordRecentCommand(action.id)
@@ -389,6 +439,14 @@ function syncWorkflowEscapeOrigin(): void {
     workflowEscapeHintTimer = null
   }, 2000)
 }
+
+watch(
+  [availableCompanies, activeCompanyUserGroupId],
+  ([nextCompanies, nextActiveCompanyUserGroupId]) => {
+    selectedCompanyUserGroupId.value = nextActiveCompanyUserGroupId ?? nextCompanies[0]?.userGroupId ?? ''
+  },
+  { immediate: true },
+)
 
 watch(
   () => route.fullPath,
