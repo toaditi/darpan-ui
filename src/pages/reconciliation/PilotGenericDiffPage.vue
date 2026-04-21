@@ -10,7 +10,7 @@
 
     <template v-else>
       <div class="pilot-diff-layout">
-        <div class="pilot-diff-main">
+        <div ref="stepFocusRegion" class="pilot-diff-main">
           <WorkflowStepForm
             class="workflow-step-shell"
             :question="currentQuestion"
@@ -124,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect from '../../components/workflow/WorkflowSelect.vue'
@@ -176,6 +176,7 @@ const latestSavedOutputLoading = ref(false)
 const latestSavedOutputError = ref<string | null>(null)
 const currentStepIndex = ref(0)
 const inputResetKey = ref(0)
+const stepFocusRegion = ref<HTMLElement | null>(null)
 
 const requestedMappingId = computed(() =>
   typeof route.query.mappingId === 'string' ? route.query.mappingId.trim() : '',
@@ -294,6 +295,14 @@ const primaryButtonLabel = computed(() => {
   return running.value ? 'Running…' : 'Execute'
 })
 
+const stepFocusSelectorById: Record<UploadStep['id'], string> = {
+  mapping: '[data-testid="mapping-select"]',
+  'system-1': '[data-testid="file1-system-select"]',
+  'file-1': '[data-testid="file1-input"]',
+  'system-2': '[data-testid="file2-system-select"]',
+  'file-2': '[data-testid="file2-input"]',
+}
+
 function buildRunResultRoute(outputFileName: string): RouteLocationRaw | null {
   if (!selectedMapping.value || !outputFileName.trim()) return null
 
@@ -339,6 +348,28 @@ function readFailedRunFeedback(error: ApiCallError): FailedRunFeedback {
       ? details.result.processingWarnings.map((item) => String(item))
       : [],
   }
+}
+
+function focusCurrentStepControl(): void {
+  const selector = stepFocusSelectorById[currentStep.value.id]
+  const focusTarget = selector ? stepFocusRegion.value?.querySelector<HTMLElement>(selector) : null
+  focusTarget?.focus()
+}
+
+function focusPrimaryAction(): void {
+  const primaryAction = stepFocusRegion.value?.querySelector<HTMLButtonElement>('[data-testid="pilot-step-primary"]')
+  if (!primaryAction || primaryAction.disabled) return
+  primaryAction.focus()
+}
+
+async function focusCurrentStepControlOnNextTick(): Promise<void> {
+  await nextTick()
+  focusCurrentStepControl()
+}
+
+async function focusPrimaryActionOnNextTick(): Promise<void> {
+  await nextTick()
+  focusPrimaryAction()
 }
 
 function resetWorkflow(): void {
@@ -447,12 +478,14 @@ function onFile1Change(event: Event): void {
   const input = event.target as HTMLInputElement
   file1.value = input.files?.[0] ?? null
   clearRunState()
+  void focusPrimaryActionOnNextTick()
 }
 
 function onFile2Change(event: Event): void {
   const input = event.target as HTMLInputElement
   file2.value = input.files?.[0] ?? null
   clearRunState()
+  void focusPrimaryActionOnNextTick()
 }
 
 function goBack(): void {
@@ -551,6 +584,7 @@ watch(selectedMapping, (mapping) => {
   syncSelectedSystems(mapping)
   clearRunState()
   resetWorkflow()
+  void focusCurrentStepControlOnNextTick()
 })
 
 watch(selectedMappingId, (mappingId) => {
@@ -561,6 +595,15 @@ watch(selectedMappingId, (mappingId) => {
 
   void loadLatestSavedOutput(mappingId)
 })
+
+watch(
+  [() => currentStep.value.id, loadingMappings, showEmptyState],
+  ([, isLoading, isEmptyState]) => {
+    if (isLoading || isEmptyState) return
+    void focusCurrentStepControlOnNextTick()
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   void loadMappings()

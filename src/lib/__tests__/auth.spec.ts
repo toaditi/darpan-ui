@@ -58,8 +58,11 @@ describe('auth state', () => {
       sessionInfo: {
         userId: 'backend-user',
         username: 'backend',
-        scopeType: 'CUSTOMER',
-        customerScopeId: 'backend-user',
+        scopeType: 'COMPANY',
+        customerScopeId: 'KREWE',
+        activeCompanyUserGroupId: 'KREWE',
+        activeCompanyLabel: 'Krewe',
+        availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
         isSuperAdmin: false,
       },
     })
@@ -72,7 +75,8 @@ describe('auth state', () => {
     expect(useAuthState().status).toBe('authenticated')
     expect(useAuthState().userId).toBe('backend-user')
     expect(useAuthState().username).toBe('backend')
-    expect(useAuthState().sessionInfo?.scopeType).toBe('CUSTOMER')
+    expect(useAuthState().sessionInfo?.scopeType).toBe('COMPANY')
+    expect(useAuthState().sessionInfo?.activeCompanyUserGroupId).toBe('KREWE')
   })
 
   it('stores the explicit auth token contract on login and clears it on logout', async () => {
@@ -88,8 +92,11 @@ describe('auth state', () => {
       sessionInfo: {
         userId: 'backend-user',
         username: 'backend',
-        scopeType: 'CUSTOMER',
-        customerScopeId: 'backend-user',
+        scopeType: 'COMPANY',
+        customerScopeId: 'KREWE',
+        activeCompanyUserGroupId: 'KREWE',
+        activeCompanyLabel: 'Krewe',
+        availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
         isSuperAdmin: false,
       },
     })

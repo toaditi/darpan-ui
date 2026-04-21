@@ -940,6 +940,7 @@ button:disabled {
 }
 
 .workflow-form--edit-single-page {
+  padding-top: var(--workflow-form-top-offset);
   --workflow-form-question-size: clamp(1.24rem, 1.5vw, 1.61rem);
   --workflow-form-question-mobile-size: clamp(1.01rem, 4.5vw, 1.31rem);
   --workflow-form-answer-size: clamp(0.89rem, 1.05vw, 1.09rem);

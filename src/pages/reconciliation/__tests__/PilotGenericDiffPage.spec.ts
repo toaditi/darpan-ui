@@ -334,6 +334,67 @@ describe('PilotGenericDiffPage', () => {
     expect(wrapper.text()).toContain('Choose the SHOPIFY file to upload...')
   })
 
+  it('keeps keyboard focus moving through the upload flow after each file selection', async () => {
+    stubFileReader()
+    route.query = {
+      mappingId: 'OrderIdMap',
+      runName: 'Order ID',
+      file1SystemLabel: 'OMS',
+      file2SystemLabel: 'SHOPIFY',
+    }
+    runPilotGenericDiff.mockResolvedValue({
+      ok: true,
+      messages: ['Generated Order-ID-diff-20260331-063304.json.'],
+      errors: [],
+      runResult: {
+        generatedOutput: {
+          fileName: 'Order-ID-diff-20260331-063304.json',
+          mappingName: 'Order ID',
+          totalDifferences: 2,
+          onlyInFile1Count: 1,
+          onlyInFile2Count: 1,
+        },
+        validationErrors: [],
+        processingWarnings: [],
+      },
+    })
+
+    const wrapper = mount(PilotGenericDiffPage, {
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    const file1Input = wrapper.get('[data-testid="file1-input"]')
+    ;(file1Input.element as HTMLInputElement).focus()
+    expect(document.activeElement).toBe(file1Input.element)
+
+    Object.defineProperty(file1Input.element, 'files', {
+      value: [new File(['order_id\n1001\n1002\n'], 'oms-orders.csv', { type: 'text/csv' })],
+      configurable: true,
+    })
+    await file1Input.trigger('change')
+    await flushPromises()
+
+    const primaryAction = wrapper.get('[data-testid="pilot-step-primary"]')
+    expect(document.activeElement).toBe(primaryAction.element)
+
+    await primaryAction.trigger('click')
+    await flushPromises()
+
+    const file2Input = wrapper.get('[data-testid="file2-input"]')
+    expect(document.activeElement).toBe(file2Input.element)
+
+    Object.defineProperty(file2Input.element, 'files', {
+      value: [new File(['order_id\n1002\n1003\n'], 'shopify-orders.csv', { type: 'text/csv' })],
+      configurable: true,
+    })
+    await file2Input.trigger('change')
+    await flushPromises()
+
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="pilot-step-primary"]').element)
+    wrapper.unmount()
+  })
+
   it('surfaces schema validation feedback when the backend blocks an invalid diff run', async () => {
     stubFileReader()
     route.query = {

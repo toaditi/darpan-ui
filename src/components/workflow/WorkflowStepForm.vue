@@ -124,7 +124,6 @@ function handleEnter(event: KeyboardEvent): void {
   justify-items: start;
   align-content: start;
   min-height: 0;
-  padding-top: var(--workflow-form-top-offset);
   margin-inline: auto;
 }
 

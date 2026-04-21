@@ -4,7 +4,12 @@ export interface ApiEnvelope {
   errors: string[]
 }
 
-export type SessionScopeType = 'GLOBAL' | 'CUSTOMER' | 'ANONYMOUS'
+export type SessionScopeType = 'GLOBAL' | 'COMPANY' | 'ANONYMOUS'
+
+export interface SessionCompanyOption {
+  userGroupId: string
+  label?: string
+}
 
 export interface ApiResult<T> extends ApiEnvelope {
   data?: T
@@ -32,6 +37,9 @@ export interface SessionInfo {
   timeZone?: string
   scopeType?: SessionScopeType
   customerScopeId?: string | null
+  activeCompanyUserGroupId?: string | null
+  activeCompanyLabel?: string | null
+  availableCompanies?: SessionCompanyOption[]
   isSuperAdmin?: boolean
 }
 

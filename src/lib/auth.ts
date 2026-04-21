@@ -2,7 +2,7 @@ import { reactive } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { ApiCallError, clearAuthToken, setAuthTokenContract } from './api/client'
 import { authFacade } from './api/facade'
-import type { LoginSessionResponse, SessionInfo, SessionInfoResponse } from './api/types'
+import type { LoginSessionResponse, SessionCompanyOption, SessionInfo, SessionInfoResponse } from './api/types'
 import { resolveInternalRedirectTarget } from './navigation'
 
 export type AuthStatus = 'authenticated' | 'unauthenticated' | 'verification-failed'
@@ -57,17 +57,50 @@ function normalizeUserId(value: unknown): string | null {
   return normalized ? normalized : null
 }
 
+function normalizeCompanyOption(value: unknown): SessionCompanyOption | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const candidate = value as Record<string, unknown>
+  const userGroupId = normalizeUserId(candidate.userGroupId)
+  if (!userGroupId) {
+    return null
+  }
+
+  return {
+    userGroupId,
+    label: candidate.label?.toString()?.trim() || userGroupId,
+  }
+}
+
 function normalizeSessionInfo(sessionInfo: SessionInfo | null | undefined): SessionInfo {
   const normalizedUserId = normalizeUserId(sessionInfo?.userId)
   if (!normalizedUserId) {
     throw new Error('Auth contract violation: authenticated response missing sessionInfo.userId')
   }
 
+  const availableCompanies = Array.isArray(sessionInfo?.availableCompanies)
+    ? sessionInfo.availableCompanies
+        .map((company) => normalizeCompanyOption(company))
+        .filter((company): company is SessionCompanyOption => company !== null)
+    : []
+  const activeCompanyUserGroupId = normalizeUserId(sessionInfo?.activeCompanyUserGroupId)
+  const activeCompany = activeCompanyUserGroupId
+    ? availableCompanies.find((company) => company.userGroupId === activeCompanyUserGroupId) ?? null
+    : null
+
   return {
     ...sessionInfo,
     userId: normalizedUserId,
     username: sessionInfo?.username?.toString()?.trim() || normalizedUserId,
     customerScopeId: sessionInfo?.customerScopeId?.toString()?.trim() || null,
+    activeCompanyUserGroupId,
+    activeCompanyLabel:
+      sessionInfo?.activeCompanyLabel?.toString()?.trim() ||
+      activeCompany?.label ||
+      (activeCompanyUserGroupId ? activeCompanyUserGroupId : null),
+    availableCompanies,
   }
 }
 

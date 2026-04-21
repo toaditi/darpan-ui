@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import WorkflowStepForm from '../WorkflowStepForm.vue'
 
 describe('WorkflowStepForm', () => {
-  it('uses the shared top-offset token so workflow headers sit lower on form pages', () => {
+  it('routes the shared top-offset token through the edit-single-page workflow contract instead of all workflow forms', () => {
     const wrapper = mount(WorkflowStepForm, {
       props: {
         question: 'Update the NetSuite auth profile.',
@@ -15,7 +15,9 @@ describe('WorkflowStepForm', () => {
     const globalSource = readFileSync('src/style.css', 'utf8')
 
     expect(wrapper.get('form').classes()).toContain('wizard-question-shell')
-    expect(source).toContain('padding-top: var(--workflow-form-top-offset);')
+    expect(source).not.toContain('padding-top: var(--workflow-form-top-offset);')
+    expect(globalSource).toContain('.workflow-form--edit-single-page {')
+    expect(globalSource).toContain('padding-top: var(--workflow-form-top-offset);')
     expect(globalSource).toContain('--workflow-form-top-offset: var(--space-6);')
     expect(globalSource).toContain('--workflow-form-top-offset: var(--space-5);')
   })
