@@ -558,7 +558,11 @@ function normalizeDiffDetailRows(
   })
 }
 
-function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsPayload): PilotGeneratedOutput {
+function buildGeneratedOutputFromPayload(
+  fileName: string,
+  payload: DiffDetailsPayload,
+  createdDateOverride?: string,
+): PilotGeneratedOutput {
   const file1LabelValue = normalizeDiffLabel(payload.metadata?.file1Label) || normalizeDiffLabel(file1SystemLabel.value) || 'File 1'
   const file2LabelValue = normalizeDiffLabel(payload.metadata?.file2Label) || normalizeDiffLabel(file2SystemLabel.value) || 'File 2'
   const normalizedRows = normalizeDiffDetailRows(payload, file1LabelValue, file2LabelValue)
@@ -602,7 +606,7 @@ function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsP
       payload.summary?.missingObjectDifferenceCount ??
       onlyInFile1Count + onlyInFile2Count,
     ruleDifferenceCount,
-    createdDate: payload.metadata?.timestamp,
+    createdDate: createdDateOverride || payload.metadata?.timestamp,
   }
 }
 
@@ -633,7 +637,11 @@ async function loadSavedResult(): Promise<void> {
     }
 
     const payload = JSON.parse(contentText) as DiffDetailsPayload
-    const descriptor = buildGeneratedOutputFromPayload(requestedOutputFileName, payload)
+    const descriptor = buildGeneratedOutputFromPayload(
+      requestedOutputFileName,
+      payload,
+      response.outputFile?.createdDate,
+    )
 
     savedOutput.value = descriptor
     downloadableOutputFile.value = response.outputFile ?? null
@@ -641,7 +649,7 @@ async function loadSavedResult(): Promise<void> {
       ...payload.metadata,
       file1Label: descriptor.file1Label,
       file2Label: descriptor.file2Label,
-      timestamp: payload.metadata?.timestamp,
+      timestamp: response.outputFile?.createdDate || payload.metadata?.timestamp,
     }
     diffDetailsSummary.value = {
       totalDifferences: descriptor.totalDifferences,

@@ -54,7 +54,7 @@ import ReconciliationRunResultPage from '../ReconciliationRunResultPage.vue'
 
 enableAutoUnmount(afterEach)
 
-function buildGeneratedOutputFile(contentText: string) {
+function buildGeneratedOutputFile(contentText: string, createdDate = '2026-04-22T08:11:06.134Z') {
   return {
     ok: true,
     messages: [],
@@ -65,6 +65,7 @@ function buildGeneratedOutputFile(contentText: string) {
       sourceFormat: 'json',
       format: 'json',
       contentType: 'application/json',
+      createdDate,
       contentText,
     },
   }
@@ -165,6 +166,7 @@ describe('ReconciliationRunResultPage', () => {
     })
     expect(wrapper.text()).toContain('Products')
     expect(wrapper.text()).toContain('Field mismatches')
+    expect(wrapper.text()).not.toContain('2026-04-22 08:11:06.134')
     expect(wrapper.get('[data-testid="diff-bucket-rule"]').text()).toContain('2')
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(4)
     expect(wrapper.text()).toContain('SKU mismatch')
@@ -227,6 +229,27 @@ describe('ReconciliationRunResultPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Unable to load saved result.')
+  })
+
+  it('prefers file-backed createdDate over raw saved metadata timestamp', async () => {
+    getPilotGeneratedOutput.mockResolvedValue(
+      buildGeneratedOutputFile(
+        JSON.stringify({
+          ...defaultDiffDetails,
+          metadata: {
+            ...defaultDiffDetails.metadata,
+            timestamp: 'legacy timestamp',
+          },
+        }),
+        '2026-04-23T10:15:30.000Z',
+      ),
+    )
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('legacy timestamp')
+    expect(wrapper.text()).not.toContain('Review the saved reconciliation output for this run.')
   })
 
   it('ignores a stale saved-result response after the route switches outputs', async () => {
