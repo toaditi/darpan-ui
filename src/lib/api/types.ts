@@ -282,6 +282,7 @@ export interface GetPilotGeneratedOutputFile {
   sourceFormat: string
   format: string
   contentType: string
+  createdDate?: string
   contentText: string
 }
 
