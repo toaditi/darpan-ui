@@ -14,6 +14,7 @@ import type {
   ListNsRestletConfigsResponse,
   ListPilotGeneratedOutputsResponse,
   ListPilotMappingsResponse,
+  ListPilotRuleSetCompareScopesResponse,
   ListSftpServersResponse,
   LoginSessionResponse,
   LlmSettingsResponse,
@@ -65,6 +66,7 @@ const JSON_SCHEMA = {
 const RECONCILIATION = {
   createPilotMapping: 'facade.ReconciliationFacadeServices.create#PilotMapping',
   listPilotMappings: 'facade.ReconciliationFacadeServices.list#PilotMappings',
+  listPilotRuleSetCompareScopes: 'facade.ReconciliationFacadeServices.list#PilotRuleSetCompareScopes',
   getPilotMapping: 'facade.ReconciliationFacadeServices.get#PilotMapping',
   savePilotMapping: 'facade.ReconciliationFacadeServices.save#PilotMapping',
   saveDashboardPinnedMappings: 'facade.ReconciliationFacadeServices.save#DashboardPinnedMappings',
@@ -152,6 +154,9 @@ export const reconciliationFacade = {
   },
   listPilotMappings(payload: Record<string, unknown>): Promise<ListPilotMappingsResponse> {
     return callService<ListPilotMappingsResponse>(RECONCILIATION.listPilotMappings, payload)
+  },
+  listPilotRuleSetCompareScopes(payload: Record<string, unknown>): Promise<ListPilotRuleSetCompareScopesResponse> {
+    return callService<ListPilotRuleSetCompareScopesResponse>(RECONCILIATION.listPilotRuleSetCompareScopes, payload)
   },
   getPilotMapping(payload: Record<string, unknown>): Promise<GetPilotMappingResponse> {
     return callService<GetPilotMappingResponse>(RECONCILIATION.getPilotMapping, payload)

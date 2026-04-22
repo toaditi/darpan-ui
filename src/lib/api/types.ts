@@ -180,6 +180,27 @@ export interface PilotMappingSummary {
   systemOptions: PilotMappingSystemOption[]
 }
 
+export interface PilotRuleSetCompareScopeSummary {
+  ruleSetId: string
+  ruleSetName: string
+  ruleSetDescription?: string
+  compareScopeId: string
+  compareScopeDescription?: string
+  objectType?: string
+  file1SystemEnumId?: string
+  file1SystemLabel?: string
+  file1FileTypeEnumId?: string
+  file1FileTypeLabel?: string
+  file1PrimaryIdExpression?: string
+  file1SchemaFileName?: string
+  file2SystemEnumId?: string
+  file2SystemLabel?: string
+  file2FileTypeEnumId?: string
+  file2FileTypeLabel?: string
+  file2PrimaryIdExpression?: string
+  file2SchemaFileName?: string
+}
+
 export interface PilotMappingDetailMember {
   mappingMemberId: string
   systemEnumId?: string
@@ -213,21 +234,37 @@ export interface PilotGeneratedOutput {
   sourceFormat: string
   availableFormats: string[]
   preferredDownloadFormat?: string
+  runType?: 'mapping' | 'ruleset'
+  runName?: string
   reconciliationMappingId?: string
   mappingName?: string
+  ruleSetId?: string
+  ruleSetName?: string
+  compareScopeId?: string
+  compareScopeDescription?: string
+  objectType?: string
   reconciliationType?: string
   file1Label?: string
   file2Label?: string
   totalDifferences?: number
   onlyInFile1Count?: number
   onlyInFile2Count?: number
+  missingObjectDifferenceCount?: number
+  ruleDifferenceCount?: number
   createdDate?: string
   sizeBytes?: number
 }
 
 export interface RunPilotGenericDiffResult {
-  reconciliationMappingId: string
+  runType?: 'mapping' | 'ruleset'
+  runName?: string
+  reconciliationMappingId?: string
   mappingName?: string
+  ruleSetId?: string
+  ruleSetName?: string
+  compareScopeId?: string
+  compareScopeDescription?: string
+  objectType?: string
   file1Name?: string
   file2Name?: string
   file1SystemEnumId?: string
@@ -263,6 +300,10 @@ export interface ListNsRestletConfigsResponse extends PaginatedResponse {
 export interface ListPilotMappingsResponse extends PaginatedResponse {
   pinnedReconciliationMappingIds?: string[]
   mappings: PilotMappingSummary[]
+}
+
+export interface ListPilotRuleSetCompareScopesResponse extends PaginatedResponse {
+  compareScopes: PilotRuleSetCompareScopeSummary[]
 }
 
 export interface SaveDashboardPinnedMappingsResponse extends ApiEnvelope {

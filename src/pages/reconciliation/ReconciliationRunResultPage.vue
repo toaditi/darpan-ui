@@ -39,7 +39,7 @@
                 aria-label="Record search"
                 spellcheck="false"
                 autocomplete="off"
-                placeholder="Search record id"
+                placeholder="Search record id or field"
               />
               <button
                 v-if="diffDetailsSearch.trim().length > 0"
@@ -108,12 +108,8 @@
             <strong>{{ row.recordId }}</strong>
           </template>
 
-          <template #cell-jsonText="{ row }">
-            <pre class="run-result-table__json">{{ row.jsonText }}</pre>
-          </template>
-
-          <template #cell-actions>
-            <span aria-hidden="true"></span>
+          <template #cell-detailsText="{ row }">
+            <pre class="run-result-table__details">{{ row.detailsText }}</pre>
           </template>
         </AppTableFrame>
         <p v-else data-testid="diff-details-empty" class="section-note">
@@ -153,7 +149,8 @@ import { reconciliationFacade } from '../../lib/api/facade'
 import type { GetPilotGeneratedOutputFile, PilotGeneratedOutput } from '../../lib/api/types'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
-type DiffBucketKey = 'file-1' | 'file-2'
+type RunMode = 'mapping' | 'ruleset'
+type DiffBucketKey = 'file-1' | 'file-2' | 'rule'
 
 interface DiffDetailsMetadata {
   file1Label?: string
@@ -161,20 +158,36 @@ interface DiffDetailsMetadata {
   timestamp?: string
   reconciliationMappingId?: string
   reconciliationMappingName?: string
+  ruleSetId?: string
+  ruleSetName?: string
+  compareScopeId?: string
+  compareScopeDescription?: string
+  objectType?: string
 }
 
 interface DiffDetailsSummary {
   totalDifferences?: number
   onlyInFile1Count?: number
   onlyInFile2Count?: number
+  missingObjectDifferenceCount?: number
+  ruleDifferenceCount?: number
 }
 
 interface DiffDetailsRecord {
   type?: string
+  diffType?: string
   id?: string | number
+  primaryId?: string | number
+  field?: string
+  file1Value?: unknown
+  file2Value?: unknown
   presentIn?: string
   missingIn?: string
+  message?: string
+  note?: string
   data?: unknown
+  ruleId?: string
+  severity?: string
 }
 
 interface DiffDetailsPayload {
@@ -186,8 +199,9 @@ interface DiffDetailsPayload {
 interface NormalizedDiffDetailRow {
   rowKey: string
   recordId: string
-  missingBucket: DiffBucketKey
-  jsonText: string
+  bucketKey: DiffBucketKey
+  differenceText: string
+  detailsText: string
 }
 
 const diffDetailColumns = [
@@ -197,16 +211,13 @@ const diffDetailColumns = [
     colStyle: { width: '13rem' },
   },
   {
-    key: 'jsonText',
-    label: 'Record JSON',
+    key: 'differenceText',
+    label: 'Difference',
+    colStyle: { width: '18rem' },
   },
   {
-    key: 'actions',
-    label: '',
-    headerAlign: 'end' as const,
-    colClass: 'app-table__action-column',
-    headerClass: 'app-table__action-header',
-    cellClass: 'app-table__action-cell',
+    key: 'detailsText',
+    label: 'Details',
   },
 ]
 
@@ -218,49 +229,83 @@ const downloadableOutputFile = ref<GetPilotGeneratedOutputFile | null>(null)
 const diffDetailsMeta = ref<DiffDetailsMetadata>({})
 const diffDetailsSummary = ref<DiffDetailsSummary>({})
 const diffDetailRows = ref<NormalizedDiffDetailRow[]>([])
-const selectedDiffBuckets = ref<DiffBucketKey[]>(['file-1', 'file-2'])
+const selectedDiffBuckets = ref<DiffBucketKey[]>(['file-1', 'file-2', 'rule'])
 const diffDetailsSearch = ref('')
 const diffDetailsPageIndex = ref(0)
+let loadSavedResultRequestId = 0
 
 const DIFF_DETAILS_PAGE_SIZE = 5
-const DIFF_BUCKET_ORDER: DiffBucketKey[] = ['file-1', 'file-2']
+const DIFF_BUCKET_ORDER: DiffBucketKey[] = ['file-1', 'file-2', 'rule']
 
-const reconciliationMappingId = computed(() =>
-  typeof route.params.reconciliationMappingId === 'string' ? route.params.reconciliationMappingId.trim() : '',
+const runScopeId = computed(() =>
+  typeof route.params.runScopeId === 'string' ? route.params.runScopeId.trim() : '',
 )
 const outputFileName = computed(() =>
   typeof route.params.outputFileName === 'string' ? route.params.outputFileName.trim() : '',
 )
+const runType = computed<RunMode>(() => (route.query.runType === 'ruleset' ? 'ruleset' : 'mapping'))
+const reconciliationMappingId = computed(() =>
+  typeof route.query.mappingId === 'string' ? route.query.mappingId.trim() : '',
+)
+const ruleSetId = computed(() =>
+  typeof route.query.ruleSetId === 'string' ? route.query.ruleSetId.trim() : '',
+)
+const compareScopeId = computed(() =>
+  typeof route.query.compareScopeId === 'string' ? route.query.compareScopeId.trim() : '',
+)
 const runName = computed(() => (typeof route.query.runName === 'string' && route.query.runName.trim() ? route.query.runName.trim() : 'Selected Run'))
 const file1SystemLabel = computed(() =>
-  typeof route.query.file1SystemLabel === 'string' && route.query.file1SystemLabel.trim() ? route.query.file1SystemLabel.trim() : 'System 1',
+  typeof route.query.file1SystemLabel === 'string' && route.query.file1SystemLabel.trim() ? route.query.file1SystemLabel.trim() : 'File 1',
 )
 const file2SystemLabel = computed(() =>
-  typeof route.query.file2SystemLabel === 'string' && route.query.file2SystemLabel.trim() ? route.query.file2SystemLabel.trim() : 'System 2',
+  typeof route.query.file2SystemLabel === 'string' && route.query.file2SystemLabel.trim() ? route.query.file2SystemLabel.trim() : 'File 2',
 )
 const heroDescription = computed(() =>
   savedOutput.value?.createdDate ? formatOutputCreatedDate(savedOutput.value.createdDate) : 'Review the saved reconciliation output for this run.',
 )
 const workflowRoute = computed<RouteLocationRaw>(() => ({
   name: 'reconciliation-pilot-diff',
-  query: {
-    mappingId: reconciliationMappingId.value,
-    runName: runName.value,
-    file1SystemLabel: diffDetailsFile1Label.value,
-    file2SystemLabel: diffDetailsFile2Label.value,
-  },
+  query:
+    runType.value === 'ruleset'
+      ? {
+          runType: 'ruleset',
+          ruleSetId: ruleSetId.value,
+          compareScopeId: compareScopeId.value || runScopeId.value,
+          runName: runName.value,
+          file1SystemLabel: diffDetailsFile1Label.value,
+          file2SystemLabel: diffDetailsFile2Label.value,
+        }
+      : {
+          runType: 'mapping',
+          mappingId: reconciliationMappingId.value || runScopeId.value,
+          runName: runName.value,
+          file1SystemLabel: diffDetailsFile1Label.value,
+          file2SystemLabel: diffDetailsFile2Label.value,
+        },
   state: buildWorkflowOriginState('Run Result', route.fullPath),
 }))
 const runHistoryRoute = computed<RouteLocationRaw>(() => ({
   name: 'reconciliation-run-history',
   params: {
-    reconciliationMappingId: reconciliationMappingId.value,
+    runScopeId: runScopeId.value,
   },
-  query: {
-    runName: runName.value,
-    file1SystemLabel: diffDetailsFile1Label.value,
-    file2SystemLabel: diffDetailsFile2Label.value,
-  },
+  query:
+    runType.value === 'ruleset'
+      ? {
+          runType: 'ruleset',
+          ruleSetId: ruleSetId.value,
+          compareScopeId: compareScopeId.value || runScopeId.value,
+          runName: runName.value,
+          file1SystemLabel: diffDetailsFile1Label.value,
+          file2SystemLabel: diffDetailsFile2Label.value,
+        }
+      : {
+          runType: 'mapping',
+          mappingId: reconciliationMappingId.value || runScopeId.value,
+          runName: runName.value,
+          file1SystemLabel: diffDetailsFile1Label.value,
+          file2SystemLabel: diffDetailsFile2Label.value,
+        },
 }))
 const diffDetailsFile1Label = computed(
   () => diffDetailsMeta.value.file1Label || savedOutput.value?.file1Label || file1SystemLabel.value || 'File 1',
@@ -268,36 +313,57 @@ const diffDetailsFile1Label = computed(
 const diffDetailsFile2Label = computed(
   () => diffDetailsMeta.value.file2Label || savedOutput.value?.file2Label || file2SystemLabel.value || 'File 2',
 )
-const activeDiffBuckets = computed<DiffBucketKey[]>(() =>
-  DIFF_BUCKET_ORDER.filter((bucket) => selectedDiffBuckets.value.includes(bucket)),
+const hasRuleBucket = computed(
+  () =>
+    (diffDetailsSummary.value.ruleDifferenceCount ?? 0) > 0 ||
+    diffDetailRows.value.some((row) => row.bucketKey === 'rule'),
 )
-const diffDetailBuckets = computed(() => [
-  {
-    key: 'file-1' as const,
-    label: `Missing from ${diffDetailsFile1Label.value}`,
-    count:
-      diffDetailsSummary.value.onlyInFile2Count ??
-      diffDetailRows.value.filter((row) => row.missingBucket === 'file-1').length,
-    testId: 'diff-bucket-file-1',
-  },
-  {
-    key: 'file-2' as const,
-    label: `Missing from ${diffDetailsFile2Label.value}`,
-    count:
-      diffDetailsSummary.value.onlyInFile1Count ??
-      diffDetailRows.value.filter((row) => row.missingBucket === 'file-2').length,
-    testId: 'diff-bucket-file-2',
-  },
-])
+const availableDiffBuckets = computed<DiffBucketKey[]>(() =>
+  DIFF_BUCKET_ORDER.filter((bucket) => bucket !== 'rule' || hasRuleBucket.value),
+)
+const activeDiffBuckets = computed<DiffBucketKey[]>(() =>
+  availableDiffBuckets.value.filter((bucket) => selectedDiffBuckets.value.includes(bucket)),
+)
+const diffDetailBuckets = computed(() => {
+  const buckets: Array<{ key: DiffBucketKey; label: string; count: number; testId: string }> = [
+    {
+      key: 'file-1' as const,
+      label: `Missing from ${diffDetailsFile1Label.value}`,
+      count:
+        diffDetailsSummary.value.onlyInFile2Count ??
+        diffDetailRows.value.filter((row) => row.bucketKey === 'file-1').length,
+      testId: 'diff-bucket-file-1',
+    },
+    {
+      key: 'file-2' as const,
+      label: `Missing from ${diffDetailsFile2Label.value}`,
+      count:
+        diffDetailsSummary.value.onlyInFile1Count ??
+        diffDetailRows.value.filter((row) => row.bucketKey === 'file-2').length,
+      testId: 'diff-bucket-file-2',
+    },
+  ]
+  if (hasRuleBucket.value) {
+    buckets.push({
+      key: 'rule' as const,
+      label: 'Field mismatches',
+      count:
+        diffDetailsSummary.value.ruleDifferenceCount ??
+        diffDetailRows.value.filter((row) => row.bucketKey === 'rule').length,
+      testId: 'diff-bucket-rule',
+    })
+  }
+  return buckets
+})
 const activeBucketDiffDetailRows = computed(() =>
-  diffDetailRows.value.filter((row) => activeDiffBuckets.value.includes(row.missingBucket)),
+  diffDetailRows.value.filter((row) => activeDiffBuckets.value.includes(row.bucketKey)),
 )
 const filteredDiffDetailRows = computed(() => {
   const searchValue = diffDetailsSearch.value.trim().toLowerCase()
 
   return activeBucketDiffDetailRows.value.filter((row) => {
     if (!searchValue) return true
-    return row.recordId.toLowerCase().includes(searchValue)
+    return [row.recordId, row.differenceText, row.detailsText].some((value) => value.toLowerCase().includes(searchValue))
   })
 })
 const showDiffDetailsToolbar = computed(
@@ -358,7 +424,7 @@ function downloadText(filename: string, text: string, contentType: string): void
   URL.revokeObjectURL(url)
 }
 
-function stringifyDiffJson(value: unknown): string {
+function stringifyPretty(value: unknown): string {
   if (typeof value === 'string') {
     try {
       return JSON.stringify(JSON.parse(value), null, 2)
@@ -374,27 +440,43 @@ function stringifyDiffJson(value: unknown): string {
   }
 }
 
+function parseDiffData(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
 function resolveDiffRecordId(record: DiffDetailsRecord, rowIndex: number): string {
+  const primaryId = record.primaryId != null && String(record.primaryId).trim() ? String(record.primaryId).trim() : ''
+  if (primaryId) return primaryId
   if (record.id != null && String(record.id).trim()) return String(record.id).trim()
 
-  if (record.data && typeof record.data === 'object') {
+  const parsedData = parseDiffData(record.data)
+  if (parsedData && typeof parsedData === 'object') {
     const candidate =
-      (record.data as Record<string, unknown>).record_id ??
-      (record.data as Record<string, unknown>).recordId ??
-      (record.data as Record<string, unknown>).compare_id ??
-      (record.data as Record<string, unknown>).compareId ??
-      (record.data as Record<string, unknown>).id
+      (parsedData as Record<string, unknown>).record_id ??
+      (parsedData as Record<string, unknown>).recordId ??
+      (parsedData as Record<string, unknown>).compare_id ??
+      (parsedData as Record<string, unknown>).compareId ??
+      (parsedData as Record<string, unknown>).productId ??
+      (parsedData as Record<string, unknown>).id
     if (candidate != null && String(candidate).trim()) return String(candidate).trim()
   }
 
   return `row-${rowIndex + 1}`
 }
 
-function resolveMissingBucket(
-  record: DiffDetailsRecord,
-  file1LabelValue: string,
-  file2LabelValue: string,
-): DiffBucketKey {
+function resolveBucket(record: DiffDetailsRecord, file1LabelValue: string, file2LabelValue: string): DiffBucketKey {
+  const diffTypeToken = normalizeDiffToken(record.diffType || record.type)
+  if (diffTypeToken === 'field_mismatch' || record.field || record.file1Value !== undefined || record.file2Value !== undefined) {
+    return 'rule'
+  }
+  if (diffTypeToken === 'missing_in_file_1') return 'file-1'
+  if (diffTypeToken === 'missing_in_file_2') return 'file-2'
+
   const missingToken = normalizeDiffToken(record.missingIn)
   const file1Token = normalizeDiffToken(file1LabelValue)
   const file2Token = normalizeDiffToken(file2LabelValue)
@@ -410,24 +492,54 @@ function resolveMissingBucket(
   return 'file-2'
 }
 
+function buildDifferenceText(record: DiffDetailsRecord, bucketKey: DiffBucketKey): string {
+  if (bucketKey === 'rule') {
+    const message = normalizeDiffLabel(record.message)
+    if (message) return message
+    const field = normalizeDiffLabel(record.field) || 'field'
+    const file1Value = record.file1Value == null ? 'null' : String(record.file1Value)
+    const file2Value = record.file2Value == null ? 'null' : String(record.file2Value)
+    return `${field}: ${file1Value} -> ${file2Value}`
+  }
+
+  return (
+    normalizeDiffLabel(record.message) ||
+    normalizeDiffLabel(record.note) ||
+    `Present in ${normalizeDiffLabel(record.presentIn) || 'file 2'}, missing in ${normalizeDiffLabel(record.missingIn) || 'file 1'}`
+  )
+}
+
+function buildDetailsText(record: DiffDetailsRecord, parsedData: unknown, bucketKey: DiffBucketKey): string {
+  if (parsedData != null && (typeof parsedData !== 'string' || parsedData.trim().length > 0)) {
+    return stringifyPretty(parsedData)
+  }
+
+  if (bucketKey === 'rule') {
+    return stringifyPretty({
+      field: record.field,
+      file1Value: record.file1Value,
+      file2Value: record.file2Value,
+      ruleId: record.ruleId,
+      severity: record.severity,
+      message: record.message,
+    })
+  }
+
+  return stringifyPretty({
+    presentIn: record.presentIn,
+    missingIn: record.missingIn,
+    message: record.message || record.note,
+  })
+}
+
 function normalizeDiffDetailRows(
   payload: DiffDetailsPayload,
   file1LabelValue: string,
   file2LabelValue: string,
 ): NormalizedDiffDetailRow[] {
   return (payload.differences ?? []).map((record, index) => {
-    const parsedData =
-      typeof record.data === 'string'
-        ? (() => {
-            try {
-              return JSON.parse(record.data)
-            } catch {
-              return record.data
-            }
-          })()
-        : record.data
-
-    const missingBucket = resolveMissingBucket(record, file1LabelValue, file2LabelValue)
+    const parsedData = parseDiffData(record.data)
+    const bucketKey = resolveBucket(record, file1LabelValue, file2LabelValue)
     const recordId = resolveDiffRecordId(
       {
         ...record,
@@ -437,10 +549,11 @@ function normalizeDiffDetailRows(
     )
 
     return {
-      rowKey: `${missingBucket}-${recordId}-${index}`,
+      rowKey: `${bucketKey}-${recordId}-${index}`,
       recordId,
-      missingBucket,
-      jsonText: stringifyDiffJson(parsedData),
+      bucketKey,
+      differenceText: buildDifferenceText(record, bucketKey),
+      detailsText: buildDetailsText(record, parsedData, bucketKey),
     }
   })
 }
@@ -448,32 +561,57 @@ function normalizeDiffDetailRows(
 function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsPayload): PilotGeneratedOutput {
   const file1LabelValue = normalizeDiffLabel(payload.metadata?.file1Label) || normalizeDiffLabel(file1SystemLabel.value) || 'File 1'
   const file2LabelValue = normalizeDiffLabel(payload.metadata?.file2Label) || normalizeDiffLabel(file2SystemLabel.value) || 'File 2'
-  const totalDifferences = payload.summary?.totalDifferences ?? payload.differences?.length ?? 0
+  const normalizedRows = normalizeDiffDetailRows(payload, file1LabelValue, file2LabelValue)
+  const ruleDifferenceCount =
+    payload.summary?.ruleDifferenceCount ??
+    normalizedRows.filter((row) => row.bucketKey === 'rule').length
   const onlyInFile1Count =
     payload.summary?.onlyInFile1Count ??
-    (payload.differences ?? []).filter((record) => resolveMissingBucket(record, file1LabelValue, file2LabelValue) === 'file-2').length
+    normalizedRows.filter((row) => row.bucketKey === 'file-2').length
   const onlyInFile2Count =
     payload.summary?.onlyInFile2Count ??
-    (payload.differences ?? []).filter((record) => resolveMissingBucket(record, file1LabelValue, file2LabelValue) === 'file-1').length
+    normalizedRows.filter((row) => row.bucketKey === 'file-1').length
 
   return {
     fileName,
     sourceFormat: 'json',
     availableFormats: ['json', 'csv'],
     preferredDownloadFormat: 'csv',
-    reconciliationMappingId: payload.metadata?.reconciliationMappingId || reconciliationMappingId.value,
-    mappingName: payload.metadata?.reconciliationMappingName || runName.value,
+    runType:
+      payload.metadata?.ruleSetId || payload.metadata?.compareScopeId
+        ? 'ruleset'
+        : 'mapping',
+    runName:
+      payload.metadata?.compareScopeDescription ||
+      payload.metadata?.reconciliationMappingName ||
+      payload.metadata?.ruleSetName ||
+      runName.value,
+    reconciliationMappingId: payload.metadata?.reconciliationMappingId || reconciliationMappingId.value || undefined,
+    mappingName: payload.metadata?.reconciliationMappingName || undefined,
+    ruleSetId: payload.metadata?.ruleSetId || ruleSetId.value || undefined,
+    ruleSetName: payload.metadata?.ruleSetName || undefined,
+    compareScopeId: payload.metadata?.compareScopeId || compareScopeId.value || undefined,
+    compareScopeDescription: payload.metadata?.compareScopeDescription || undefined,
+    objectType: payload.metadata?.objectType || undefined,
     file1Label: file1LabelValue,
     file2Label: file2LabelValue,
-    totalDifferences,
+    totalDifferences: payload.summary?.totalDifferences ?? normalizedRows.length,
     onlyInFile1Count,
     onlyInFile2Count,
+    missingObjectDifferenceCount:
+      payload.summary?.missingObjectDifferenceCount ??
+      onlyInFile1Count + onlyInFile2Count,
+    ruleDifferenceCount,
     createdDate: payload.metadata?.timestamp,
   }
 }
 
 async function loadSavedResult(): Promise<void> {
-  if (!reconciliationMappingId.value || !outputFileName.value) {
+  const requestId = ++loadSavedResultRequestId
+  const requestedRunScopeId = runScopeId.value
+  const requestedOutputFileName = outputFileName.value
+
+  if (!requestedRunScopeId || !requestedOutputFileName) {
     resetDiffDetailsState()
     loadError.value = 'Saved result details are unavailable without a selected run result.'
     return
@@ -485,20 +623,22 @@ async function loadSavedResult(): Promise<void> {
 
   try {
     const response = await reconciliationFacade.getPilotGeneratedOutput({
-      fileName: outputFileName.value,
+      fileName: requestedOutputFileName,
       format: 'json',
     })
+    if (requestId !== loadSavedResultRequestId) return
     const contentText = response.outputFile?.contentText
     if (!contentText) {
       throw new Error('Unable to load saved result.')
     }
 
     const payload = JSON.parse(contentText) as DiffDetailsPayload
-    const descriptor = buildGeneratedOutputFromPayload(outputFileName.value, payload)
+    const descriptor = buildGeneratedOutputFromPayload(requestedOutputFileName, payload)
 
     savedOutput.value = descriptor
     downloadableOutputFile.value = response.outputFile ?? null
     diffDetailsMeta.value = {
+      ...payload.metadata,
       file1Label: descriptor.file1Label,
       file2Label: descriptor.file2Label,
       timestamp: payload.metadata?.timestamp,
@@ -507,13 +647,18 @@ async function loadSavedResult(): Promise<void> {
       totalDifferences: descriptor.totalDifferences,
       onlyInFile1Count: descriptor.onlyInFile1Count,
       onlyInFile2Count: descriptor.onlyInFile2Count,
+      missingObjectDifferenceCount: descriptor.missingObjectDifferenceCount,
+      ruleDifferenceCount: descriptor.ruleDifferenceCount,
     }
     diffDetailRows.value = normalizeDiffDetailRows(payload, descriptor.file1Label || 'File 1', descriptor.file2Label || 'File 2')
   } catch (error) {
+    if (requestId !== loadSavedResultRequestId) return
     resetDiffDetailsState()
     loadError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved result.'
   } finally {
-    loading.value = false
+    if (requestId === loadSavedResultRequestId) {
+      loading.value = false
+    }
   }
 }
 
@@ -566,7 +711,7 @@ watch(filteredDiffDetailRows, () => {
   }
 })
 
-watch([reconciliationMappingId, outputFileName], () => {
+watch([runScopeId, outputFileName], () => {
   void loadSavedResult()
 }, { immediate: true })
 </script>
@@ -588,7 +733,7 @@ watch([reconciliationMappingId, outputFileName], () => {
 
 .pilot-diff-details__bucket-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
@@ -678,7 +823,7 @@ watch([reconciliationMappingId, outputFileName], () => {
   color: var(--text);
 }
 
-.run-result-table__json {
+.run-result-table__details {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
@@ -725,10 +870,6 @@ watch([reconciliationMappingId, outputFileName], () => {
 
   .pilot-diff-details__bucket-grid {
     grid-template-columns: 1fr;
-  }
-
-  .run-result-table__id-cell {
-    width: auto;
   }
 }
 </style>

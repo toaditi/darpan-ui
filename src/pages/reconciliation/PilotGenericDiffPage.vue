@@ -4,8 +4,8 @@
 
     <EmptyState
       v-if="showEmptyState"
-      title="No mappings available"
-      description="Create or seed at least one reconciliation mapping before running the diff."
+      :title="emptyStateTitle"
+      :description="emptyStateDescription"
     />
 
     <template v-else>
@@ -15,7 +15,7 @@
             class="workflow-step-shell"
             :question="currentQuestion"
             :primary-label="primaryButtonLabel"
-            :submit-disabled="!canContinue || running || loadingMappings"
+            :submit-disabled="!canContinue || running || loadingRunOptions"
             :show-back="currentStepIndex > 0"
             :allow-select-enter="true"
             :allow-file-enter="currentStep.id === 'file-1' || currentStep.id === 'file-2'"
@@ -27,9 +27,29 @@
               <WorkflowSelect
                 v-model="selectedMappingId"
                 test-id="mapping-select"
-                :disabled="loadingMappings || mappings.length === 0"
+                :disabled="loadingRunOptions || mappings.length === 0"
                 :options="mappingOptions"
                 placeholder="Select a run..."
+              />
+            </label>
+
+            <label v-else-if="currentStep.id === 'rule-set'" class="wizard-input-shell">
+              <WorkflowSelect
+                v-model="selectedRuleSetId"
+                test-id="rule-set-select"
+                :disabled="loadingRunOptions || ruleSetOptions.length === 0"
+                :options="ruleSetOptions"
+                placeholder="Select a RuleSet..."
+              />
+            </label>
+
+            <label v-else-if="currentStep.id === 'compare-scope'" class="wizard-input-shell">
+              <WorkflowSelect
+                v-model="selectedCompareScopeId"
+                test-id="compare-scope-select"
+                :disabled="loadingRunOptions || compareScopeOptions.length === 0"
+                :options="compareScopeOptions"
+                placeholder="Select a compare scope..."
               />
             </label>
 
@@ -58,6 +78,10 @@
                 {{ activeFile?.name || activeFilePlaceholder }}
               </span>
             </label>
+
+            <p v-if="currentStep.id === 'compare-scope' && selectedCompareScope" class="section-note">
+              {{ compareScopeContext }}
+            </p>
 
             <InlineValidation v-if="runError" tone="error" :message="runError" />
           </WorkflowStepForm>
@@ -93,7 +117,7 @@
               <div class="pilot-run-history-card__head">
                 <span class="pilot-run-history-card__date">{{ formatOutputCreatedDate(latestSavedOutput.createdDate) }}</span>
               </div>
-              <dl class="pilot-run-history-card__metrics">
+              <dl class="pilot-run-history-card__metrics" :class="{ 'pilot-run-history-card__metrics--wide': showRuleDifferenceMetric(latestSavedOutput) }">
                 <div>
                   <dt>Total differences</dt>
                   <dd>{{ latestSavedOutput.totalDifferences ?? 0 }}</dd>
@@ -105,6 +129,10 @@
                 <div>
                   <dt>Missing from {{ latestSavedOutput.file2Label || file2PromptSystemName }}</dt>
                   <dd>{{ latestSavedOutput.onlyInFile1Count ?? 0 }}</dd>
+                </div>
+                <div v-if="showRuleDifferenceMetric(latestSavedOutput)">
+                  <dt>Field mismatches</dt>
+                  <dd>{{ latestSavedOutput.ruleDifferenceCount ?? 0 }}</dd>
                 </div>
               </dl>
             </RouterLink>
@@ -124,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect from '../../components/workflow/WorkflowSelect.vue'
@@ -133,10 +161,17 @@ import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
-import type { PilotGeneratedOutput, PilotMappingSummary, PilotMappingSystemOption } from '../../lib/api/types'
+import type {
+  PilotGeneratedOutput,
+  PilotMappingSummary,
+  PilotMappingSystemOption,
+  PilotRuleSetCompareScopeSummary,
+} from '../../lib/api/types'
+
+type RunMode = 'mapping' | 'ruleset'
 
 interface UploadStep {
-  id: 'mapping' | 'system-1' | 'file-1' | 'system-2' | 'file-2'
+  id: 'mapping' | 'rule-set' | 'compare-scope' | 'system-1' | 'file-1' | 'system-2' | 'file-2'
 }
 
 type FailedRunFeedback = {
@@ -144,25 +179,35 @@ type FailedRunFeedback = {
   processingWarnings: string[]
 }
 
-const baseUploadSteps: UploadStep[] = [
+const legacyMappingSteps: UploadStep[] = [
   { id: 'mapping' },
   { id: 'file-1' },
   { id: 'file-2' },
 ]
-const systemUploadSteps: UploadStep[] = [
+const legacyMappingSystemSteps: UploadStep[] = [
   { id: 'mapping' },
   { id: 'system-1' },
   { id: 'file-1' },
   { id: 'system-2' },
   { id: 'file-2' },
 ]
+const ruleSetSteps: UploadStep[] = [
+  { id: 'rule-set' },
+  { id: 'compare-scope' },
+  { id: 'file-1' },
+  { id: 'file-2' },
+]
 
 const route = useRoute()
 const router = useRouter()
+
 const mappings = ref<PilotMappingSummary[]>([])
-const loadingMappings = ref(false)
+const compareScopes = ref<PilotRuleSetCompareScopeSummary[]>([])
+const loadingRunOptions = ref(false)
 const loadError = ref<string | null>(null)
 const selectedMappingId = ref('')
+const selectedRuleSetId = ref('')
+const selectedCompareScopeId = ref('')
 const file1SystemEnumId = ref('')
 const file2SystemEnumId = ref('')
 const file1 = ref<File | null>(null)
@@ -177,9 +222,18 @@ const latestSavedOutputError = ref<string | null>(null)
 const currentStepIndex = ref(0)
 const inputResetKey = ref(0)
 const stepFocusRegion = ref<HTMLElement | null>(null)
+let loadRunOptionsRequestId = 0
+let loadLatestSavedOutputRequestId = 0
 
+const requestedRunType = computed<RunMode | ''>(() => (route.query.runType === 'mapping' || route.query.runType === 'ruleset' ? route.query.runType : ''))
 const requestedMappingId = computed(() =>
   typeof route.query.mappingId === 'string' ? route.query.mappingId.trim() : '',
+)
+const requestedRuleSetId = computed(() =>
+  typeof route.query.ruleSetId === 'string' ? route.query.ruleSetId.trim() : '',
+)
+const requestedCompareScopeId = computed(() =>
+  typeof route.query.compareScopeId === 'string' ? route.query.compareScopeId.trim() : '',
 )
 const requestedRunName = computed(() => (typeof route.query.runName === 'string' ? route.query.runName.trim() : ''))
 const requestedFile1SystemLabel = computed(() =>
@@ -188,7 +242,24 @@ const requestedFile1SystemLabel = computed(() =>
 const requestedFile2SystemLabel = computed(() =>
   typeof route.query.file2SystemLabel === 'string' ? route.query.file2SystemLabel.trim() : '',
 )
-const showEmptyState = computed(() => !loadingMappings.value && mappings.value.length === 0 && !loadError.value)
+const isLegacyMappingMode = computed(() => {
+  if (requestedRunType.value === 'mapping') return true
+  if (requestedRunType.value === 'ruleset') return false
+  return requestedMappingId.value.length > 0 && !requestedRuleSetId.value && !requestedCompareScopeId.value
+})
+const selectedMode = computed<RunMode>(() => (isLegacyMappingMode.value ? 'mapping' : 'ruleset'))
+const showEmptyState = computed(() =>
+  !loadingRunOptions.value &&
+  !loadError.value &&
+  (selectedMode.value === 'mapping' ? mappings.value.length === 0 : compareScopes.value.length === 0),
+)
+const emptyStateTitle = computed(() => (selectedMode.value === 'mapping' ? 'No mappings available' : 'No RuleSets available'))
+const emptyStateDescription = computed(() =>
+  selectedMode.value === 'mapping'
+    ? 'Create or seed at least one reconciliation mapping before running the diff.'
+    : 'Create or seed at least one RuleSet compare scope before running the diff.',
+)
+
 const selectedMapping = computed(() => mappings.value.find((mapping) => mapping.reconciliationMappingId === selectedMappingId.value) ?? null)
 const mappingOptions = computed(() =>
   mappings.value.map((mapping) => ({ value: mapping.reconciliationMappingId, label: mapping.mappingName })),
@@ -201,40 +272,92 @@ const systemSelectOptions = computed(() =>
   })),
 )
 const requiresSystemSelection = computed(() => selectedMapping.value?.requiresSystemSelection === true)
-const shouldSkipMappingStep = computed(
-  () => requestedMappingId.value.length > 0 && selectedMapping.value?.reconciliationMappingId === requestedMappingId.value,
+const selectedRuleSetCompareScopes = computed(() =>
+  compareScopes.value.filter((scope) => scope.ruleSetId === selectedRuleSetId.value),
 )
+const selectedCompareScope = computed(
+  () =>
+    selectedRuleSetCompareScopes.value.find((scope) => scope.compareScopeId === selectedCompareScopeId.value) ??
+    compareScopes.value.find((scope) => scope.compareScopeId === selectedCompareScopeId.value) ??
+    null,
+)
+const ruleSetOptions = computed(() => {
+  const seen = new Set<string>()
+  return compareScopes.value
+    .filter((scope) => {
+      if (seen.has(scope.ruleSetId)) return false
+      seen.add(scope.ruleSetId)
+      return true
+    })
+    .map((scope) => ({
+      value: scope.ruleSetId,
+      label: scope.ruleSetName,
+    }))
+})
+const compareScopeOptions = computed(() =>
+  selectedRuleSetCompareScopes.value.map((scope) => ({
+    value: scope.compareScopeId,
+    label: scope.compareScopeDescription || scope.objectType || scope.compareScopeId,
+  })),
+)
+const shouldSkipMappingStep = computed(
+  () => isLegacyMappingMode.value && requestedMappingId.value.length > 0 && selectedMapping.value?.reconciliationMappingId === requestedMappingId.value,
+)
+const shouldSkipRuleSetStep = computed(
+  () => !isLegacyMappingMode.value && requestedRuleSetId.value.length > 0 && selectedRuleSetId.value === requestedRuleSetId.value,
+)
+const shouldSkipCompareScopeStep = computed(() => {
+  if (isLegacyMappingMode.value || !selectedCompareScope.value) return false
+  if (selectedRuleSetCompareScopes.value.length <= 1) return true
+  return requestedCompareScopeId.value.length > 0 && selectedCompareScope.value.compareScopeId === requestedCompareScopeId.value
+})
 const workflowSteps = computed<UploadStep[]>(() => {
-  const steps = requiresSystemSelection.value ? systemUploadSteps : baseUploadSteps
-  return shouldSkipMappingStep.value ? steps.filter((step) => step.id !== 'mapping') : steps
+  if (isLegacyMappingMode.value) {
+    const steps = requiresSystemSelection.value ? legacyMappingSystemSteps : legacyMappingSteps
+    return shouldSkipMappingStep.value ? steps.filter((step) => step.id !== 'mapping') : steps
+  }
+
+  let steps = ruleSetSteps
+  if (shouldSkipRuleSetStep.value) steps = steps.filter((step) => step.id !== 'rule-set')
+  if (shouldSkipCompareScopeStep.value) steps = steps.filter((step) => step.id !== 'compare-scope')
+  return steps
 })
 const currentStep = computed<UploadStep>(() => workflowSteps.value[currentStepIndex.value] ?? workflowSteps.value[0]!)
 const progressPercent = computed(() => ((Math.max(1, currentStepIndex.value + 1) / workflowSteps.value.length) * 100).toFixed(2))
-const file1SystemLabel = computed(() => {
+const selectedRuleSetName = computed(() => selectedRuleSetCompareScopes.value[0]?.ruleSetName || '')
+const activeRunName = computed(() => {
+  if (selectedMode.value === 'mapping') return selectedMapping.value?.mappingName || requestedRunName.value || 'Selected Run'
+  return selectedCompareScope.value?.compareScopeDescription || selectedRuleSetName.value || requestedRunName.value || 'Selected Run'
+})
+const file1PromptSystemName = computed(() => {
+  if (selectedMode.value === 'ruleset') {
+    return selectedCompareScope.value?.file1SystemLabel || requestedFile1SystemLabel.value || 'File 1'
+  }
   const option = selectedSystemOptions.value.find((systemOption) => systemOption.enumId === file1SystemEnumId.value)
-  return option?.label || option?.enumCode || option?.enumId || ''
+  return option?.label || option?.enumCode || option?.enumId || requestedFile1SystemLabel.value || 'System 1'
 })
-const file2SystemLabel = computed(() => {
+const file2PromptSystemName = computed(() => {
+  if (selectedMode.value === 'ruleset') {
+    return selectedCompareScope.value?.file2SystemLabel || requestedFile2SystemLabel.value || 'File 2'
+  }
   const option = selectedSystemOptions.value.find((systemOption) => systemOption.enumId === file2SystemEnumId.value)
-  return option?.label || option?.enumCode || option?.enumId || ''
+  return option?.label || option?.enumCode || option?.enumId || requestedFile2SystemLabel.value || 'System 2'
 })
-const activeRunName = computed(() => selectedMapping.value?.mappingName || requestedRunName.value || 'Selected Run')
-const file1PromptSystemName = computed(() => file1SystemLabel.value || requestedFile1SystemLabel.value || 'System 1')
-const file2PromptSystemName = computed(() => file2SystemLabel.value || requestedFile2SystemLabel.value || 'System 2')
+const compareScopeContext = computed(() => {
+  if (!selectedCompareScope.value) return ''
+  return `${selectedCompareScope.value.objectType || 'Object'} by ${selectedCompareScope.value.file1PrimaryIdExpression || 'primary id'} and ${selectedCompareScope.value.file2PrimaryIdExpression || 'primary id'}`
+})
+const selectedRunScopeId = computed(() => (selectedMode.value === 'mapping' ? selectedMapping.value?.reconciliationMappingId || '' : selectedCompareScope.value?.compareScopeId || ''))
 const latestSavedOutputRoute = computed<RouteLocationRaw | null>(() => buildRunResultRoute(latestSavedOutput.value?.fileName ?? ''))
 const runHistoryRoute = computed<RouteLocationRaw | null>(() => {
-  if (!selectedMapping.value) return null
+  if (!selectedRunScopeId.value) return null
 
   return {
     name: 'reconciliation-run-history',
     params: {
-      reconciliationMappingId: selectedMapping.value.reconciliationMappingId,
+      runScopeId: selectedRunScopeId.value,
     },
-    query: {
-      runName: activeRunName.value,
-      file1SystemLabel: file1PromptSystemName.value,
-      file2SystemLabel: file2PromptSystemName.value,
-    },
+    query: buildRunRouteQuery(),
   }
 })
 const activeSystemValue = computed({
@@ -251,6 +374,10 @@ const currentQuestion = computed(() => {
   switch (currentStep.value.id) {
     case 'mapping':
       return 'Select a Run'
+    case 'rule-set':
+      return 'Select a RuleSet'
+    case 'compare-scope':
+      return `Select the compare scope for ${selectedRuleSetName.value || 'this RuleSet'}`
     case 'system-1':
       return `Select the first system for ${activeRunName.value}`
     case 'file-1':
@@ -273,6 +400,10 @@ const canContinue = computed(() => {
   switch (currentStep.value.id) {
     case 'mapping':
       return !!selectedMapping.value
+    case 'rule-set':
+      return !!selectedRuleSetId.value
+    case 'compare-scope':
+      return !!selectedCompareScope.value
     case 'system-1':
       return !!file1SystemEnumId.value
     case 'file-1':
@@ -288,7 +419,7 @@ const canContinue = computed(() => {
 const hasFeedbackMessages = computed(() => validationErrors.value.length > 0 || processingWarnings.value.length > 0)
 const shouldCenterStage = computed(() => !showEmptyState.value && !hasFeedbackMessages.value)
 const showLatestSavedOutputBoard = computed(
-  () => !!selectedMapping.value && (latestSavedOutputLoading.value || !!latestSavedOutputError.value || !!latestSavedOutput.value),
+  () => !!selectedRunScopeId.value && (latestSavedOutputLoading.value || !!latestSavedOutputError.value || !!latestSavedOutput.value),
 )
 const primaryButtonLabel = computed(() => {
   if (currentStep.value.id !== workflowSteps.value[workflowSteps.value.length - 1]?.id) return 'Next'
@@ -297,26 +428,46 @@ const primaryButtonLabel = computed(() => {
 
 const stepFocusSelectorById: Record<UploadStep['id'], string> = {
   mapping: '[data-testid="mapping-select"]',
+  'rule-set': '[data-testid="rule-set-select"]',
+  'compare-scope': '[data-testid="compare-scope-select"]',
   'system-1': '[data-testid="file1-system-select"]',
   'file-1': '[data-testid="file1-input"]',
   'system-2': '[data-testid="file2-system-select"]',
   'file-2': '[data-testid="file2-input"]',
 }
 
+function buildRunRouteQuery(): Record<string, string> {
+  if (selectedMode.value === 'mapping') {
+    return {
+      runType: 'mapping',
+      mappingId: selectedMapping.value?.reconciliationMappingId || requestedMappingId.value,
+      runName: activeRunName.value,
+      file1SystemLabel: file1PromptSystemName.value,
+      file2SystemLabel: file2PromptSystemName.value,
+    }
+  }
+
+  return {
+    runType: 'ruleset',
+    ruleSetId: selectedCompareScope.value?.ruleSetId || selectedRuleSetId.value || requestedRuleSetId.value,
+    compareScopeId: selectedCompareScope.value?.compareScopeId || requestedCompareScopeId.value,
+    runName: activeRunName.value,
+    objectType: selectedCompareScope.value?.objectType || '',
+    file1SystemLabel: file1PromptSystemName.value,
+    file2SystemLabel: file2PromptSystemName.value,
+  }
+}
+
 function buildRunResultRoute(outputFileName: string): RouteLocationRaw | null {
-  if (!selectedMapping.value || !outputFileName.trim()) return null
+  if (!selectedRunScopeId.value || !outputFileName.trim()) return null
 
   return {
     name: 'reconciliation-run-result',
     params: {
-      reconciliationMappingId: selectedMapping.value.reconciliationMappingId,
+      runScopeId: selectedRunScopeId.value,
       outputFileName: outputFileName.trim(),
     },
-    query: {
-      runName: activeRunName.value,
-      file1SystemLabel: file1PromptSystemName.value,
-      file2SystemLabel: file2PromptSystemName.value,
-    },
+    query: buildRunRouteQuery(),
   }
 }
 
@@ -407,31 +558,100 @@ function syncSelectedSystems(mapping: PilotMappingSummary | null): void {
     ''
 }
 
-async function loadMappings(): Promise<void> {
-  loadingMappings.value = true
-  loadError.value = null
+function syncSelectedCompareScope(ruleSetId: string): void {
+  const scopes = compareScopes.value.filter((scope) => scope.ruleSetId === ruleSetId)
+  if (scopes.length === 0) {
+    selectedCompareScopeId.value = ''
+    return
+  }
 
-  try {
-    const response = await reconciliationFacade.listPilotMappings({
-      pageIndex: 0,
-      pageSize: 50,
-      query: '',
-    })
-    mappings.value = response.mappings ?? []
-    if (requestedMappingId.value && mappings.value.some((mapping) => mapping.reconciliationMappingId === requestedMappingId.value)) {
-      selectedMappingId.value = requestedMappingId.value
-    }
-    syncSelectedSystems(selectedMapping.value)
-  } catch (error) {
-    loadError.value = error instanceof ApiCallError ? error.message : 'Unable to load mappings.'
-  } finally {
-    loadingMappings.value = false
+  if (requestedCompareScopeId.value && scopes.some((scope) => scope.compareScopeId === requestedCompareScopeId.value)) {
+    selectedCompareScopeId.value = requestedCompareScopeId.value
+    return
+  }
+
+  if (scopes.length === 1) {
+    selectedCompareScopeId.value = scopes[0]!.compareScopeId
+    return
+  }
+
+  if (!scopes.some((scope) => scope.compareScopeId === selectedCompareScopeId.value)) {
+    selectedCompareScopeId.value = ''
   }
 }
 
-async function loadLatestSavedOutput(mappingId: string): Promise<void> {
-  const normalizedMappingId = mappingId.trim()
-  if (!normalizedMappingId) {
+async function loadRunOptions(): Promise<void> {
+  const requestId = ++loadRunOptionsRequestId
+  const requestedMode = selectedMode.value
+  const requestedMappingIdValue = requestedMappingId.value
+  const requestedRuleSetIdValue = requestedRuleSetId.value
+  const requestedCompareScopeIdValue = requestedCompareScopeId.value
+  loadingRunOptions.value = true
+  loadError.value = null
+  mappings.value = []
+  compareScopes.value = []
+  clearLatestSavedOutputState()
+
+  try {
+    if (requestedMode === 'mapping') {
+      const response = await reconciliationFacade.listPilotMappings({
+        pageIndex: 0,
+        pageSize: 50,
+        query: '',
+      })
+      if (requestId !== loadRunOptionsRequestId) return
+      mappings.value = response.mappings ?? []
+      if (requestedMappingIdValue && mappings.value.some((mapping) => mapping.reconciliationMappingId === requestedMappingIdValue)) {
+        selectedMappingId.value = requestedMappingIdValue
+      } else {
+        selectedMappingId.value = ''
+      }
+      syncSelectedSystems(selectedMapping.value)
+      return
+    }
+
+    const response = await reconciliationFacade.listPilotRuleSetCompareScopes({
+      pageIndex: 0,
+      pageSize: 100,
+      query: '',
+    })
+    if (requestId !== loadRunOptionsRequestId) return
+    compareScopes.value = response.compareScopes ?? []
+
+    if (requestedCompareScopeIdValue) {
+      const requestedScope = compareScopes.value.find((scope) => scope.compareScopeId === requestedCompareScopeIdValue)
+      if (requestedScope) {
+        selectedRuleSetId.value = requestedScope.ruleSetId
+        selectedCompareScopeId.value = requestedScope.compareScopeId
+        return
+      }
+    }
+
+    if (requestedRuleSetIdValue && compareScopes.value.some((scope) => scope.ruleSetId === requestedRuleSetIdValue)) {
+      selectedRuleSetId.value = requestedRuleSetIdValue
+      syncSelectedCompareScope(selectedRuleSetId.value)
+      return
+    }
+
+    selectedRuleSetId.value = ''
+    selectedCompareScopeId.value = ''
+  } catch (error) {
+    if (requestId !== loadRunOptionsRequestId) return
+    loadError.value = error instanceof ApiCallError ? error.message : `Unable to load ${requestedMode === 'mapping' ? 'mappings' : 'RuleSets'}.`
+  } finally {
+    if (requestId === loadRunOptionsRequestId) {
+      loadingRunOptions.value = false
+    }
+  }
+}
+
+async function loadLatestSavedOutput(): Promise<void> {
+  const requestId = ++loadLatestSavedOutputRequestId
+  const requestedMode = selectedMode.value
+  const requestedScopeId = selectedRunScopeId.value
+  const requestedRuleSetIdValue = selectedCompareScope.value?.ruleSetId || requestedRuleSetId.value
+
+  if (!requestedScopeId) {
     clearLatestSavedOutputState()
     return
   }
@@ -441,21 +661,30 @@ async function loadLatestSavedOutput(mappingId: string): Promise<void> {
   latestSavedOutput.value = null
 
   try {
-    const response = await reconciliationFacade.listPilotGeneratedOutputs({
-      reconciliationMappingId: normalizedMappingId,
-      pageIndex: 0,
-      pageSize: 1,
-      query: '',
-    })
+    const response =
+      requestedMode === 'mapping'
+        ? await reconciliationFacade.listPilotGeneratedOutputs({
+          reconciliationMappingId: requestedScopeId,
+          pageIndex: 0,
+          pageSize: 1,
+          query: '',
+        })
+        : await reconciliationFacade.listPilotGeneratedOutputs({
+          ruleSetId: requestedRuleSetIdValue,
+          compareScopeId: requestedScopeId,
+          pageIndex: 0,
+          pageSize: 1,
+          query: '',
+        })
 
-    if (selectedMappingId.value !== normalizedMappingId) return
+    if (requestId !== loadLatestSavedOutputRequestId) return
     latestSavedOutput.value = response.generatedOutputs?.[0] ?? null
   } catch (error) {
-    if (selectedMappingId.value !== normalizedMappingId) return
+    if (requestId !== loadLatestSavedOutputRequestId) return
     latestSavedOutput.value = null
     latestSavedOutputError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved results.'
   } finally {
-    if (selectedMappingId.value === normalizedMappingId) {
+    if (requestId === loadLatestSavedOutputRequestId) {
       latestSavedOutputLoading.value = false
     }
   }
@@ -494,12 +723,22 @@ function goBack(): void {
 }
 
 async function handlePrimaryAction(): Promise<void> {
-  if (!selectedMapping.value) {
+  if (selectedMode.value === 'mapping' && !selectedMapping.value) {
     runError.value = 'Select a mapping before continuing.'
     return
   }
+  if (selectedMode.value === 'ruleset') {
+    if (!selectedRuleSetId.value) {
+      runError.value = 'Select a RuleSet before continuing.'
+      return
+    }
+    if ((currentStep.value.id === 'compare-scope' || currentStep.value.id === 'file-1' || currentStep.value.id === 'file-2') && !selectedCompareScope.value) {
+      runError.value = 'Select a compare scope before continuing.'
+      return
+    }
+  }
 
-  if (currentStep.value.id !== 'file-2') {
+  if (currentStep.value.id !== workflowSteps.value[workflowSteps.value.length - 1]?.id) {
     if (!canContinue.value) return
     currentStepIndex.value = Math.min(currentStepIndex.value + 1, workflowSteps.value.length - 1)
     return
@@ -509,15 +748,22 @@ async function handlePrimaryAction(): Promise<void> {
 }
 
 async function runDiff(): Promise<void> {
-  if (!selectedMapping.value) {
+  if (selectedMode.value === 'mapping' && !selectedMapping.value) {
     runError.value = 'Select a mapping before running the diff.'
+    return
+  }
+  if (selectedMode.value === 'ruleset' && !selectedCompareScope.value) {
+    runError.value = 'Select a compare scope before running the diff.'
     return
   }
   if (!file1.value || !file2.value) {
     runError.value = 'Upload both files before running the diff.'
     return
   }
-  if (!file1SystemEnumId.value || !file2SystemEnumId.value || file1SystemEnumId.value === file2SystemEnumId.value) {
+  if (
+    selectedMode.value === 'mapping' &&
+    (!file1SystemEnumId.value || !file2SystemEnumId.value || file1SystemEnumId.value === file2SystemEnumId.value)
+  ) {
     runError.value = 'Choose two different systems before running the diff.'
     return
   }
@@ -527,16 +773,24 @@ async function runDiff(): Promise<void> {
 
   try {
     const [file1Text, file2Text] = await Promise.all([readFileAsText(file1.value), readFileAsText(file2.value)])
-    const response = await reconciliationFacade.runPilotGenericDiff({
-      reconciliationMappingId: selectedMapping.value.reconciliationMappingId,
+    const payload: Record<string, unknown> = {
       file1Name: file1.value.name,
       file1Text,
       file2Name: file2.value.name,
       file2Text,
-      file1SystemEnumId: file1SystemEnumId.value,
-      file2SystemEnumId: file2SystemEnumId.value,
       hasHeader: true,
-    })
+    }
+
+    if (selectedMode.value === 'mapping' && selectedMapping.value) {
+      payload.reconciliationMappingId = selectedMapping.value.reconciliationMappingId
+      payload.file1SystemEnumId = file1SystemEnumId.value
+      payload.file2SystemEnumId = file2SystemEnumId.value
+    } else if (selectedCompareScope.value) {
+      payload.ruleSetId = selectedCompareScope.value.ruleSetId
+      payload.compareScopeId = selectedCompareScope.value.compareScopeId
+    }
+
+    const response = await reconciliationFacade.runPilotGenericDiff(payload)
 
     validationErrors.value = response.runResult?.validationErrors ?? []
     processingWarnings.value = response.runResult?.processingWarnings ?? []
@@ -580,34 +834,54 @@ function formatOutputCreatedDate(createdDate?: string): string {
   }).format(parsedDate)
 }
 
+function showRuleDifferenceMetric(output: PilotGeneratedOutput | null): boolean {
+  return (output?.ruleDifferenceCount ?? 0) > 0
+}
+
+watch([isLegacyMappingMode, requestedMappingId, requestedRuleSetId, requestedCompareScopeId], () => {
+  selectedMappingId.value = ''
+  selectedRuleSetId.value = ''
+  selectedCompareScopeId.value = ''
+  clearRunState()
+  resetWorkflow()
+  void loadRunOptions()
+}, { immediate: true })
+
 watch(selectedMapping, (mapping) => {
+  if (!isLegacyMappingMode.value) return
   syncSelectedSystems(mapping)
   clearRunState()
   resetWorkflow()
   void focusCurrentStepControlOnNextTick()
 })
 
-watch(selectedMappingId, (mappingId) => {
-  if (!mappingId.trim()) {
-    clearLatestSavedOutputState()
-    return
-  }
+watch(selectedRuleSetId, (ruleSetId) => {
+  if (isLegacyMappingMode.value) return
+  syncSelectedCompareScope(ruleSetId)
+  clearRunState()
+  resetWorkflow()
+  void focusCurrentStepControlOnNextTick()
+})
 
-  void loadLatestSavedOutput(mappingId)
+watch(selectedCompareScopeId, () => {
+  if (isLegacyMappingMode.value) return
+  clearRunState()
+  resetWorkflow()
+  void focusCurrentStepControlOnNextTick()
+})
+
+watch(selectedRunScopeId, () => {
+  void loadLatestSavedOutput()
 })
 
 watch(
-  [() => currentStep.value.id, loadingMappings, showEmptyState],
+  [() => currentStep.value.id, loadingRunOptions, showEmptyState],
   ([, isLoading, isEmptyState]) => {
     if (isLoading || isEmptyState) return
     void focusCurrentStepControlOnNextTick()
   },
   { immediate: true },
 )
-
-onMounted(() => {
-  void loadMappings()
-})
 </script>
 
 <style scoped>
@@ -679,6 +953,10 @@ onMounted(() => {
   gap: var(--space-1);
 }
 
+.pilot-run-history-card__metrics--wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .pilot-run-history-card__metrics div {
   display: grid;
   gap: 0.15rem;
@@ -712,7 +990,8 @@ onMounted(() => {
     gap: var(--space-4);
   }
 
-  .pilot-run-history-card__metrics {
+  .pilot-run-history-card__metrics,
+  .pilot-run-history-card__metrics--wide {
     grid-template-columns: 1fr;
   }
 

@@ -27,7 +27,7 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'workflow' },
   },
   {
-    path: '/reconciliation/run-result/:reconciliationMappingId/:outputFileName',
+    path: '/reconciliation/run-result/:runScopeId/:outputFileName',
     name: 'reconciliation-run-result',
     component: () => import('../pages/reconciliation/ReconciliationRunResultPage.vue'),
     meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run Result' },
@@ -39,7 +39,7 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'workflow' },
   },
   {
-    path: '/reconciliation/run-history/:reconciliationMappingId',
+    path: '/reconciliation/run-history/:runScopeId',
     name: 'reconciliation-run-history',
     component: () => import('../pages/reconciliation/ReconciliationRunHistoryPage.vue'),
     meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run History' },

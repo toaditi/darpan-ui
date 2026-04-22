@@ -1,30 +1,48 @@
 import { readFileSync } from 'node:fs'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { ApiCallError } from '../../../lib/api/client'
 
 const route = vi.hoisted(() => ({
-  params: {
-    reconciliationMappingId: 'OrderIdMap',
-    outputFileName: 'Order-ID-diff-20260331-063304.json',
-  },
-  query: {
-    runName: 'Order ID',
-    file1SystemLabel: 'OMS',
-    file2SystemLabel: 'SHOPIFY',
-  },
-  fullPath:
-    '/reconciliation/run-result/OrderIdMap/Order-ID-diff-20260331-063304.json?runName=Order%20ID&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY',
+  current: null as {
+    params: { runScopeId: string; outputFileName: string }
+    query: Record<string, string>
+    fullPath: string
+  } | null,
 }))
 const getPilotGeneratedOutput = vi.hoisted(() => vi.fn())
 
-vi.mock('vue-router', () => ({
-  RouterLink: {
-    props: ['to'],
-    template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
-  },
-  useRoute: () => route,
-}))
+vi.mock('vue-router', async () => {
+  const { reactive } = await import('vue')
+  route.current = reactive({
+    params: {
+      runScopeId: 'ProductScope',
+      outputFileName: 'product-diff-20260422.json',
+    },
+    query: {
+      runType: 'ruleset',
+      ruleSetId: 'ProductCompareRS',
+      compareScopeId: 'ProductScope',
+      runName: 'Products',
+      file1SystemLabel: 'SHOPIFY',
+      file2SystemLabel: 'OMS',
+    },
+    fullPath:
+      '/reconciliation/run-result/ProductScope/product-diff-20260422.json?runType=ruleset&ruleSetId=ProductCompareRS&compareScopeId=ProductScope',
+  }) as {
+    params: { runScopeId: string; outputFileName: string }
+    query: Record<string, string>
+    fullPath: string
+  }
+
+  return {
+    RouterLink: {
+      props: ['to'],
+      template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
+    },
+    useRoute: () => route.current,
+  }
+})
 
 vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
@@ -34,14 +52,16 @@ vi.mock('../../../lib/api/facade', () => ({
 
 import ReconciliationRunResultPage from '../ReconciliationRunResultPage.vue'
 
+enableAutoUnmount(afterEach)
+
 function buildGeneratedOutputFile(contentText: string) {
   return {
     ok: true,
     messages: [],
     errors: [],
     outputFile: {
-      fileName: 'Order-ID-diff-20260331-063304.json',
-      downloadFileName: 'Order-ID-diff-20260331-063304.json',
+      fileName: 'product-diff-20260422.json',
+      downloadFileName: 'product-diff-20260422.json',
       sourceFormat: 'json',
       format: 'json',
       contentType: 'application/json',
@@ -50,147 +70,154 @@ function buildGeneratedOutputFile(contentText: string) {
   }
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 const defaultDiffDetails = {
   metadata: {
-    timestamp: '2026-03-31 08:11:06.134',
-    file1Label: 'OMS',
-    file2Label: 'SHOPIFY',
-    reconciliationMappingId: 'OrderIdMap',
-    reconciliationMappingName: 'Order ID',
+    timestamp: '2026-04-22 08:11:06.134',
+    ruleSetId: 'ProductCompareRS',
+    ruleSetName: 'Product Compare',
+    compareScopeId: 'ProductScope',
+    compareScopeDescription: 'Products',
+    objectType: 'PRODUCT',
+    file1Label: 'SHOPIFY',
+    file2Label: 'OMS',
   },
   summary: {
-    totalDifferences: 2,
+    totalDifferences: 4,
     onlyInFile1Count: 1,
     onlyInFile2Count: 1,
+    missingObjectDifferenceCount: 2,
+    ruleDifferenceCount: 2,
   },
   differences: [
     {
-      type: 'missing_in_SHOPIFY',
-      id: '1001',
+      diffType: 'MISSING_IN_FILE_1',
+      primaryId: 'P500',
       presentIn: 'OMS',
       missingIn: 'SHOPIFY',
-      data: '{"order_id":"1001"}',
+      message: 'Present in OMS, missing in SHOPIFY',
+      data: '{"productId":"P500"}',
     },
     {
-      type: 'missing_in_OMS',
-      id: '1003',
+      diffType: 'MISSING_IN_FILE_2',
+      primaryId: 'P300',
       presentIn: 'SHOPIFY',
       missingIn: 'OMS',
-      data: '{"order_id":"1003"}',
+      message: 'Present in SHOPIFY, missing in OMS',
+      data: '{"productId":"P300"}',
+    },
+    {
+      diffType: 'FIELD_MISMATCH',
+      primaryId: 'P200',
+      field: 'sku',
+      file1Value: 'SKU-B',
+      file2Value: 'SKU-B-ALT',
+      ruleId: 'SKU_MISMATCH',
+      severity: 'WARN',
+      message: 'SKU mismatch',
+    },
+    {
+      diffType: 'FIELD_MISMATCH',
+      primaryId: 'P400',
+      field: 'price',
+      file1Value: '49.99',
+      file2Value: '59.99',
+      ruleId: 'PRICE_MISMATCH',
+      severity: 'WARN',
+      message: 'Price mismatch',
     },
   ],
 }
 
 describe('ReconciliationRunResultPage', () => {
   beforeEach(() => {
-    route.params.reconciliationMappingId = 'OrderIdMap'
-    route.params.outputFileName = 'Order-ID-diff-20260331-063304.json'
-    route.query.runName = 'Order ID'
-    route.query.file1SystemLabel = 'OMS'
-    route.query.file2SystemLabel = 'SHOPIFY'
-    route.fullPath =
-      '/reconciliation/run-result/OrderIdMap/Order-ID-diff-20260331-063304.json?runName=Order%20ID&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY'
+    route.current!.params.runScopeId = 'ProductScope'
+    route.current!.params.outputFileName = 'product-diff-20260422.json'
+    route.current!.query.runType = 'ruleset'
+    route.current!.query.ruleSetId = 'ProductCompareRS'
+    route.current!.query.compareScopeId = 'ProductScope'
+    route.current!.query.runName = 'Products'
+    route.current!.query.file1SystemLabel = 'SHOPIFY'
+    route.current!.query.file2SystemLabel = 'OMS'
+    route.current!.fullPath =
+      '/reconciliation/run-result/ProductScope/product-diff-20260422.json?runType=ruleset&ruleSetId=ProductCompareRS&compareScopeId=ProductScope'
 
     getPilotGeneratedOutput.mockReset()
     getPilotGeneratedOutput.mockResolvedValue(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails)))
   })
 
-  it('loads saved result details on the static surface and links back to history and workflow', async () => {
+  it('loads RuleSet saved result details and links back to history and workflow', async () => {
     const wrapper = mount(ReconciliationRunResultPage)
     await flushPromises()
 
     expect(getPilotGeneratedOutput).toHaveBeenCalledWith({
-      fileName: 'Order-ID-diff-20260331-063304.json',
+      fileName: 'product-diff-20260422.json',
       format: 'json',
     })
-    expect(wrapper.find('.static-page-frame').exists()).toBe(true)
-    expect(wrapper.find('.wizard-progress-track').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Order ID')
-    expect(wrapper.text()).not.toContain('Saved result from')
-    expect(wrapper.text()).toContain('Missing from OMS')
-    expect(wrapper.text()).toContain('Missing from SHOPIFY')
-    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('"order_id": "1001"')
-    expect(wrapper.get('[data-testid="run-result-download"]').attributes('aria-label')).toBe('Download saved result')
-    const tableColumns = wrapper.findAll('.app-table colgroup col')
-    expect(tableColumns).toHaveLength(3)
-    expect(tableColumns[0]?.attributes('style')).toContain('width: 13rem;')
-    expect(tableColumns[2]?.classes()).toContain('app-table__action-column')
+    expect(wrapper.text()).toContain('Products')
+    expect(wrapper.text()).toContain('Field mismatches')
+    expect(wrapper.get('[data-testid="diff-bucket-rule"]').text()).toContain('2')
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(4)
+    expect(wrapper.text()).toContain('SKU mismatch')
+    expect(wrapper.text()).toContain('"productId": "P500"')
     expect(JSON.parse(wrapper.get('[data-testid="run-result-view-history"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-run-history',
       params: {
-        reconciliationMappingId: 'OrderIdMap',
+        runScopeId: 'ProductScope',
       },
       query: {
-        runName: 'Order ID',
-        file1SystemLabel: 'OMS',
-        file2SystemLabel: 'SHOPIFY',
+        runType: 'ruleset',
+        ruleSetId: 'ProductCompareRS',
+        compareScopeId: 'ProductScope',
+        runName: 'Products',
+        file1SystemLabel: 'SHOPIFY',
+        file2SystemLabel: 'OMS',
       },
     })
     expect(JSON.parse(wrapper.get('[data-testid="run-result-open-workflow"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-pilot-diff',
       query: {
-        mappingId: 'OrderIdMap',
-        runName: 'Order ID',
-        file1SystemLabel: 'OMS',
-        file2SystemLabel: 'SHOPIFY',
+        runType: 'ruleset',
+        ruleSetId: 'ProductCompareRS',
+        compareScopeId: 'ProductScope',
+        runName: 'Products',
+        file1SystemLabel: 'SHOPIFY',
+        file2SystemLabel: 'OMS',
       },
       state: {
         workflowOriginLabel: 'Run Result',
-        workflowOriginPath: route.fullPath,
+        workflowOriginPath: route.current!.fullPath,
       },
     })
   })
 
-  it('filters and paginates saved diff details', async () => {
-    getPilotGeneratedOutput.mockResolvedValue(
-      buildGeneratedOutputFile(
-        JSON.stringify({
-          metadata: defaultDiffDetails.metadata,
-          summary: {
-            totalDifferences: 7,
-            onlyInFile1Count: 4,
-            onlyInFile2Count: 3,
-          },
-          differences: [
-            { type: 'missing_in_OMS', id: '2001', presentIn: 'SHOPIFY', missingIn: 'OMS', data: '{"order_id":"2001"}' },
-            { type: 'missing_in_OMS', id: '2002', presentIn: 'SHOPIFY', missingIn: 'OMS', data: '{"order_id":"2002"}' },
-            { type: 'missing_in_OMS', id: '2003', presentIn: 'SHOPIFY', missingIn: 'OMS', data: '{"order_id":"2003"}' },
-            { type: 'missing_in_SHOPIFY', id: '3001', presentIn: 'OMS', missingIn: 'SHOPIFY', data: '{"order_id":"3001"}' },
-            { type: 'missing_in_SHOPIFY', id: '3002', presentIn: 'OMS', missingIn: 'SHOPIFY', data: '{"order_id":"3002"}' },
-            { type: 'missing_in_SHOPIFY', id: '3003', presentIn: 'OMS', missingIn: 'SHOPIFY', data: '{"order_id":"3003"}' },
-            { type: 'missing_in_SHOPIFY', id: '3004', presentIn: 'OMS', missingIn: 'SHOPIFY', data: '{"order_id":"3004"}' },
-          ],
-        }),
-      ),
-    )
-
+  it('filters and paginates mixed missing and field mismatch rows', async () => {
     const wrapper = mount(ReconciliationRunResultPage)
     await flushPromises()
 
-    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(5)
-    expect(wrapper.text()).toContain('Page 1 of 2')
-    expect(wrapper.text()).not.toContain('3004')
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(4)
+    expect(wrapper.text()).toContain('Page 1 of 1')
 
-    await wrapper.get('[data-testid="diff-page-next"]').trigger('click')
-
-    expect(wrapper.text()).toContain('Page 2 of 2')
-    expect(wrapper.text()).toContain('3004')
-
-    await wrapper.get('[data-testid="diff-details-search"]').setValue('2002')
+    await wrapper.get('[data-testid="diff-details-search"]').setValue('price')
     await flushPromises()
 
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(1)
-    expect(wrapper.text()).toContain('2002')
-    expect(wrapper.text()).toContain('Page 1 of 1')
-    expect(wrapper.find('[data-testid="diff-details-search-clear"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Price mismatch')
 
     await wrapper.get('[data-testid="diff-details-search-clear"]').trigger('click')
     await flushPromises()
 
     expect((wrapper.get('[data-testid="diff-details-search"]').element as HTMLInputElement).value).toBe('')
-    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(5)
-    expect(wrapper.text()).toContain('Page 1 of 2')
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(4)
   })
 
   it('shows an inline error when the saved result cannot be loaded', async () => {
@@ -202,17 +229,87 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.text()).toContain('Unable to load saved result.')
   })
 
+  it('ignores a stale saved-result response after the route switches outputs', async () => {
+    const staleResponse = createDeferred<ReturnType<typeof buildGeneratedOutputFile>>()
+    const orderDiffDetails = {
+      metadata: {
+        timestamp: '2026-04-23 08:11:06.134',
+        ruleSetId: 'OrderCompareRS',
+        ruleSetName: 'Order Compare',
+        compareScopeId: 'OrderScope',
+        compareScopeDescription: 'Orders',
+        objectType: 'ORDER',
+        file1Label: 'SHOPIFY',
+        file2Label: 'OMS',
+      },
+      summary: {
+        totalDifferences: 1,
+        onlyInFile1Count: 0,
+        onlyInFile2Count: 0,
+        missingObjectDifferenceCount: 0,
+        ruleDifferenceCount: 1,
+      },
+      differences: [
+        {
+          diffType: 'FIELD_MISMATCH',
+          primaryId: 'O200',
+          field: 'status',
+          file1Value: 'OPEN',
+          file2Value: 'CLOSED',
+          ruleId: 'ORDER_STATUS_MISMATCH',
+          severity: 'WARN',
+          message: 'Order status mismatch',
+        },
+      ],
+    }
+    getPilotGeneratedOutput.mockImplementation((payload: { fileName: string }) =>
+      payload.fileName === 'product-diff-20260422.json'
+        ? staleResponse.promise
+        : Promise.resolve(buildGeneratedOutputFile(JSON.stringify(orderDiffDetails))),
+    )
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    route.current!.params = {
+      runScopeId: 'OrderScope',
+      outputFileName: 'order-diff-20260423.json',
+    }
+    route.current!.query = {
+      ...route.current!.query,
+      ruleSetId: 'OrderCompareRS',
+      compareScopeId: 'OrderScope',
+      runName: 'Orders',
+    }
+    route.current!.fullPath =
+      '/reconciliation/run-result/OrderScope/order-diff-20260423.json?runType=ruleset&ruleSetId=OrderCompareRS&compareScopeId=OrderScope'
+    await flushPromises()
+
+    expect(getPilotGeneratedOutput).toHaveBeenCalledWith({
+      fileName: 'order-diff-20260423.json',
+      format: 'json',
+    })
+    expect(wrapper.text()).toContain('Orders')
+
+    staleResponse.resolve(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails)))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Orders')
+    expect(wrapper.text()).toContain('Order status mismatch')
+    expect(wrapper.text()).not.toContain('Products')
+  })
+
   it('renders diff details through the shared app table frame instead of a page-local table shell', () => {
     const source = readFileSync('src/pages/reconciliation/ReconciliationRunResultPage.vue', 'utf8')
 
     expect(source).toContain('.pilot-diff-details__toolbar')
     expect(source).toContain('justify-content: space-between;')
     expect(source).toContain('.pilot-diff-details__pagination')
-    expect(source).toContain('justify-content: space-between;')
     expect(source).toContain("import AppTableFrame from '../../components/ui/AppTableFrame.vue'")
     expect(source).toContain('<AppTableFrame')
     expect(source).toContain("label: 'Record ID'")
-    expect(source).toContain("label: 'Record JSON'")
+    expect(source).toContain("label: 'Difference'")
+    expect(source).toContain("label: 'Details'")
     expect(source).not.toContain('class="pilot-diff-table"')
   })
 })

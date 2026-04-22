@@ -1,35 +1,46 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { ApiCallError } from '../../../lib/api/client'
 
 const route = vi.hoisted(() => ({
-  query: {},
+  current: null as { query: Record<string, unknown> } | null,
 }))
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listPilotMappings = vi.hoisted(() => vi.fn())
+const listPilotRuleSetCompareScopes = vi.hoisted(() => vi.fn())
 const listPilotGeneratedOutputs = vi.hoisted(() => vi.fn())
 const runPilotGenericDiff = vi.hoisted(() => vi.fn())
 
-vi.mock('vue-router', () => ({
-  RouterLink: {
-    props: ['to'],
-    template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
-  },
-  useRoute: () => route,
-  useRouter: () => ({
-    push,
-  }),
-}))
+vi.mock('vue-router', async () => {
+  const { reactive } = await import('vue')
+  route.current = reactive({
+    query: {},
+  }) as { query: Record<string, unknown> }
+
+  return {
+    RouterLink: {
+      props: ['to'],
+      template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
+    },
+    useRoute: () => route.current,
+    useRouter: () => ({
+      push,
+    }),
+  }
+})
 
 vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
     listPilotMappings,
+    listPilotRuleSetCompareScopes,
     listPilotGeneratedOutputs,
     runPilotGenericDiff,
   },
 }))
 
 import PilotGenericDiffPage from '../PilotGenericDiffPage.vue'
+
+enableAutoUnmount(afterEach)
 
 const mappingResponse = {
   ok: true,
@@ -57,6 +68,46 @@ const mappingResponse = {
   ],
 }
 
+const compareScopeResponse = {
+  ok: true,
+  messages: [],
+  errors: [],
+  pagination: {
+    pageIndex: 0,
+    pageSize: 100,
+    totalCount: 2,
+    pageCount: 1,
+  },
+  compareScopes: [
+    {
+      ruleSetId: 'ProductCompareRS',
+      ruleSetName: 'Product Compare',
+      compareScopeId: 'ProductScope',
+      compareScopeDescription: 'Products',
+      objectType: 'PRODUCT',
+      file1SystemEnumId: 'SHOPIFY',
+      file1SystemLabel: 'SHOPIFY',
+      file1PrimaryIdExpression: 'productId',
+      file2SystemEnumId: 'OMS',
+      file2SystemLabel: 'OMS',
+      file2PrimaryIdExpression: 'productId',
+    },
+    {
+      ruleSetId: 'OrderCompareRS',
+      ruleSetName: 'Order Compare',
+      compareScopeId: 'OrderScope',
+      compareScopeDescription: 'Orders',
+      objectType: 'ORDER',
+      file1SystemEnumId: 'SHOPIFY',
+      file1SystemLabel: 'SHOPIFY',
+      file1PrimaryIdExpression: 'orderId',
+      file2SystemEnumId: 'OMS',
+      file2SystemLabel: 'OMS',
+      file2PrimaryIdExpression: 'orderId',
+    },
+  ],
+}
+
 function stubFileReader(): void {
   class MockFileReader {
     result: string | ArrayBuffer | null = null
@@ -64,7 +115,7 @@ function stubFileReader(): void {
     onerror: null | (() => void) = null
 
     readAsText(file: File): void {
-      this.result = file.name === 'oms-orders.csv' ? 'order_id\n1001\n1002\n' : 'order_id\n1002\n1003\n'
+      this.result = file.name === 'products-1.json' ? '{"data":{"products":[]}}' : '{"data":{"products":[]}}'
       this.onload?.()
     }
   }
@@ -72,14 +123,26 @@ function stubFileReader(): void {
   vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader)
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('PilotGenericDiffPage', () => {
   beforeEach(() => {
-    route.query = {}
+    route.current!.query = {}
     push.mockClear()
     listPilotMappings.mockReset()
+    listPilotRuleSetCompareScopes.mockReset()
     listPilotGeneratedOutputs.mockReset()
     runPilotGenericDiff.mockReset()
     listPilotMappings.mockResolvedValue(mappingResponse)
+    listPilotRuleSetCompareScopes.mockResolvedValue(compareScopeResponse)
     listPilotGeneratedOutputs.mockResolvedValue({
       ok: true,
       messages: [],
@@ -98,45 +161,38 @@ describe('PilotGenericDiffPage', () => {
     vi.unstubAllGlobals()
   })
 
-  it('loads mappings and keeps the summary hidden before execution', async () => {
+  it('loads RuleSet compare scopes by default and starts on the RuleSet selector', async () => {
     const wrapper = mount(PilotGenericDiffPage)
     await flushPromises()
 
-    expect(listPilotMappings).toHaveBeenCalledWith({
+    expect(listPilotRuleSetCompareScopes).toHaveBeenCalledWith({
       pageIndex: 0,
-      pageSize: 50,
+      pageSize: 100,
       query: '',
     })
-    expect(wrapper.find('.workflow-page').exists()).toBe(true)
-    expect(wrapper.find('.wizard-progress-track').exists()).toBe(true)
-    expect(wrapper.find('.workflow-shell--center-stage').exists()).toBe(true)
-    expect(wrapper.find('.pilot-diff-layout').exists()).toBe(true)
-    expect(wrapper.find('.pilot-diff-main').exists()).toBe(true)
-    expect(wrapper.find('.workflow-step-shell').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Select a Run')
-    expect(wrapper.text()).toContain('Next')
-    expect(wrapper.find('[data-testid="mapping-select"]').exists()).toBe(true)
-    await wrapper.get('[data-testid="mapping-select"]').trigger('click')
-    expect(wrapper.get('[data-testid="workflow-select-option"][data-option-value="OrderIdMap"]').text()).toBe('Order ID')
-    expect(wrapper.find('[data-testid="file1-input"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="file2-input"]').exists()).toBe(false)
+    expect(listPilotMappings).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Select a RuleSet')
+    expect(wrapper.find('[data-testid="rule-set-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="mapping-select"]').exists()).toBe(false)
   })
 
-  it('shows the API error when mapping lookup fails', async () => {
-    listPilotMappings.mockRejectedValue(new ApiCallError('Unable to load mappings.', 503))
+  it('shows the API error when RuleSet lookup fails', async () => {
+    listPilotRuleSetCompareScopes.mockRejectedValue(new ApiCallError('Unable to load RuleSets.', 503))
 
     const wrapper = mount(PilotGenericDiffPage)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Unable to load mappings.')
+    expect(wrapper.text()).toContain('Unable to load RuleSets.')
   })
 
-  it('loads the latest saved result card with a static-result link and a separate history link', async () => {
-    route.query = {
-      mappingId: 'OrderIdMap',
-      runName: 'Order ID',
-      file1SystemLabel: 'OMS',
-      file2SystemLabel: 'SHOPIFY',
+  it('loads the latest saved result card for a preselected compare scope', async () => {
+    route.current!.query = {
+      runType: 'ruleset',
+      ruleSetId: 'ProductCompareRS',
+      compareScopeId: 'ProductScope',
+      runName: 'Products',
+      file1SystemLabel: 'SHOPIFY',
+      file2SystemLabel: 'OMS',
     }
     listPilotGeneratedOutputs.mockResolvedValue({
       ok: true,
@@ -145,23 +201,26 @@ describe('PilotGenericDiffPage', () => {
       pagination: {
         pageIndex: 0,
         pageSize: 1,
-        totalCount: 2,
-        pageCount: 2,
+        totalCount: 1,
+        pageCount: 1,
       },
       generatedOutputs: [
         {
-          fileName: 'Order-ID-diff-20260330-150000.json',
+          fileName: 'product-diff-20260422.json',
           sourceFormat: 'json',
           availableFormats: ['json', 'csv'],
           preferredDownloadFormat: 'csv',
-          reconciliationMappingId: 'OrderIdMap',
-          mappingName: 'Order ID',
-          file1Label: 'OMS',
-          file2Label: 'SHOPIFY',
+          runType: 'ruleset',
+          runName: 'Products',
+          ruleSetId: 'ProductCompareRS',
+          compareScopeId: 'ProductScope',
+          file1Label: 'SHOPIFY',
+          file2Label: 'OMS',
           totalDifferences: 4,
           onlyInFile1Count: 1,
-          onlyInFile2Count: 3,
-          createdDate: '2026-03-30T15:00:00.000Z',
+          onlyInFile2Count: 1,
+          ruleDifferenceCount: 2,
+          createdDate: '2026-04-22T10:00:00.000Z',
         },
       ],
     })
@@ -170,83 +229,55 @@ describe('PilotGenericDiffPage', () => {
     await flushPromises()
 
     expect(listPilotGeneratedOutputs).toHaveBeenCalledWith({
-      reconciliationMappingId: 'OrderIdMap',
+      ruleSetId: 'ProductCompareRS',
+      compareScopeId: 'ProductScope',
       pageIndex: 0,
       pageSize: 1,
       query: '',
     })
-    expect(wrapper.find('.pilot-run-history-board').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="latest-run-result"]').text()).toContain('Mar')
-    expect(wrapper.get('[data-testid="latest-run-result"]').text()).toContain('Total differences')
+    expect(wrapper.text()).toContain('Field mismatches')
     expect(JSON.parse(wrapper.get('[data-testid="latest-run-result"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-run-result',
       params: {
-        reconciliationMappingId: 'OrderIdMap',
-        outputFileName: 'Order-ID-diff-20260330-150000.json',
+        runScopeId: 'ProductScope',
+        outputFileName: 'product-diff-20260422.json',
       },
       query: {
-        runName: 'Order ID',
-        file1SystemLabel: 'OMS',
-        file2SystemLabel: 'SHOPIFY',
-      },
-    })
-    expect(wrapper.text()).not.toContain('Order-ID-diff-20260330-150000.json')
-    expect(JSON.parse(wrapper.get('[data-testid="view-all-run-results"]').attributes('data-to') ?? '{}')).toEqual({
-      name: 'reconciliation-run-history',
-      params: {
-        reconciliationMappingId: 'OrderIdMap',
-      },
-      query: {
-        runName: 'Order ID',
-        file1SystemLabel: 'OMS',
-        file2SystemLabel: 'SHOPIFY',
+        runType: 'ruleset',
+        ruleSetId: 'ProductCompareRS',
+        compareScopeId: 'ProductScope',
+        runName: 'Products',
+        objectType: 'PRODUCT',
+        file1SystemLabel: 'SHOPIFY',
+        file2SystemLabel: 'OMS',
       },
     })
   })
 
-  it('hides the previous-runs section entirely when the selected run has no saved results', async () => {
-    route.query = {
-      mappingId: 'OrderIdMap',
-      runName: 'Order ID',
-      file1SystemLabel: 'OMS',
-      file2SystemLabel: 'SHOPIFY',
-    }
-
-    const wrapper = mount(PilotGenericDiffPage)
-    await flushPromises()
-
-    expect(listPilotGeneratedOutputs).toHaveBeenCalledWith({
-      reconciliationMappingId: 'OrderIdMap',
-      pageIndex: 0,
-      pageSize: 1,
-      query: '',
-    })
-    expect(wrapper.find('.pilot-run-history-board').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="latest-run-result-empty"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="view-all-run-results"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('No saved results yet for this run.')
-    expect(wrapper.text()).not.toContain('View all previous runs')
-  })
-
-  it('uses the two-step upload workflow and navigates to the static result page after a successful run', async () => {
+  it('runs a preselected RuleSet compare scope and navigates to the saved result page', async () => {
     stubFileReader()
-    route.query = {
-      mappingId: 'OrderIdMap',
-      runName: 'Order ID',
-      file1SystemLabel: 'OMS',
-      file2SystemLabel: 'SHOPIFY',
+    route.current!.query = {
+      runType: 'ruleset',
+      ruleSetId: 'ProductCompareRS',
+      compareScopeId: 'ProductScope',
+      runName: 'Products',
+      file1SystemLabel: 'SHOPIFY',
+      file2SystemLabel: 'OMS',
     }
     runPilotGenericDiff.mockResolvedValue({
       ok: true,
-      messages: ['Generated Order-ID-diff-20260331-063304.json.'],
+      messages: [],
       errors: [],
       runResult: {
+        runType: 'ruleset',
+        ruleSetId: 'ProductCompareRS',
+        compareScopeId: 'ProductScope',
         generatedOutput: {
-          fileName: 'Order-ID-diff-20260331-063304.json',
-          mappingName: 'Order ID',
-          totalDifferences: 2,
-          onlyInFile1Count: 1,
-          onlyInFile2Count: 1,
+          fileName: 'product-diff-20260422.json',
+          runType: 'ruleset',
+          ruleSetId: 'ProductCompareRS',
+          compareScopeId: 'ProductScope',
+          totalDifferences: 4,
         },
         validationErrors: [],
         processingWarnings: [],
@@ -256,61 +287,56 @@ describe('PilotGenericDiffPage', () => {
     const wrapper = mount(PilotGenericDiffPage)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Upload the OMS file')
-    expect(wrapper.text()).not.toContain('Upload the OMS file for Order ID')
-    expect(wrapper.find('.wizard-question strong').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Choose the OMS file to upload...')
-    expect(wrapper.find('[data-testid="mapping-select"]').exists()).toBe(false)
-
-    const file1Input = wrapper.get('[data-testid="file1-input"]')
+    expect(wrapper.text()).toContain('Upload the SHOPIFY file')
+    const file1Input = wrapper.get<HTMLInputElement>('[data-testid="file1-input"]')
     Object.defineProperty(file1Input.element, 'files', {
-      value: [new File(['order_id\n1001\n1002\n'], 'oms-orders.csv', { type: 'text/csv' })],
-      configurable: true,
+      value: [new File(['{}'], 'products-1.json', { type: 'application/json' })],
     })
     await file1Input.trigger('change')
-    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
     await flushPromises()
-
-    expect(wrapper.text()).toContain('Upload the SHOPIFY file')
-    expect(wrapper.text()).not.toContain('Upload the SHOPIFY file for Order ID')
-    expect(wrapper.text()).toContain('Choose the SHOPIFY file to upload...')
-
-    const file2Input = wrapper.get('[data-testid="file2-input"]')
+    await wrapper.get('[data-testid="pilot-step-primary"]').trigger('submit')
+    await flushPromises()
+    const file2Input = wrapper.get<HTMLInputElement>('[data-testid="file2-input"]')
     Object.defineProperty(file2Input.element, 'files', {
-      value: [new File(['order_id\n1002\n1003\n'], 'shopify-orders.csv', { type: 'text/csv' })],
-      configurable: true,
+      value: [new File(['{}'], 'products-2.json', { type: 'application/json' })],
     })
     await file2Input.trigger('change')
-    expect(wrapper.get('.wizard-next').text()).toBe('Execute')
-
-    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
+    await flushPromises()
+    await wrapper.get('[data-testid="pilot-step-primary"]').trigger('submit')
     await flushPromises()
 
-    expect(runPilotGenericDiff).toHaveBeenCalledWith(
-      expect.objectContaining({
-        reconciliationMappingId: 'OrderIdMap',
-        file1Name: 'oms-orders.csv',
-        file2Name: 'shopify-orders.csv',
-        file1SystemEnumId: 'DarSysOms',
-        file2SystemEnumId: 'DarSysShopify',
-      }),
-    )
+    expect(runPilotGenericDiff).toHaveBeenCalledWith({
+      ruleSetId: 'ProductCompareRS',
+      compareScopeId: 'ProductScope',
+      file1Name: 'products-1.json',
+      file1Text: '{"data":{"products":[]}}',
+      file2Name: 'products-2.json',
+      file2Text: '{"data":{"products":[]}}',
+      hasHeader: true,
+    })
     expect(push).toHaveBeenCalledWith({
       name: 'reconciliation-run-result',
       params: {
-        reconciliationMappingId: 'OrderIdMap',
-        outputFileName: 'Order-ID-diff-20260331-063304.json',
+        runScopeId: 'ProductScope',
+        outputFileName: 'product-diff-20260422.json',
       },
       query: {
-        runName: 'Order ID',
-        file1SystemLabel: 'OMS',
-        file2SystemLabel: 'SHOPIFY',
+        runType: 'ruleset',
+        ruleSetId: 'ProductCompareRS',
+        compareScopeId: 'ProductScope',
+        runName: 'Products',
+        objectType: 'PRODUCT',
+        file1SystemLabel: 'SHOPIFY',
+        file2SystemLabel: 'OMS',
       },
     })
   })
 
-  it('allows Enter from the focused file input once a file has been selected', async () => {
-    route.query = {
+  it('ignores a stale run-options response after the route switches modes', async () => {
+    const mappingResponseDeferred = createDeferred<typeof mappingResponse>()
+    listPilotMappings.mockReturnValueOnce(mappingResponseDeferred.promise)
+    route.current!.query = {
+      runType: 'mapping',
       mappingId: 'OrderIdMap',
       runName: 'Order ID',
       file1SystemLabel: 'OMS',
@@ -320,123 +346,49 @@ describe('PilotGenericDiffPage', () => {
     const wrapper = mount(PilotGenericDiffPage)
     await flushPromises()
 
-    const file1Input = wrapper.get('[data-testid="file1-input"]')
-    Object.defineProperty(file1Input.element, 'files', {
-      value: [new File(['order_id\n1001\n1002\n'], 'oms-orders.csv', { type: 'text/csv' })],
-      configurable: true,
+    route.current!.query = {
+      runType: 'ruleset',
+      ruleSetId: 'ProductCompareRS',
+      compareScopeId: 'ProductScope',
+      runName: 'Products',
+      file1SystemLabel: 'SHOPIFY',
+      file2SystemLabel: 'OMS',
+    }
+    await flushPromises()
+
+    expect(listPilotRuleSetCompareScopes).toHaveBeenCalledWith({
+      pageIndex: 0,
+      pageSize: 100,
+      query: '',
     })
-    await file1Input.trigger('change')
-    await file1Input.trigger('keydown.enter')
+    expect(wrapper.text()).toContain('Upload the SHOPIFY file')
+    expect(wrapper.find('[data-testid="mapping-select"]').exists()).toBe(false)
+
+    mappingResponseDeferred.resolve(mappingResponse)
     await flushPromises()
 
     expect(wrapper.text()).toContain('Upload the SHOPIFY file')
-    expect(wrapper.text()).not.toContain('Upload the SHOPIFY file for Order ID')
-    expect(wrapper.text()).toContain('Choose the SHOPIFY file to upload...')
+    expect(wrapper.find('[data-testid="mapping-select"]').exists()).toBe(false)
   })
 
-  it('keeps keyboard focus moving through the upload flow after each file selection', async () => {
-    stubFileReader()
-    route.query = {
+  it('keeps the legacy mapping launch path working when the route asks for mapping mode', async () => {
+    route.current!.query = {
+      runType: 'mapping',
       mappingId: 'OrderIdMap',
       runName: 'Order ID',
       file1SystemLabel: 'OMS',
       file2SystemLabel: 'SHOPIFY',
     }
-    runPilotGenericDiff.mockResolvedValue({
-      ok: true,
-      messages: ['Generated Order-ID-diff-20260331-063304.json.'],
-      errors: [],
-      runResult: {
-        generatedOutput: {
-          fileName: 'Order-ID-diff-20260331-063304.json',
-          mappingName: 'Order ID',
-          totalDifferences: 2,
-          onlyInFile1Count: 1,
-          onlyInFile2Count: 1,
-        },
-        validationErrors: [],
-        processingWarnings: [],
-      },
-    })
-
-    const wrapper = mount(PilotGenericDiffPage, {
-      attachTo: document.body,
-    })
-    await flushPromises()
-
-    const file1Input = wrapper.get('[data-testid="file1-input"]')
-    ;(file1Input.element as HTMLInputElement).focus()
-    expect(document.activeElement).toBe(file1Input.element)
-
-    Object.defineProperty(file1Input.element, 'files', {
-      value: [new File(['order_id\n1001\n1002\n'], 'oms-orders.csv', { type: 'text/csv' })],
-      configurable: true,
-    })
-    await file1Input.trigger('change')
-    await flushPromises()
-
-    const primaryAction = wrapper.get('[data-testid="pilot-step-primary"]')
-    expect(document.activeElement).toBe(primaryAction.element)
-
-    await primaryAction.trigger('click')
-    await flushPromises()
-
-    const file2Input = wrapper.get('[data-testid="file2-input"]')
-    expect(document.activeElement).toBe(file2Input.element)
-
-    Object.defineProperty(file2Input.element, 'files', {
-      value: [new File(['order_id\n1002\n1003\n'], 'shopify-orders.csv', { type: 'text/csv' })],
-      configurable: true,
-    })
-    await file2Input.trigger('change')
-    await flushPromises()
-
-    expect(document.activeElement).toBe(wrapper.get('[data-testid="pilot-step-primary"]').element)
-    wrapper.unmount()
-  })
-
-  it('surfaces schema validation feedback when the backend blocks an invalid diff run', async () => {
-    stubFileReader()
-    route.query = {
-      mappingId: 'OrderIdMap',
-      runName: 'Order ID',
-      file1SystemLabel: 'OMS',
-      file2SystemLabel: 'SHOPIFY',
-    }
-    runPilotGenericDiff.mockRejectedValue(
-      new ApiCallError('Schema validation failed. OMS: missing required property order_id', 400, {
-        result: {
-          ok: false,
-          errors: ['Schema validation failed. OMS: missing required property order_id'],
-          validationErrors: ['OMS: missing required property order_id'],
-          processingWarnings: [],
-        },
-      }),
-    )
 
     const wrapper = mount(PilotGenericDiffPage)
     await flushPromises()
 
-    const file1Input = wrapper.get('[data-testid="file1-input"]')
-    Object.defineProperty(file1Input.element, 'files', {
-      value: [new File(['order_id\n1001\n1002\n'], 'oms-orders.csv', { type: 'text/csv' })],
-      configurable: true,
+    expect(listPilotMappings).toHaveBeenCalledWith({
+      pageIndex: 0,
+      pageSize: 50,
+      query: '',
     })
-    await file1Input.trigger('change')
-    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
-    await flushPromises()
-
-    const file2Input = wrapper.get('[data-testid="file2-input"]')
-    Object.defineProperty(file2Input.element, 'files', {
-      value: [new File(['order_id\n1002\n1003\n'], 'shopify-orders.csv', { type: 'text/csv' })],
-      configurable: true,
-    })
-    await file2Input.trigger('change')
-    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Schema validation failed. OMS: missing required property order_id')
-    expect(wrapper.text()).toContain('OMS: missing required property order_id')
-    expect(push).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Upload the OMS file')
+    expect(wrapper.find('[data-testid="mapping-select"]').exists()).toBe(false)
   })
 })

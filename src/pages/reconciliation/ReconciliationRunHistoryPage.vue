@@ -15,7 +15,7 @@
         <div class="run-history-tile__head">
           <span class="static-page-tile-title">{{ formatOutputCreatedDate(featuredOutput.createdDate) }}</span>
         </div>
-        <dl class="run-history-metrics run-history-metrics--featured">
+        <dl class="run-history-metrics" :class="{ 'run-history-metrics--wide': showRuleDifferenceMetric(featuredOutput) }">
           <div>
             <dt>Total differences</dt>
             <dd>{{ featuredOutput.totalDifferences ?? 0 }}</dd>
@@ -27,6 +27,10 @@
           <div>
             <dt>Missing from {{ featuredOutput.file2Label || file2SystemLabel }}</dt>
             <dd>{{ featuredOutput.onlyInFile1Count ?? 0 }}</dd>
+          </div>
+          <div v-if="showRuleDifferenceMetric(featuredOutput)">
+            <dt>Field mismatches</dt>
+            <dd>{{ featuredOutput.ruleDifferenceCount ?? 0 }}</dd>
           </div>
         </dl>
       </RouterLink>
@@ -46,7 +50,7 @@
           <div class="run-history-tile__head">
             <span class="static-page-tile-title">{{ formatOutputCreatedDate(output.createdDate) }}</span>
           </div>
-          <dl class="run-history-metrics">
+          <dl class="run-history-metrics" :class="{ 'run-history-metrics--wide': showRuleDifferenceMetric(output) }">
             <div>
               <dt>Total differences</dt>
               <dd>{{ output.totalDifferences ?? 0 }}</dd>
@@ -58,6 +62,10 @@
             <div>
               <dt>Missing from {{ output.file2Label || file2SystemLabel }}</dt>
               <dd>{{ output.onlyInFile1Count ?? 0 }}</dd>
+            </div>
+            <div v-if="showRuleDifferenceMetric(output)">
+              <dt>Field mismatches</dt>
+              <dd>{{ output.ruleDifferenceCount ?? 0 }}</dd>
             </div>
           </dl>
         </RouterLink>
@@ -92,6 +100,8 @@ import { reconciliationFacade } from '../../lib/api/facade'
 import type { PaginationMeta, PilotGeneratedOutput } from '../../lib/api/types'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
+type RunMode = 'mapping' | 'ruleset'
+
 const GENERATED_OUTPUT_FETCH_PAGE_SIZE = 6
 const OTHER_RESULTS_BATCH_SIZE = 5
 
@@ -108,25 +118,47 @@ const pagination = ref<PaginationMeta>({
   totalCount: 0,
   pageCount: 1,
 })
+let loadGeneratedOutputsRequestId = 0
 
+const runScopeId = computed(() =>
+  typeof route.params.runScopeId === 'string' ? route.params.runScopeId.trim() : '',
+)
+const runType = computed<RunMode>(() => (route.query.runType === 'ruleset' ? 'ruleset' : 'mapping'))
 const reconciliationMappingId = computed(() =>
-  typeof route.params.reconciliationMappingId === 'string' ? route.params.reconciliationMappingId.trim() : '',
+  typeof route.query.mappingId === 'string' ? route.query.mappingId.trim() : '',
+)
+const ruleSetId = computed(() =>
+  typeof route.query.ruleSetId === 'string' ? route.query.ruleSetId.trim() : '',
+)
+const compareScopeId = computed(() =>
+  typeof route.query.compareScopeId === 'string' ? route.query.compareScopeId.trim() : '',
 )
 const runName = computed(() => (typeof route.query.runName === 'string' && route.query.runName.trim() ? route.query.runName.trim() : 'Selected Run'))
 const file1SystemLabel = computed(() =>
-  typeof route.query.file1SystemLabel === 'string' && route.query.file1SystemLabel.trim() ? route.query.file1SystemLabel.trim() : 'System 1',
+  typeof route.query.file1SystemLabel === 'string' && route.query.file1SystemLabel.trim() ? route.query.file1SystemLabel.trim() : 'File 1',
 )
 const file2SystemLabel = computed(() =>
-  typeof route.query.file2SystemLabel === 'string' && route.query.file2SystemLabel.trim() ? route.query.file2SystemLabel.trim() : 'System 2',
+  typeof route.query.file2SystemLabel === 'string' && route.query.file2SystemLabel.trim() ? route.query.file2SystemLabel.trim() : 'File 2',
 )
 const workflowRoute = computed<RouteLocationRaw>(() => ({
   name: 'reconciliation-pilot-diff',
-  query: {
-    mappingId: reconciliationMappingId.value,
-    runName: runName.value,
-    file1SystemLabel: file1SystemLabel.value,
-    file2SystemLabel: file2SystemLabel.value,
-  },
+  query:
+    runType.value === 'ruleset'
+      ? {
+          runType: 'ruleset',
+          ruleSetId: ruleSetId.value,
+          compareScopeId: compareScopeId.value || runScopeId.value,
+          runName: runName.value,
+          file1SystemLabel: file1SystemLabel.value,
+          file2SystemLabel: file2SystemLabel.value,
+        }
+      : {
+          runType: 'mapping',
+          mappingId: reconciliationMappingId.value || runScopeId.value,
+          runName: runName.value,
+          file1SystemLabel: file1SystemLabel.value,
+          file2SystemLabel: file2SystemLabel.value,
+        },
   state: buildWorkflowOriginState('Run History', route.fullPath),
 }))
 const featuredOutput = computed(() => generatedOutputs.value[0] ?? null)
@@ -142,14 +174,26 @@ function buildResultRoute(outputFileName: string): RouteLocationRaw {
   return {
     name: 'reconciliation-run-result',
     params: {
-      reconciliationMappingId: reconciliationMappingId.value,
+      runScopeId: runScopeId.value,
       outputFileName,
     },
-    query: {
-      runName: runName.value,
-      file1SystemLabel: file1SystemLabel.value,
-      file2SystemLabel: file2SystemLabel.value,
-    },
+    query:
+      runType.value === 'ruleset'
+        ? {
+            runType: 'ruleset',
+            ruleSetId: ruleSetId.value,
+            compareScopeId: compareScopeId.value || runScopeId.value,
+            runName: runName.value,
+            file1SystemLabel: file1SystemLabel.value,
+            file2SystemLabel: file2SystemLabel.value,
+          }
+        : {
+            runType: 'mapping',
+            mappingId: reconciliationMappingId.value || runScopeId.value,
+            runName: runName.value,
+            file1SystemLabel: file1SystemLabel.value,
+            file2SystemLabel: file2SystemLabel.value,
+          },
   }
 }
 
@@ -173,11 +217,18 @@ function appendGeneratedOutputs(nextOutputs: PilotGeneratedOutput[]): void {
   generatedOutputs.value = [...generatedOutputs.value, ...dedupedOutputs]
 }
 
-async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promise<void> {
-  if (!reconciliationMappingId.value) {
+async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promise<boolean> {
+  const requestId = ++loadGeneratedOutputsRequestId
+  const requestedRunScopeId = runScopeId.value
+  const requestedRunType = runType.value
+  const requestedMappingIdValue = reconciliationMappingId.value
+  const requestedRuleSetIdValue = ruleSetId.value
+  const requestedCompareScopeIdValue = compareScopeId.value
+
+  if (!requestedRunScopeId) {
     resetHistoryState()
     loadError.value = 'Run history is unavailable without a selected reconciliation run.'
-    return
+    return false
   }
 
   if (append) loadingMore.value = true
@@ -187,16 +238,23 @@ async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promis
   }
 
   try {
-    const response = await reconciliationFacade.listPilotGeneratedOutputs({
-      reconciliationMappingId: reconciliationMappingId.value,
-      pageIndex: targetPageIndex,
-      pageSize: GENERATED_OUTPUT_FETCH_PAGE_SIZE,
-      query: '',
-    })
+    const response =
+      requestedRunType === 'ruleset'
+        ? await reconciliationFacade.listPilotGeneratedOutputs({
+            ruleSetId: requestedRuleSetIdValue,
+            compareScopeId: requestedCompareScopeIdValue || requestedRunScopeId,
+            pageIndex: targetPageIndex,
+            pageSize: GENERATED_OUTPUT_FETCH_PAGE_SIZE,
+            query: '',
+          })
+        : await reconciliationFacade.listPilotGeneratedOutputs({
+            reconciliationMappingId: requestedMappingIdValue || requestedRunScopeId,
+            pageIndex: targetPageIndex,
+            pageSize: GENERATED_OUTPUT_FETCH_PAGE_SIZE,
+            query: '',
+          })
 
-    if (reconciliationMappingId.value !== (typeof route.params.reconciliationMappingId === 'string' ? route.params.reconciliationMappingId.trim() : '')) {
-      return
-    }
+    if (requestId !== loadGeneratedOutputsRequestId) return false
 
     const nextOutputs = response.generatedOutputs ?? []
     if (append) appendGeneratedOutputs(nextOutputs)
@@ -204,12 +262,17 @@ async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promis
 
     pagination.value = response.pagination ?? pagination.value
     lastLoadedPageIndex.value = targetPageIndex
+    return true
   } catch (error) {
+    if (requestId !== loadGeneratedOutputsRequestId) return false
     if (!append) generatedOutputs.value = []
     loadError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved results.'
+    return false
   } finally {
-    if (append) loadingMore.value = false
-    else loading.value = false
+    if (requestId === loadGeneratedOutputsRequestId) {
+      if (append) loadingMore.value = false
+      else loading.value = false
+    }
   }
 }
 
@@ -221,7 +284,8 @@ async function loadMoreOutputs(): Promise<void> {
 
   if (!hasMoreHistoryPages.value || loadingMore.value) return
 
-  await loadGeneratedOutputs(lastLoadedPageIndex.value + 1, true)
+  const applied = await loadGeneratedOutputs(lastLoadedPageIndex.value + 1, true)
+  if (!applied) return
   visibleOtherOutputCount.value += OTHER_RESULTS_BATCH_SIZE
 }
 
@@ -237,7 +301,11 @@ function formatOutputCreatedDate(createdDate?: string): string {
   }).format(parsedDate)
 }
 
-watch(reconciliationMappingId, () => {
+function showRuleDifferenceMetric(output: PilotGeneratedOutput): boolean {
+  return (output.ruleDifferenceCount ?? 0) > 0
+}
+
+watch([runScopeId, runType, reconciliationMappingId, ruleSetId, compareScopeId], () => {
   resetHistoryState()
   void loadGeneratedOutputs()
 }, { immediate: true })
@@ -258,54 +326,58 @@ watch(reconciliationMappingId, () => {
 }
 
 .run-history-featured-tile {
-  width: 100%;
-  min-height: 0;
+  display: grid;
+  gap: var(--space-3);
 }
 
 .run-history-tile {
-  width: 100%;
-  align-items: flex-start;
+  display: grid;
   gap: var(--space-3);
-  justify-content: flex-start;
-  text-align: left;
+  text-decoration: none;
+  color: inherit;
 }
 
-.run-history-tile__head,
-.run-history-metrics {
-  display: grid;
-  gap: var(--space-2);
+.run-history-tile__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
 }
 
 .run-history-metrics {
   margin: 0;
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.run-history-metrics--featured {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-4);
+.run-history-metrics--wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .run-history-metrics div {
   display: grid;
-  gap: 0.15rem;
+  gap: 0.2rem;
 }
 
 .run-history-metrics dt {
   color: var(--text-muted);
+  font-size: 0.86rem;
 }
 
 .run-history-metrics dd {
   margin: 0;
+  font-size: 1rem;
 }
 
 .run-history-more-tile {
-  width: 100%;
+  min-height: 100%;
 }
 
 @media (max-width: 760px) {
-  .run-history-metrics--featured {
+  .run-history-metrics,
+  .run-history-metrics--wide {
     grid-template-columns: 1fr;
-    gap: var(--space-2);
   }
 }
 </style>
