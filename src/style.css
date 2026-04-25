@@ -842,6 +842,7 @@ button:disabled {
 }
 
 .workflow-shell {
+  grid-row: 2;
   width: min(var(--workflow-shell-width), 100%);
   display: grid;
   justify-items: center;
@@ -851,6 +852,10 @@ button:disabled {
 .workflow-shell--center-stage {
   min-height: 100%;
   align-content: center;
+}
+
+.workflow-page--edit .workflow-shell {
+  padding-top: var(--workflow-form-top-offset);
 }
 
 .workflow-step-wrapper {
@@ -950,7 +955,6 @@ button:disabled {
 }
 
 .workflow-form--edit-single-page {
-  padding-top: var(--workflow-form-top-offset);
   --workflow-form-question-size: clamp(1.24rem, 1.5vw, 1.61rem);
   --workflow-form-question-mobile-size: clamp(1.01rem, 4.5vw, 1.31rem);
   --workflow-form-answer-size: clamp(0.89rem, 1.05vw, 1.09rem);

@@ -1,5 +1,5 @@
 <template>
-  <WorkflowPage :progress-percent="progressPercent" aria-label="SFTP server setup progress" center-stage>
+  <WorkflowPage :progress-percent="progressPercent" aria-label="SFTP server setup progress" center-stage :edit-surface="isEditing">
     <InlineValidation v-if="error" tone="error" :message="error" />
     <p v-if="success" class="success-copy">{{ success }}</p>
 

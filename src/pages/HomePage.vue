@@ -89,6 +89,37 @@ interface DashboardFlowCard {
   to: RouteLocationRaw
 }
 
+const dashboardRunTitleOverrides: Record<string, string> = {
+  API: 'API',
+  CSV: 'CSV',
+  GL: 'GL',
+  ID: 'ID',
+  JSON: 'JSON',
+  LLM: 'LLM',
+  NETSUITE: 'NetSuite',
+  OMS: 'OMS',
+  PWA: 'PWA',
+  SAPI: 'SAPI',
+  SFTP: 'SFTP',
+  SKU: 'SKU',
+  SQL: 'SQL',
+  UI: 'UI',
+  URL: 'URL',
+}
+
+function titleizeDashboardRunToken(token: string): string {
+  const override = dashboardRunTitleOverrides[token]
+  if (override) return override
+  return token.charAt(0) + token.slice(1).toLowerCase()
+}
+
+function resolveDashboardRunTitle(runName: string): string {
+  const trimmed = runName.trim().replace(/\s+/g, ' ')
+  if (!trimmed || /[a-z]/.test(trimmed)) return trimmed
+  if (!/[A-Z]/.test(trimmed)) return trimmed
+  return trimmed.split(' ').map(titleizeDashboardRunToken).join(' ')
+}
+
 function resolveSystemLabel(mapping: PilotMappingSummary, enumId?: string): string {
   if (!enumId) return ''
   const option = mapping.systemOptions.find((systemOption) => systemOption.enumId === enumId)
@@ -107,21 +138,24 @@ const createFlowRoute: RouteLocationRaw = {
 }
 
 const mappingCards = computed<DashboardFlowCard[]>(() =>
-  mappings.value.map((mapping) => ({
-    id: `mapping:${mapping.reconciliationMappingId}`,
-    mappingId: mapping.reconciliationMappingId,
-    title: mapping.mappingName,
-    to: {
-      name: 'reconciliation-pilot-diff',
-      query: {
-        mappingId: mapping.reconciliationMappingId,
-        runName: mapping.mappingName,
-        file1SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile1SystemEnumId),
-        file2SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile2SystemEnumId),
+  mappings.value.map((mapping) => {
+    const title = resolveDashboardRunTitle(mapping.mappingName)
+    return {
+      id: `mapping:${mapping.reconciliationMappingId}`,
+      mappingId: mapping.reconciliationMappingId,
+      title,
+      to: {
+        name: 'reconciliation-pilot-diff',
+        query: {
+          mappingId: mapping.reconciliationMappingId,
+          runName: title,
+          file1SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile1SystemEnumId),
+          file2SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile2SystemEnumId),
+        },
+        state: dashboardWorkflowOriginState,
       },
-      state: dashboardWorkflowOriginState,
-    },
-  })),
+    }
+  }),
 )
 
 const flowCards = computed<DashboardFlowCard[]>(() => mappingCards.value)

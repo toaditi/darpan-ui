@@ -1,5 +1,5 @@
 <template>
-  <WorkflowPage :progress-percent="'100'" aria-label="Run settings edit progress" center-stage>
+  <WorkflowPage :progress-percent="'100'" aria-label="Run settings edit progress" center-stage edit-surface>
     <InlineValidation v-if="error" tone="error" :message="error" />
     <InlineValidation v-else-if="!loading && validationMessage" tone="error" :message="validationMessage" />
     <p v-if="success" class="success-copy">{{ success }}</p>

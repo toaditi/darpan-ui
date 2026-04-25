@@ -154,6 +154,37 @@ describe('HomePage', () => {
     expect(wrapper.find('[data-testid="other-runs"]').text()).not.toContain('Reconciliation 1')
   })
 
+  it('does not shout all-uppercase run names on dashboard tiles', async () => {
+    listPilotMappings.mockResolvedValue({
+      pinnedReconciliationMappingIds: [],
+      mappings: [
+        {
+          reconciliationMappingId: 'MapGorjana',
+          mappingName: 'GORJANA ORDERS CSV ID',
+          description: 'Gorjana orders sync.',
+          requiresSystemSelection: false,
+          defaultFile1SystemEnumId: 'DarSysOms',
+          defaultFile2SystemEnumId: 'DarSysShopify',
+          systemOptions: [
+            { enumId: 'DarSysOms', label: 'OMS' },
+            { enumId: 'DarSysShopify', label: 'SHOPIFY' },
+          ],
+        },
+      ],
+    })
+
+    const wrapper = mount(HomePage)
+    await flushPromises()
+
+    const runTile = wrapper.get('[data-flow-id="mapping:MapGorjana"]')
+    expect(runTile.text()).toBe('Gorjana Orders CSV ID')
+    expect(JSON.parse(runTile.attributes('data-to') ?? '{}')).toMatchObject({
+      query: {
+        runName: 'Gorjana Orders CSV ID',
+      },
+    })
+  })
+
   it('restores the previous pin state when saving fails', async () => {
     saveDashboardPinnedMappings.mockRejectedValueOnce(new Error('save failed'))
 

@@ -20,8 +20,8 @@ describe('WorkflowStepForm', () => {
 
     expect(wrapper.get('form').classes()).toContain('wizard-question-shell')
     expect(source).not.toContain('padding-top: var(--workflow-form-top-offset);')
-    expect(globalSource).toContain('.workflow-form--edit-single-page {')
-    expect(globalSource).toContain('padding-top: var(--workflow-form-top-offset);')
+    expect(globalSource).toContain('.workflow-page--edit .workflow-shell {')
+    expect(globalSource).not.toMatch(/\.workflow-form--edit-single-page\s*\{[^}]*padding-top: var\(--workflow-form-top-offset\);/)
     expect(globalSource).toContain('--workflow-form-top-offset: var(--space-6);')
     expect(globalSource).toContain('--workflow-form-top-offset: var(--space-5);')
   })

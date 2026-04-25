@@ -1,6 +1,6 @@
 <template>
-  <main class="page-root workflow-page">
-    <WorkflowProgressBar :progress-percent="progressPercent" :aria-label="ariaLabel" />
+  <main :class="['page-root', 'workflow-page', { 'workflow-page--edit': editSurface }]">
+    <WorkflowProgressBar v-if="!editSurface" :progress-percent="progressPercent" :aria-label="ariaLabel" />
     <section :class="['workflow-shell', { 'workflow-shell--center-stage': centerStage }]">
       <slot />
     </section>
@@ -15,10 +15,12 @@ withDefaults(
     progressPercent: number | string
     ariaLabel?: string
     centerStage?: boolean
+    editSurface?: boolean
   }>(),
   {
     ariaLabel: 'Workflow progress',
     centerStage: false,
+    editSurface: false,
   },
 )
 </script>
