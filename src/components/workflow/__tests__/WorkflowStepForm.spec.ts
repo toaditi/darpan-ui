@@ -1,9 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import WorkflowStepForm from '../WorkflowStepForm.vue'
 
 describe('WorkflowStepForm', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('routes the shared top-offset token through the edit-single-page workflow contract instead of all workflow forms', () => {
     const wrapper = mount(WorkflowStepForm, {
       props: {
@@ -54,5 +58,54 @@ describe('WorkflowStepForm', () => {
     await cancelButton.trigger('click')
 
     expect(wrapper.emitted('cancel')).toHaveLength(1)
+  })
+
+  it('moves focus to the primary action after a file is selected', async () => {
+    vi.useFakeTimers()
+
+    const wrapper = mount(WorkflowStepForm, {
+      attachTo: document.body,
+      props: {
+        question: 'Upload the schema file',
+        primaryLabel: 'OK',
+        primaryTestId: 'wizard-next',
+      },
+      slots: {
+        default: '<label class="wizard-input-shell wizard-file-shell"><input data-testid="upload-file" class="wizard-file-input" type="file"></label>',
+      },
+    })
+
+    const fileInput = wrapper.get('[data-testid="upload-file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['{"orderId":"1001"}'], 'orders.json', { type: 'application/json' })],
+      configurable: true,
+    })
+
+    await fileInput.trigger('change')
+    await vi.runAllTimersAsync()
+
+    expect((document.activeElement as HTMLElement | null)?.dataset.testid).toBe('wizard-next')
+
+    wrapper.unmount()
+  })
+
+  it('submits when Enter is pressed from a workflow checkbox', async () => {
+    const wrapper = mount(WorkflowStepForm, {
+      attachTo: document.body,
+      props: {
+        question: 'Verify the schema',
+        primaryLabel: 'OK',
+        primaryTestId: 'wizard-next',
+      },
+      slots: {
+        default: '<label><input data-testid="required-field" type="checkbox"> Required field</label>',
+      },
+    })
+
+    await wrapper.get('[data-testid="required-field"]').trigger('keydown.enter')
+
+    expect(wrapper.emitted('submit')).toHaveLength(1)
+
+    wrapper.unmount()
   })
 })

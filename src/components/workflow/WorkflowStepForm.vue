@@ -1,5 +1,5 @@
 <template>
-  <form class="wizard-question-shell" @submit.prevent="emit('submit')" @keydown.enter="handleEnter">
+  <form class="wizard-question-shell" @submit.prevent="emit('submit')" @keydown.enter="handleEnter" @change="handleFileChange">
     <slot name="context"></slot>
 
     <div class="wizard-prompt-row">
@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useSlots } from 'vue'
+import { computed, onBeforeUnmount, useSlots } from 'vue'
 import { requestSubmitOnEnter } from '../../lib/keyboard'
 import AppCancelAction from '../ui/AppCancelAction.vue'
 import AppSaveAction from '../ui/AppSaveAction.vue'
@@ -91,6 +91,8 @@ const emit = defineEmits<{
 }>()
 
 const slots = useSlots()
+let pendingPrimaryFocusTimer: number | null = null
+
 const hasActions = computed(() => (
   props.showBack
   || props.showCancelAction
@@ -103,9 +105,35 @@ function handleEnter(event: KeyboardEvent): void {
   requestSubmitOnEnter(event, {
     allowSelect: props.allowSelectEnter,
     allowFile: props.allowFileEnter,
+    allowCheckbox: true,
     disabled: props.submitDisabled,
   })
 }
+
+function clearPendingPrimaryFocus(): void {
+  if (pendingPrimaryFocusTimer === null) return
+
+  window.clearTimeout(pendingPrimaryFocusTimer)
+  pendingPrimaryFocusTimer = null
+}
+
+function handleFileChange(event: Event): void {
+  const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null
+  const target = event.target
+  if (!form || !(target instanceof HTMLInputElement) || target.type !== 'file' || !target.files?.length) return
+
+  clearPendingPrimaryFocus()
+  pendingPrimaryFocusTimer = window.setTimeout(() => {
+    pendingPrimaryFocusTimer = null
+    const primaryAction = form.querySelector<HTMLButtonElement>('.app-icon-action--primary, .wizard-next')
+    if (!primaryAction || primaryAction.disabled) return
+    primaryAction.focus()
+  }, 0)
+}
+
+onBeforeUnmount(() => {
+  clearPendingPrimaryFocus()
+})
 </script>
 
 <style scoped>

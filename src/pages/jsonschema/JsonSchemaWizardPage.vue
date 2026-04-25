@@ -9,6 +9,7 @@
       :show-back="currentStepIndex > 0"
       :show-primary-action="currentStep.id !== 'upload-intent'"
       :show-enter-hint="currentStep.id !== 'upload-intent'"
+      :allow-file-enter="currentStep.id === 'upload'"
       :primary-test-id="currentStep.id === 'name' ? 'save-schema' : 'wizard-next'"
       @submit="handlePrimarySubmit"
       @back="goBack"
@@ -95,6 +96,7 @@
               :options="systemOptions"
               placeholder="Select system"
               test-id="schema-wizard-system"
+              submit-on-enter
             />
           </label>
         </div>

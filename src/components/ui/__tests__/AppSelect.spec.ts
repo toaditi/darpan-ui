@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { defineComponent, ref } from 'vue'
 import AppSelect from '../AppSelect.vue'
 import { DISMISS_INLINE_MENUS_EVENT } from '../../../lib/uiEvents'
@@ -137,5 +137,64 @@ describe('AppSelect', () => {
 
     expect(wrapper.get('[data-testid="auth-config-select"]').attributes('aria-expanded')).toBe('false')
     expect(wrapper.find('[data-testid="app-select-option"]').exists()).toBe(false)
+  })
+
+  it('submits the closest form after Enter selects an option when enabled', async () => {
+    const requestSubmit = vi.fn()
+    const wrapper = mount(AppSelect, {
+      attachTo: document.body,
+      props: {
+        modelValue: '',
+        options: [
+          { value: 'shopify', label: 'Shopify' },
+          { value: 'oms', label: 'OMS' },
+        ],
+        submitOnEnter: true,
+        testId: 'system-select',
+      },
+    })
+    const form = document.createElement('form')
+    form.requestSubmit = requestSubmit
+    form.append(wrapper.element)
+    document.body.append(form)
+
+    await wrapper.get('[data-testid="system-select"]').trigger('click')
+    await wrapper.get('[data-testid="app-select-option"][data-option-value="shopify"]').trigger('keydown.enter')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([['shopify']])
+    expect(requestSubmit).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+    form.remove()
+  })
+
+  it('submits from the trigger on Enter when a selected value is enabled for submit', async () => {
+    const requestSubmit = vi.fn()
+    const wrapper = mount(AppSelect, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'oms',
+        options: [
+          { value: 'shopify', label: 'Shopify' },
+          { value: 'oms', label: 'OMS' },
+        ],
+        submitOnEnter: true,
+        testId: 'system-select',
+      },
+    })
+    const form = document.createElement('form')
+    form.requestSubmit = requestSubmit
+    form.append(wrapper.element)
+    document.body.append(form)
+
+    await wrapper.get('[data-testid="system-select"]').trigger('keydown.enter')
+    await flushPromises()
+
+    expect(requestSubmit).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="app-select-option"]').exists()).toBe(false)
+
+    wrapper.unmount()
+    form.remove()
   })
 })

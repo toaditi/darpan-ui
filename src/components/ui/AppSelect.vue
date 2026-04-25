@@ -18,7 +18,7 @@
       :data-testid="testId || undefined"
       @mousedown.stop
       @click.stop="toggleMenu"
-      @keydown.enter.prevent="openMenuAndFocus('selected')"
+      @keydown.enter.prevent="handleTriggerEnter"
       @keydown.space.prevent="toggleMenu"
       @keydown.down.prevent="openMenuAndFocus('selected')"
       @keydown.up.prevent="openMenuAndFocus('last')"
@@ -55,7 +55,7 @@
         @keydown.up.prevent="focusRelative(index, -1)"
         @keydown.home.prevent="focusOption(0)"
         @keydown.end.prevent="focusOption(options.length - 1)"
-        @keydown.enter.prevent="selectOption(option.value)"
+        @keydown.enter.prevent="handleOptionEnter(option.value)"
         @keydown.space.prevent="selectOption(option.value)"
         @keydown.escape.prevent="closeAndFocusTrigger"
       >
@@ -81,11 +81,13 @@ const props = withDefaults(
     placeholder?: string
     disabled?: boolean
     testId?: string
+    submitOnEnter?: boolean
   }>(),
   {
     placeholder: '',
     disabled: false,
     testId: '',
+    submitOnEnter: false,
   },
 )
 
@@ -161,6 +163,50 @@ async function selectOption(value: string): Promise<void> {
   closeMenu()
   await nextTick()
   trigger.value?.focus()
+}
+
+async function selectOptionAndSubmit(value: string): Promise<void> {
+  emit('update:modelValue', value)
+  closeMenu()
+  await nextTick()
+
+  if (submitClosestForm()) return
+
+  trigger.value?.focus()
+}
+
+function submitClosestForm(): boolean {
+  const form = root.value?.closest('form')
+  if (!(form instanceof HTMLFormElement)) return false
+
+  if (typeof form.requestSubmit === 'function') {
+    form.requestSubmit()
+    return true
+  }
+
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  return true
+}
+
+async function handleOptionEnter(value: string): Promise<void> {
+  if (props.submitOnEnter) {
+    await selectOptionAndSubmit(value)
+    return
+  }
+
+  await selectOption(value)
+}
+
+async function handleTriggerEnter(): Promise<void> {
+  if (props.disabled || props.options.length === 0) return
+
+  const hasSelection = props.options.some((option) => option.value === props.modelValue)
+  if (props.submitOnEnter && hasSelection) {
+    await selectOptionAndSubmit(props.modelValue)
+    return
+  }
+
+  await openMenuAndFocus('selected')
 }
 
 function closeAndFocusTrigger(): void {
