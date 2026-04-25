@@ -109,6 +109,7 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.text()).not.toContain('Saved result from')
     expect(wrapper.text()).toContain('Missing from OMS')
     expect(wrapper.text()).toContain('Missing from SHOPIFY')
+    expect(wrapper.text()).toContain('Rule differences')
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('"order_id": "1001"')
     expect(wrapper.get('[data-testid="run-result-download"]').attributes('aria-label')).toBe('Download saved result')
@@ -193,6 +194,49 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.text()).toContain('Page 1 of 2')
   })
 
+  it('renders rule difference rows with primary ids and diff metadata instead of empty JSON objects', async () => {
+    getPilotGeneratedOutput.mockResolvedValue(
+      buildGeneratedOutputFile(
+        JSON.stringify({
+          metadata: defaultDiffDetails.metadata,
+          summary: {
+            totalDifferences: 3,
+            onlyInFile1Count: 1,
+            onlyInFile2Count: 1,
+            missingObjectDifferenceCount: 2,
+            ruleDifferenceCount: 1,
+          },
+          differences: [
+            defaultDiffDetails.differences[0],
+            defaultDiffDetails.differences[1],
+            {
+              diffType: 'FIELD_MISMATCH',
+              primaryId: '6678202450051',
+              field: 'grand_total = total_amount',
+              file1Value: '89.89',
+              file2Value: '90.32',
+              ruleId: 'FIELD_COMPARISON_1',
+              severity: 'WARN',
+              message: 'Field comparison failed: grand_total = total_amount',
+            },
+          ],
+        }),
+      ),
+    )
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Rule differences')
+    expect(wrapper.text()).toContain('6678202450051')
+    expect(wrapper.text()).toContain('"diffType": "FIELD_MISMATCH"')
+    expect(wrapper.text()).toContain('"field": "grand_total = total_amount"')
+    expect(wrapper.text()).toContain('"file1Value": "89.89"')
+    expect(wrapper.text()).toContain('"file2Value": "90.32"')
+    expect(wrapper.text()).not.toContain('row-3')
+    expect(wrapper.text()).not.toContain('{}')
+  })
+
   it('shows an inline error when the saved result cannot be loaded', async () => {
     getPilotGeneratedOutput.mockRejectedValue(new ApiCallError('Unable to load saved result.', 503))
 
@@ -212,7 +256,7 @@ describe('ReconciliationRunResultPage', () => {
     expect(source).toContain("import AppTableFrame from '../../components/ui/AppTableFrame.vue'")
     expect(source).toContain('<AppTableFrame')
     expect(source).toContain("label: 'Record ID'")
-    expect(source).toContain("label: 'Record JSON'")
+    expect(source).toContain("label: 'Diff Detail'")
     expect(source).not.toContain('class="pilot-diff-table"')
   })
 })

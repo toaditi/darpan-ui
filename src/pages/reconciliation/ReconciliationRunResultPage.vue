@@ -108,8 +108,8 @@
             <strong>{{ row.recordId }}</strong>
           </template>
 
-          <template #cell-jsonText="{ row }">
-            <pre class="run-result-table__json">{{ row.jsonText }}</pre>
+          <template #cell-detailText="{ row }">
+            <pre class="run-result-table__json">{{ row.detailText }}</pre>
           </template>
 
           <template #cell-actions>
@@ -153,7 +153,7 @@ import { reconciliationFacade } from '../../lib/api/facade'
 import type { GetPilotGeneratedOutputFile, PilotGeneratedOutput } from '../../lib/api/types'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
-type DiffBucketKey = 'file-1' | 'file-2'
+type DiffBucketKey = 'file-1' | 'file-2' | 'rule'
 
 interface DiffDetailsMetadata {
   file1Label?: string
@@ -167,14 +167,24 @@ interface DiffDetailsSummary {
   totalDifferences?: number
   onlyInFile1Count?: number
   onlyInFile2Count?: number
+  missingObjectDifferenceCount?: number
+  ruleDifferenceCount?: number
 }
 
 interface DiffDetailsRecord {
+  diffType?: string
   type?: string
   id?: string | number
+  primaryId?: string | number
   presentIn?: string
   missingIn?: string
   data?: unknown
+  field?: string
+  file1Value?: unknown
+  file2Value?: unknown
+  ruleId?: string
+  severity?: string
+  message?: string
 }
 
 interface DiffDetailsPayload {
@@ -186,8 +196,8 @@ interface DiffDetailsPayload {
 interface NormalizedDiffDetailRow {
   rowKey: string
   recordId: string
-  missingBucket: DiffBucketKey
-  jsonText: string
+  bucket: DiffBucketKey
+  detailText: string
 }
 
 const diffDetailColumns = [
@@ -197,8 +207,8 @@ const diffDetailColumns = [
     colStyle: { width: '13rem' },
   },
   {
-    key: 'jsonText',
-    label: 'Record JSON',
+    key: 'detailText',
+    label: 'Diff Detail',
   },
   {
     key: 'actions',
@@ -218,12 +228,12 @@ const downloadableOutputFile = ref<GetPilotGeneratedOutputFile | null>(null)
 const diffDetailsMeta = ref<DiffDetailsMetadata>({})
 const diffDetailsSummary = ref<DiffDetailsSummary>({})
 const diffDetailRows = ref<NormalizedDiffDetailRow[]>([])
-const selectedDiffBuckets = ref<DiffBucketKey[]>(['file-1', 'file-2'])
+const selectedDiffBuckets = ref<DiffBucketKey[]>(['file-1', 'file-2', 'rule'])
 const diffDetailsSearch = ref('')
 const diffDetailsPageIndex = ref(0)
 
 const DIFF_DETAILS_PAGE_SIZE = 5
-const DIFF_BUCKET_ORDER: DiffBucketKey[] = ['file-1', 'file-2']
+const DIFF_BUCKET_ORDER: DiffBucketKey[] = ['file-1', 'file-2', 'rule']
 
 const reconciliationMappingId = computed(() =>
   typeof route.params.reconciliationMappingId === 'string' ? route.params.reconciliationMappingId.trim() : '',
@@ -277,7 +287,7 @@ const diffDetailBuckets = computed(() => [
     label: `Missing from ${diffDetailsFile1Label.value}`,
     count:
       diffDetailsSummary.value.onlyInFile2Count ??
-      diffDetailRows.value.filter((row) => row.missingBucket === 'file-1').length,
+      diffDetailRows.value.filter((row) => row.bucket === 'file-1').length,
     testId: 'diff-bucket-file-1',
   },
   {
@@ -285,12 +295,20 @@ const diffDetailBuckets = computed(() => [
     label: `Missing from ${diffDetailsFile2Label.value}`,
     count:
       diffDetailsSummary.value.onlyInFile1Count ??
-      diffDetailRows.value.filter((row) => row.missingBucket === 'file-2').length,
+      diffDetailRows.value.filter((row) => row.bucket === 'file-2').length,
     testId: 'diff-bucket-file-2',
+  },
+  {
+    key: 'rule' as const,
+    label: 'Rule differences',
+    count:
+      diffDetailsSummary.value.ruleDifferenceCount ??
+      diffDetailRows.value.filter((row) => row.bucket === 'rule').length,
+    testId: 'diff-bucket-rule',
   },
 ])
 const activeBucketDiffDetailRows = computed(() =>
-  diffDetailRows.value.filter((row) => activeDiffBuckets.value.includes(row.missingBucket)),
+  diffDetailRows.value.filter((row) => activeDiffBuckets.value.includes(row.bucket)),
 )
 const filteredDiffDetailRows = computed(() => {
   const searchValue = diffDetailsSearch.value.trim().toLowerCase()
@@ -359,6 +377,8 @@ function downloadText(filename: string, text: string, contentType: string): void
 }
 
 function stringifyDiffJson(value: unknown): string {
+  if (value == null) return ''
+
   if (typeof value === 'string') {
     try {
       return JSON.stringify(JSON.parse(value), null, 2)
@@ -368,17 +388,23 @@ function stringifyDiffJson(value: unknown): string {
   }
 
   try {
-    return JSON.stringify(value ?? {}, null, 2)
+    return JSON.stringify(value, null, 2)
   } catch {
-    return String(value ?? '')
+    return String(value)
   }
+}
+
+function resolveDiffType(record: DiffDetailsRecord): string {
+  return normalizeDiffLabel(record.diffType || record.type)
 }
 
 function resolveDiffRecordId(record: DiffDetailsRecord, rowIndex: number): string {
   if (record.id != null && String(record.id).trim()) return String(record.id).trim()
+  if (record.primaryId != null && String(record.primaryId).trim()) return String(record.primaryId).trim()
 
   if (record.data && typeof record.data === 'object') {
     const candidate =
+      (record.data as Record<string, unknown>).primaryId ??
       (record.data as Record<string, unknown>).record_id ??
       (record.data as Record<string, unknown>).recordId ??
       (record.data as Record<string, unknown>).compare_id ??
@@ -398,7 +424,7 @@ function resolveMissingBucket(
   const missingToken = normalizeDiffToken(record.missingIn)
   const file1Token = normalizeDiffToken(file1LabelValue)
   const file2Token = normalizeDiffToken(file2LabelValue)
-  const typeToken = normalizeDiffToken(record.type)
+  const typeToken = normalizeDiffToken(resolveDiffType(record))
   const presentToken = normalizeDiffToken(record.presentIn)
 
   if (missingToken && missingToken === file1Token) return 'file-1'
@@ -407,7 +433,54 @@ function resolveMissingBucket(
   if (file2Token && typeToken.includes(`missing_in_${file2Token}`)) return 'file-2'
   if (presentToken && presentToken === file1Token) return 'file-2'
   if (presentToken && presentToken === file2Token) return 'file-1'
-  return 'file-2'
+  return 'rule'
+}
+
+function isMissingDiffRecord(record: DiffDetailsRecord): boolean {
+  const typeToken = normalizeDiffToken(resolveDiffType(record))
+  return Boolean(record.missingIn || record.presentIn || typeToken.startsWith('missing_in_'))
+}
+
+function parseDiffData(rawData: unknown): unknown {
+  if (typeof rawData !== 'string') return rawData
+
+  try {
+    return JSON.parse(rawData)
+  } catch {
+    return rawData
+  }
+}
+
+function buildDiffDetailPayload(record: DiffDetailsRecord, parsedData: unknown): unknown {
+  if (parsedData != null && !(typeof parsedData === 'string' && !parsedData.trim())) {
+    return parsedData
+  }
+
+  const diffDetail = {
+    diffType: resolveDiffType(record) || undefined,
+    primaryId:
+      record.primaryId != null && String(record.primaryId).trim() ? String(record.primaryId).trim() : undefined,
+    field: normalizeDiffLabel(record.field) || undefined,
+    file1Value: record.file1Value,
+    file2Value: record.file2Value,
+    severity: normalizeDiffLabel(record.severity) || undefined,
+    ruleId: normalizeDiffLabel(record.ruleId) || undefined,
+    message: normalizeDiffLabel(record.message) || undefined,
+  }
+
+  const normalizedDetail = Object.fromEntries(Object.entries(diffDetail).filter(([, value]) => value != null))
+  return Object.keys(normalizedDetail).length > 0 ? normalizedDetail : null
+}
+
+function resolveDiffBucket(
+  record: DiffDetailsRecord,
+  file1LabelValue: string,
+  file2LabelValue: string,
+): DiffBucketKey {
+  if (isMissingDiffRecord(record)) {
+    return resolveMissingBucket(record, file1LabelValue, file2LabelValue)
+  }
+  return 'rule'
 }
 
 function normalizeDiffDetailRows(
@@ -416,18 +489,9 @@ function normalizeDiffDetailRows(
   file2LabelValue: string,
 ): NormalizedDiffDetailRow[] {
   return (payload.differences ?? []).map((record, index) => {
-    const parsedData =
-      typeof record.data === 'string'
-        ? (() => {
-            try {
-              return JSON.parse(record.data)
-            } catch {
-              return record.data
-            }
-          })()
-        : record.data
-
-    const missingBucket = resolveMissingBucket(record, file1LabelValue, file2LabelValue)
+    const parsedData = parseDiffData(record.data)
+    const detailPayload = buildDiffDetailPayload(record, parsedData)
+    const bucket = resolveDiffBucket(record, file1LabelValue, file2LabelValue)
     const recordId = resolveDiffRecordId(
       {
         ...record,
@@ -437,10 +501,10 @@ function normalizeDiffDetailRows(
     )
 
     return {
-      rowKey: `${missingBucket}-${recordId}-${index}`,
+      rowKey: `${bucket}-${recordId}-${index}`,
       recordId,
-      missingBucket,
-      jsonText: stringifyDiffJson(parsedData),
+      bucket,
+      detailText: stringifyDiffJson(detailPayload),
     }
   })
 }
