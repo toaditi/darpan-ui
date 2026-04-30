@@ -36,7 +36,7 @@
       </div>
 
       <RouterLink
-        v-if="rows.length === 0 && !loading && !error"
+        v-if="canEditTenantSettings && rows.length === 0 && !loading && !error"
         :to="createRoute"
         class="static-page-action-tile static-page-action-tile--inline"
         data-testid="sftp-empty-create-action"
@@ -46,7 +46,7 @@
     </StaticPageSection>
 
     <RouterLink
-      v-if="rows.length > 0"
+      v-if="canEditTenantSettings && rows.length > 0"
       :to="createRoute"
       class="static-page-action-tile static-page-create-action"
       data-testid="sftp-create-action"
@@ -65,11 +65,15 @@ import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { useAuthState, useUiPermissions } from '../../lib/auth'
 import type { SftpServerRecord } from '../../lib/api/types'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
+import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
+const authState = useAuthState()
+const permissions = useUiPermissions()
 
 const rows = ref<SftpServerRecord[]>([])
 const pageIndex = ref(0)
@@ -78,6 +82,7 @@ const pageCount = ref(1)
 
 const loading = ref(false)
 const error = ref<string | null>(null)
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 
 const createRoute = computed(() => ({
   path: '/settings/sftp/create',
@@ -107,7 +112,10 @@ async function load(): Promise<void> {
       pageIndex: pageIndex.value,
       pageSize: pageSize.value,
     })
-    rows.value = response.servers ?? []
+    rows.value = filterRecordsForActiveTenant(
+      response.servers ?? [],
+      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    )
     pageCount.value = response.pagination?.pageCount ?? 1
   } catch (loadError) {
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load servers.'

@@ -1,10 +1,15 @@
 import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { WORKFLOW_CANCEL_REQUEST_EVENT } from '../../../lib/uiEvents'
 import WorkflowStepForm from '../WorkflowStepForm.vue'
 
 describe('WorkflowStepForm', () => {
-  it('routes the shared top-offset token through the edit-single-page workflow contract instead of all workflow forms', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('keeps edit spacing on the workflow page template instead of all workflow forms', () => {
     const wrapper = mount(WorkflowStepForm, {
       props: {
         question: 'Update the NetSuite auth profile.',
@@ -17,6 +22,7 @@ describe('WorkflowStepForm', () => {
     expect(wrapper.get('form').classes()).toContain('wizard-question-shell')
     expect(source).not.toContain('padding-top: var(--workflow-form-top-offset);')
     expect(globalSource).toContain('.workflow-form--edit-single-page {')
+    expect(globalSource).toContain('.workflow-page--edit .workflow-shell {')
     expect(globalSource).toContain('padding-top: var(--workflow-form-top-offset);')
     expect(globalSource).toContain('--workflow-form-top-offset: var(--space-6);')
     expect(globalSource).toContain('--workflow-form-top-offset: var(--space-5);')
@@ -27,6 +33,7 @@ describe('WorkflowStepForm', () => {
       props: {
         question: 'Update the NetSuite auth profile.',
         primaryLabel: 'Save',
+        primaryActionVariant: 'save',
         showCancelAction: true,
         primaryTestId: 'save-workflow',
         cancelTestId: 'cancel-workflow',
@@ -54,5 +61,96 @@ describe('WorkflowStepForm', () => {
     await cancelButton.trigger('click')
 
     expect(wrapper.emitted('cancel')).toHaveLength(1)
+
+    wrapper.unmount()
   })
+
+  it('emits cancel from the shared workflow cancel request when the X action is available', () => {
+    const wrapper = mount(WorkflowStepForm, {
+      attachTo: document.body,
+      props: {
+        question: 'Update rules.',
+        showCancelAction: true,
+        cancelTestId: 'cancel-workflow',
+      },
+    })
+    const cancelRequest = new Event(WORKFLOW_CANCEL_REQUEST_EVENT, { cancelable: true })
+
+    document.dispatchEvent(cancelRequest)
+
+    expect(cancelRequest.defaultPrevented).toBe(true)
+    expect(wrapper.emitted('cancel')).toHaveLength(1)
+
+    wrapper.unmount()
+  })
+
+  it('ignores workflow cancel requests when the X action is disabled', () => {
+    const wrapper = mount(WorkflowStepForm, {
+      attachTo: document.body,
+      props: {
+        question: 'Update rules.',
+        showCancelAction: true,
+        cancelDisabled: true,
+        cancelTestId: 'cancel-workflow',
+      },
+    })
+    const cancelRequest = new Event(WORKFLOW_CANCEL_REQUEST_EVENT, { cancelable: true })
+
+    document.dispatchEvent(cancelRequest)
+
+    expect(cancelRequest.defaultPrevented).toBe(false)
+    expect(wrapper.emitted('cancel')).toBeUndefined()
+
+    wrapper.unmount()
+  })
+
+  it('moves focus to the primary action after a file is selected', async () => {
+    vi.useFakeTimers()
+
+    const wrapper = mount(WorkflowStepForm, {
+      attachTo: document.body,
+      props: {
+        question: 'Upload the schema file',
+        primaryLabel: 'OK',
+        primaryTestId: 'wizard-next',
+      },
+      slots: {
+        default: '<label class="wizard-input-shell wizard-file-shell"><input data-testid="upload-file" class="wizard-file-input" type="file"></label>',
+      },
+    })
+
+    const fileInput = wrapper.get('[data-testid="upload-file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['{"orderId":"1001"}'], 'orders.json', { type: 'application/json' })],
+      configurable: true,
+    })
+
+    await fileInput.trigger('change')
+    await vi.runAllTimersAsync()
+
+    expect((document.activeElement as HTMLElement | null)?.dataset.testid).toBe('wizard-next')
+
+    wrapper.unmount()
+  })
+
+  it('submits when Enter is pressed from a workflow checkbox', async () => {
+    const wrapper = mount(WorkflowStepForm, {
+      attachTo: document.body,
+      props: {
+        question: 'Verify the schema',
+        primaryLabel: 'OK',
+        primaryTestId: 'wizard-next',
+      },
+      slots: {
+        default: '<label><input data-testid="required-field" type="checkbox"> Required field</label>',
+      },
+    })
+
+    await wrapper.get('[data-testid="required-field"]').trigger('keydown.enter')
+
+    expect(wrapper.emitted('submit')).toHaveLength(1)
+
+    wrapper.unmount()
+  })
+
 })

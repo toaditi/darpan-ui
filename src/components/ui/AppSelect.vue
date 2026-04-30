@@ -18,7 +18,7 @@
       :data-testid="testId || undefined"
       @mousedown.stop
       @click.stop="toggleMenu"
-      @keydown.enter.prevent="openMenuAndFocus('selected')"
+      @keydown.enter.prevent="handleTriggerEnter"
       @keydown.space.prevent="toggleMenu"
       @keydown.down.prevent="openMenuAndFocus('selected')"
       @keydown.up.prevent="openMenuAndFocus('last')"
@@ -55,7 +55,7 @@
         @keydown.up.prevent="focusRelative(index, -1)"
         @keydown.home.prevent="focusOption(0)"
         @keydown.end.prevent="focusOption(options.length - 1)"
-        @keydown.enter.prevent="selectOption(option.value)"
+        @keydown.enter.prevent="handleOptionEnter(option.value)"
         @keydown.space.prevent="selectOption(option.value)"
         @keydown.escape.prevent="closeAndFocusTrigger"
       >
@@ -66,13 +66,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, ref, type ComponentPublicInstance } from 'vue'
-import { DISMISS_INLINE_MENUS_EVENT, INLINE_MENU_OPEN_EVENT } from '../../lib/uiEvents'
+import { useInlineSelect, type InlineSelectOption } from '../../lib/useInlineSelect'
 
-export interface AppSelectOption {
-  value: string
-  label: string
-}
+export type AppSelectOption = InlineSelectOption
 
 const props = withDefaults(
   defineProps<{
@@ -81,11 +77,13 @@ const props = withDefaults(
     placeholder?: string
     disabled?: boolean
     testId?: string
+    submitOnEnter?: boolean
   }>(),
   {
     placeholder: '',
     disabled: false,
     testId: '',
+    submitOnEnter: false,
   },
 )
 
@@ -93,109 +91,50 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-const root = ref<HTMLElement | null>(null)
-const trigger = ref<HTMLButtonElement | null>(null)
-const optionRefs = ref<HTMLButtonElement[]>([])
-const isOpen = ref(false)
-const listboxId = `app-select-${Math.random().toString(36).slice(2, 10)}`
-
-const selectedLabel = computed(() => props.options.find((option) => option.value === props.modelValue)?.label ?? '')
-const isEmpty = computed(() => props.modelValue.length === 0)
-
-onBeforeUpdate(() => {
-  optionRefs.value = []
+const {
+  root,
+  trigger,
+  isOpen,
+  listboxId,
+  selectedLabel,
+  isEmpty,
+  hasSelection,
+  setOptionRef,
+  closeMenu,
+  toggleMenu,
+  focusOption,
+  focusRelative,
+  openMenuAndFocus,
+  selectOption,
+  selectOptionAndSubmit,
+  closeAndFocusTrigger,
+} = useInlineSelect({
+  idPrefix: 'app-select',
+  options: () => props.options,
+  modelValue: () => props.modelValue,
+  disabled: () => props.disabled,
+  emitValue: (value) => emit('update:modelValue', value),
 })
 
-function setOptionRef(element: Element | ComponentPublicInstance | null): void {
-  if (element instanceof HTMLButtonElement) {
-    optionRefs.value.push(element)
-  }
-}
-
-function closeMenu(): void {
-  isOpen.value = false
-}
-
-function openMenu(): void {
-  if (isOpen.value) return
-  document.dispatchEvent(new CustomEvent<string>(INLINE_MENU_OPEN_EVENT, { detail: listboxId }))
-  isOpen.value = true
-}
-
-function toggleMenu(): void {
-  if (props.disabled || props.options.length === 0) return
-  if (isOpen.value) {
-    closeMenu()
-    return
-  }
-  openMenu()
-}
-
-function focusOption(index: number): void {
-  optionRefs.value[index]?.focus()
-}
-
-function focusRelative(currentIndex: number, delta: number): void {
-  const optionCount = props.options.length
-  if (optionCount === 0) return
-  const nextIndex = (currentIndex + delta + optionCount) % optionCount
-  focusOption(nextIndex)
-}
-
-async function openMenuAndFocus(target: 'selected' | 'last'): Promise<void> {
-  if (props.disabled || props.options.length === 0) return
-  openMenu()
-  await nextTick()
-
-  if (target === 'last') {
-    focusOption(props.options.length - 1)
+async function handleOptionEnter(value: string): Promise<void> {
+  if (props.submitOnEnter) {
+    await selectOptionAndSubmit(value)
     return
   }
 
-  const selectedIndex = props.options.findIndex((option) => option.value === props.modelValue)
-  focusOption(selectedIndex >= 0 ? selectedIndex : 0)
+  await selectOption(value)
 }
 
-async function selectOption(value: string): Promise<void> {
-  emit('update:modelValue', value)
-  closeMenu()
-  await nextTick()
-  trigger.value?.focus()
+async function handleTriggerEnter(): Promise<void> {
+  if (props.disabled || props.options.length === 0) return
+
+  if (props.submitOnEnter && hasSelection.value) {
+    await selectOptionAndSubmit(props.modelValue)
+    return
+  }
+
+  await openMenuAndFocus('selected')
 }
-
-function closeAndFocusTrigger(): void {
-  closeMenu()
-  trigger.value?.focus()
-}
-
-function handleDocumentPointerDown(event: MouseEvent): void {
-  const target = event.target
-  if (!(target instanceof Node)) return
-  if (root.value?.contains(target)) return
-  closeMenu()
-}
-
-function handlePeerOpen(event: Event): void {
-  const openEvent = event as CustomEvent<string>
-  if (openEvent.detail === listboxId) return
-  closeMenu()
-}
-
-function handleDismissInlineMenus(): void {
-  closeMenu()
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleDocumentPointerDown)
-  document.addEventListener(INLINE_MENU_OPEN_EVENT, handlePeerOpen)
-  document.addEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismissInlineMenus)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', handleDocumentPointerDown)
-  document.removeEventListener(INLINE_MENU_OPEN_EVENT, handlePeerOpen)
-  document.removeEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismissInlineMenus)
-})
 </script>
 
 <style scoped>

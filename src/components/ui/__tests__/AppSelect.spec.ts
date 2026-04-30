@@ -1,6 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
-import { defineComponent, ref } from 'vue'
+import { describe, expect, it, vi } from 'vitest'
 import AppSelect from '../AppSelect.vue'
 import { DISMISS_INLINE_MENUS_EVENT } from '../../../lib/uiEvents'
 
@@ -50,6 +49,7 @@ describe('AppSelect', () => {
 
   it('opens with keyboard focus on the current value and preserves a single selected option state', async () => {
     const wrapper = mount(AppSelect, {
+      attachTo: document.body,
       props: {
         modelValue: 'bearer',
         options: [
@@ -59,7 +59,6 @@ describe('AppSelect', () => {
         ],
         testId: 'auth-type-select',
       },
-      attachTo: document.body,
     })
 
     await wrapper.get('[data-testid="auth-type-select"]').trigger('keydown.down')
@@ -68,52 +67,52 @@ describe('AppSelect', () => {
     const selectedOption = wrapper.get('[data-testid="app-select-option"][data-option-value="bearer"]')
     expect(selectedOption.classes()).toContain('app-select-option--selected')
     expect(document.activeElement).toBe(selectedOption.element)
+
+    wrapper.unmount()
   })
 
   it('closes an already-open select when another AppSelect opens', async () => {
-    const TestHarness = defineComponent({
-      components: { AppSelect },
-      setup() {
-        const firstValue = ref('shopify')
-        const secondValue = ref('id')
+    const host = document.createElement('div')
+    document.body.appendChild(host)
 
-        return {
-          firstValue,
-          secondValue,
-          schemaOptions: [
-            { value: 'shopify', label: 'Shopify' },
-            { value: 'oms', label: 'OMS' },
-          ],
-          fieldOptions: [
-            { value: 'id', label: '$.id' },
-            { value: 'legacyResourceId', label: '$.legacyResourceId' },
-          ],
-        }
+    const firstSelect = mount(AppSelect, {
+      attachTo: host,
+      props: {
+        modelValue: 'shopify',
+        testId: 'first-select',
+        options: [
+          { value: 'shopify', label: 'Shopify' },
+          { value: 'oms', label: 'OMS' },
+        ],
       },
-      template: `
-        <div>
-          <AppSelect v-model="firstValue" test-id="first-select" :options="schemaOptions" />
-          <AppSelect v-model="secondValue" test-id="second-select" :options="fieldOptions" />
-        </div>
-      `,
     })
 
-    const wrapper = mount(TestHarness, {
-      attachTo: document.body,
+    const secondSelect = mount(AppSelect, {
+      attachTo: host,
+      props: {
+        modelValue: 'id',
+        testId: 'second-select',
+        options: [
+          { value: 'id', label: '$.id' },
+          { value: 'legacyResourceId', label: '$.legacyResourceId' },
+        ],
+      },
     })
 
-    await wrapper.get('[data-testid="first-select"]').trigger('click')
-    expect(wrapper.findAll('[data-testid="app-select-option"]')).toHaveLength(2)
+    await firstSelect.get('[data-testid="first-select"]').trigger('click')
+    expect(document.querySelectorAll('[data-testid="app-select-option"]')).toHaveLength(2)
 
-    await wrapper.get('[data-testid="second-select"]').trigger('click')
+    await secondSelect.get('[data-testid="second-select"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="first-select"]').attributes('aria-expanded')).toBe('false')
-    expect(wrapper.find('[data-testid="second-select"]').attributes('aria-expanded')).toBe('true')
-    expect(wrapper.findAll('[data-testid="app-select-option"]')).toHaveLength(2)
-    expect(
-      wrapper.find('[data-testid="app-select-option"][data-option-value="shopify"]').exists(),
-    ).toBe(false)
+    expect(firstSelect.get('[data-testid="first-select"]').attributes('aria-expanded')).toBe('false')
+    expect(secondSelect.get('[data-testid="second-select"]').attributes('aria-expanded')).toBe('true')
+    expect(document.querySelectorAll('[data-testid="app-select-option"]')).toHaveLength(2)
+    expect(document.querySelector('[data-testid="app-select-option"][data-option-value="shopify"]')).toBeNull()
+
+    firstSelect.unmount()
+    secondSelect.unmount()
+    host.remove()
   })
 
   it('closes when inline menus are dismissed globally', async () => {
@@ -137,5 +136,69 @@ describe('AppSelect', () => {
 
     expect(wrapper.get('[data-testid="auth-config-select"]').attributes('aria-expanded')).toBe('false')
     expect(wrapper.find('[data-testid="app-select-option"]').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('submits the closest form after Enter selects an option when enabled', async () => {
+    const submit = vi.fn((event: Event) => event.preventDefault())
+    const form = document.createElement('form')
+    form.addEventListener('submit', submit)
+    document.body.appendChild(form)
+
+    const wrapper = mount(AppSelect, {
+      attachTo: form,
+      props: {
+        modelValue: '',
+        testId: 'system-select',
+        submitOnEnter: true,
+        options: [
+          { value: 'oms', label: 'OMS' },
+          { value: 'shopify', label: 'SHOPIFY' },
+        ],
+      },
+    })
+
+    await wrapper.get('[data-testid="system-select"]').trigger('click')
+    await wrapper.get('[data-testid="app-select-option"][data-option-value="shopify"]').trigger('keydown.enter')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([['shopify']])
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="app-select-option"]').exists()).toBe(false)
+
+    wrapper.unmount()
+    form.removeEventListener('submit', submit)
+    form.remove()
+  })
+
+  it('submits from the trigger on Enter when a selected value is enabled for submit', async () => {
+    const submit = vi.fn((event: Event) => event.preventDefault())
+    const form = document.createElement('form')
+    form.addEventListener('submit', submit)
+    document.body.appendChild(form)
+
+    const wrapper = mount(AppSelect, {
+      attachTo: form,
+      props: {
+        modelValue: 'shopify',
+        testId: 'system-select',
+        submitOnEnter: true,
+        options: [
+          { value: 'oms', label: 'OMS' },
+          { value: 'shopify', label: 'SHOPIFY' },
+        ],
+      },
+    })
+
+    await wrapper.get('[data-testid="system-select"]').trigger('keydown.enter')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([['shopify']])
+    expect(submit).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+    form.removeEventListener('submit', submit)
+    form.remove()
   })
 })

@@ -1,7 +1,13 @@
 <template>
   <a class="skip-link" href="#main-content">Skip to main content</a>
 
-  <div :class="['app-shell', `app-shell--${surfaceMode}`]">
+  <div
+    :class="[
+      'app-shell',
+      `app-shell--${surfaceMode}`,
+      { 'app-shell--popup-open': isCommandPaletteOpen || isUserMenuOpen },
+    ]"
+  >
     <section id="main-content" :class="['content-shell', `content-shell--${surfaceMode}`]" tabindex="-1">
       <RouterView :key="routerViewKey" />
     </section>
@@ -40,13 +46,16 @@
           <p class="user-menu-name">{{ userDisplayName }}</p>
           <p v-if="userStatusText" class="mono-copy">{{ userStatusText }}</p>
 
-          <div v-if="showCompanySwitcher" class="user-menu-company">
+          <div v-if="showTenantSwitcher" class="user-menu-tenant">
+            <p class="user-menu-tenant-active" data-testid="user-tenant-active">
+              Active tenant: {{ activeTenantLabel }}
+            </p>
             <AppSelect
-              test-id="user-company-select"
-              :model-value="selectedCompanyUserGroupId"
-              :options="companySelectOptions"
-              :disabled="isCompanySwitcherDisabled"
-              @update:model-value="handleActiveCompanyChange"
+              test-id="user-tenant-select"
+              :model-value="selectedTenantUserGroupId"
+              :options="tenantSelectOptions"
+              :disabled="isTenantSwitcherDisabled"
+              @update:model-value="handleActiveTenantChange"
             />
           </div>
 
@@ -96,6 +105,7 @@
     :open="isCommandPaletteOpen"
     :actions="commandActions"
     :recent-command-ids="recentCommandIds"
+    :data-search-loading="isLoadingCommandData"
     @close="closeCommandPalette"
     @execute="executeCommand"
   />
@@ -106,52 +116,68 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import CommandPalette from './components/shell/CommandPalette.vue'
 import AppSelect from './components/ui/AppSelect.vue'
-import { buildAuthRedirect, ensureAuthenticated, logoutSession, saveActiveCompany, useAuthState } from './lib/auth'
+import { buildAuthRedirect, ensureAuthenticated, logoutSession, saveActiveTenant, useAuthState, useUiPermissions } from './lib/auth'
 import { AUTH_REQUIRED_EVENT } from './lib/api/client'
+import { reconciliationFacade, settingsFacade } from './lib/api/facade'
+import type { GeneratedOutput, SftpServerRecord } from './lib/api/types'
+import { buildDataCommandActions } from './lib/commandDataSearch'
 import { listRecentCommandIds, recordRecentCommand } from './lib/commandSearch'
 import { shouldAbortWorkflowOnEscape } from './lib/keyboard'
-import { purgeLegacyReconciliationDrafts } from './lib/reconciliationDrafts'
 import { useTheme } from './lib/theme'
 import type { CommandAction } from './lib/types/ux'
-import { DISMISS_INLINE_MENUS_EVENT } from './lib/uiEvents'
-import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState, resolveStaticPageLabel } from './lib/workflowOrigin'
+import { DISMISS_INLINE_MENUS_EVENT, WORKFLOW_CANCEL_REQUEST_EVENT } from './lib/uiEvents'
+import { filterRecordsForActiveTenant } from './lib/utils/tenantRecords'
+import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState, resolveStaticPageLabel, type WorkflowOrigin } from './lib/workflowOrigin'
 
 const route = useRoute()
 const router = useRouter()
 const authState = useAuthState()
+const permissions = useUiPermissions()
 const { theme, toggleTheme } = useTheme()
 
 const isCommandPaletteOpen = ref(false)
 const isUserMenuOpen = ref(false)
 const isLoggingOut = ref(false)
-const isSwitchingCompany = ref(false)
+const isSwitchingTenant = ref(false)
+const isLoadingCommandData = ref(false)
 const recentCommandIds = ref<string[]>([])
-const selectedCompanyUserGroupId = ref('')
+const dataCommandActions = ref<CommandAction[]>([])
+const selectedTenantUserGroupId = ref('')
 const userMenuWrap = ref<HTMLElement | null>(null)
 const workflowEscapeHintLabel = ref<string | null>(null)
 const workflowEscapeOriginPath = ref<string | null>(null)
+const workflowEscapeOriginState = ref<WorkflowOrigin | null>(null)
 
 const isShelllessRoute = computed(() => route.name === 'login')
 const surfaceMode = computed<'static' | 'workflow'>(() => (route.meta.surfaceMode === 'workflow' ? 'workflow' : 'static'))
 const routerViewKey = computed(
-  () => `${route.fullPath}::${authState.sessionInfo?.activeCompanyUserGroupId ?? authState.sessionInfo?.scopeType ?? 'anonymous'}`,
+  () => `${route.fullPath}::${authState.sessionInfo?.activeTenantUserGroupId ?? authState.sessionInfo?.scopeType ?? 'anonymous'}`,
 )
 const userDisplayName = computed(() => authState.username ?? authState.userId ?? 'Unknown user')
-const availableCompanies = computed(() => authState.sessionInfo?.availableCompanies ?? [])
-const activeCompanyUserGroupId = computed(() => authState.sessionInfo?.activeCompanyUserGroupId ?? null)
-const companySelectOptions = computed(() =>
-  availableCompanies.value.map((company) => ({
-    value: company.userGroupId,
-    label: company.label || company.userGroupId,
+const availableTenants = computed(() => authState.sessionInfo?.availableTenants ?? [])
+const activeTenantUserGroupId = computed(() => authState.sessionInfo?.activeTenantUserGroupId ?? null)
+const activeTenantLabel = computed(() => {
+  const sessionLabel = authState.sessionInfo?.activeTenantLabel?.trim()
+  if (sessionLabel) return sessionLabel
+
+  const activeTenant = activeTenantUserGroupId.value
+    ? availableTenants.value.find((tenant) => tenant.userGroupId === activeTenantUserGroupId.value)
+    : null
+  return activeTenant?.label || activeTenant?.userGroupId || 'None'
+})
+const tenantSelectOptions = computed(() =>
+  availableTenants.value.map((tenant) => ({
+    value: tenant.userGroupId,
+    label: tenant.label || tenant.userGroupId,
   })),
 )
-const showCompanySwitcher = computed(() => availableCompanies.value.length > 0)
-const isCompanySwitcherDisabled = computed(
-  () => isSwitchingCompany.value || isLoggingOut.value || availableCompanies.value.length < 2,
+const showTenantSwitcher = computed(() => availableTenants.value.length > 0)
+const isTenantSwitcherDisabled = computed(
+  () => isSwitchingTenant.value || isLoggingOut.value || availableTenants.value.length < 2,
 )
 const userStatusText = computed<string | null>(() => {
   if (isLoggingOut.value) return 'Signing out'
-  if (isSwitchingCompany.value) return 'Switching company'
+  if (isSwitchingTenant.value) return 'Switching tenant'
   if (authState.error) return authState.error
   if (authState.authenticated) return null
   if (authState.status === 'verification-failed') return 'Session check failed'
@@ -159,7 +185,26 @@ const userStatusText = computed<string | null>(() => {
   return 'Checking session'
 })
 
-const commandActions: CommandAction[] = [
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canManageGlobalSettings = computed(() => permissions.canManageGlobalSettings)
+const commandActions = computed<CommandAction[]>(() => [
+  ...staticCommandActions.filter((action) => {
+    if (action.id === 'navigate-llm') return canManageGlobalSettings.value
+    if (
+      action.id === 'navigate-schema-infer'
+      || action.id === 'navigate-create-reconciliation'
+      || action.id === 'navigate-run-reconciliation'
+    ) {
+      return canEditTenantSettings.value
+    }
+    return true
+  }),
+  ...dataCommandActions.value.filter((action) => (
+    canEditTenantSettings.value || !action.id.startsWith('data-sftp-server-')
+  )),
+])
+
+const staticCommandActions: CommandAction[] = [
   {
     id: 'navigate-hub',
     label: 'Go to Dashboard',
@@ -229,8 +274,8 @@ const commandActions: CommandAction[] = [
     label: 'Run Reconciliation',
     description: 'Compare two files or datasets and review the result.',
     group: 'Navigate',
-    to: '/reconciliation/pilot-diff',
-    aliases: ['compare files', 'compare data', 'match records', 'reconcile data', 'run comparison', 'execute', 'diff', 'pilot'],
+    to: '/reconciliation/diff',
+    aliases: ['compare files', 'compare data', 'match records', 'reconcile data', 'run comparison', 'execute', 'diff'],
   },
   {
     id: 'navigate-roadmap',
@@ -242,13 +287,54 @@ const commandActions: CommandAction[] = [
   },
 ]
 
-const workflowRoutePaths = new Set(['/reconciliation/create', '/reconciliation/pilot-diff', '/schemas/create'])
 let workflowEscapeHintTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+let commandDataRequestId = 0
+
+function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
+  return result.status === 'fulfilled'
+}
+
+function readSftpServers(result: PromiseSettledResult<{ servers?: SftpServerRecord[] }>): SftpServerRecord[] {
+  if (!isFulfilled(result)) return []
+  return filterRecordsForActiveTenant(
+    result.value.servers ?? [],
+    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  )
+}
+
+function readGeneratedOutputs(result: PromiseSettledResult<{ generatedOutputs?: GeneratedOutput[] }>): GeneratedOutput[] {
+  if (!isFulfilled(result)) return []
+  return result.value.generatedOutputs ?? []
+}
+
+async function loadCommandDataActions(): Promise<void> {
+  const requestId = ++commandDataRequestId
+  isLoadingCommandData.value = true
+
+  try {
+    const [sftpResult, generatedOutputResult] = await Promise.allSettled([
+      settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 }),
+      reconciliationFacade.listGeneratedOutputs({ pageIndex: 0, pageSize: 80, query: '' }),
+    ])
+
+    if (requestId !== commandDataRequestId) return
+
+    dataCommandActions.value = buildDataCommandActions({
+      sftpServers: readSftpServers(sftpResult),
+      generatedOutputs: readGeneratedOutputs(generatedOutputResult),
+    })
+  } finally {
+    if (requestId === commandDataRequestId) {
+      isLoadingCommandData.value = false
+    }
+  }
+}
 
 function openCommandPalette(): void {
   isUserMenuOpen.value = false
   document.dispatchEvent(new Event(DISMISS_INLINE_MENUS_EVENT))
   isCommandPaletteOpen.value = true
+  void loadCommandDataActions()
 }
 
 function closeCommandPalette(): void {
@@ -293,12 +379,13 @@ async function goToHub(options: { clearFocus?: boolean } = {}): Promise<void> {
 
 async function goToWorkflowOrigin(options: { clearFocus?: boolean } = {}): Promise<void> {
   const targetPath = workflowEscapeOriginPath.value || '/'
+  const targetState = workflowEscapeOriginState.value?.state
 
   isCommandPaletteOpen.value = false
   isUserMenuOpen.value = false
   if (options.clearFocus) clearActiveElementFocus()
   if (route.fullPath === targetPath) return
-  await router.push(targetPath)
+  await router.push(targetState ? { path: targetPath, state: targetState } : targetPath)
   if (options.clearFocus) {
     await nextTick()
     clearActiveElementFocus()
@@ -321,23 +408,33 @@ async function handleLogout(): Promise<void> {
   }
 }
 
-async function handleActiveCompanyChange(nextCompanyUserGroupId: string): Promise<void> {
-  if (isSwitchingCompany.value || isLoggingOut.value) return
-  if (!nextCompanyUserGroupId || nextCompanyUserGroupId === activeCompanyUserGroupId.value) return
+async function handleActiveTenantChange(nextTenantUserGroupId: string): Promise<void> {
+  if (isSwitchingTenant.value || isLoggingOut.value) return
+  if (!nextTenantUserGroupId || nextTenantUserGroupId === activeTenantUserGroupId.value) return
 
-  const previousCompanyUserGroupId = activeCompanyUserGroupId.value ?? availableCompanies.value[0]?.userGroupId ?? ''
-  selectedCompanyUserGroupId.value = nextCompanyUserGroupId
-  isSwitchingCompany.value = true
+  const previousTenantUserGroupId = activeTenantUserGroupId.value ?? availableTenants.value[0]?.userGroupId ?? ''
+  selectedTenantUserGroupId.value = nextTenantUserGroupId
+  isSwitchingTenant.value = true
   try {
-    const saved = await saveActiveCompany(nextCompanyUserGroupId)
+    const saved = await saveActiveTenant(nextTenantUserGroupId)
     if (!saved) {
-      selectedCompanyUserGroupId.value = previousCompanyUserGroupId
+      selectedTenantUserGroupId.value = previousTenantUserGroupId
       return
     }
 
+    isCommandPaletteOpen.value = false
+    isUserMenuOpen.value = false
+    commandDataRequestId += 1
+    dataCommandActions.value = []
+    const tenantSwitchRedirectName = typeof route.meta.tenantSwitchRedirectName === 'string'
+      ? route.meta.tenantSwitchRedirectName
+      : null
+    if (tenantSwitchRedirectName) {
+      await router.replace({ name: tenantSwitchRedirectName })
+    }
     await nextTick()
   } finally {
-    isSwitchingCompany.value = false
+    isSwitchingTenant.value = false
   }
 }
 
@@ -346,7 +443,8 @@ async function executeCommand(action: CommandAction): Promise<void> {
   recentCommandIds.value = recordRecentCommand(action.id)
   if (action.to === route.fullPath) return
   const staticPageLabel = resolveStaticPageLabel(route)
-  if (staticPageLabel && workflowRoutePaths.has(action.to)) {
+  const targetRoute = router.resolve(action.to)
+  if (staticPageLabel && targetRoute.meta.surfaceMode === 'workflow') {
     await router.push({
       path: action.to,
       state: buildWorkflowOriginState(staticPageLabel, route.fullPath),
@@ -380,6 +478,9 @@ function handleKeyboard(event: KeyboardEvent): void {
 
   if (shouldAbortWorkflowOnEscape(event, { workflowActive: surfaceMode.value === 'workflow' })) {
     event.preventDefault()
+    const cancelRequest = new Event(WORKFLOW_CANCEL_REQUEST_EVENT, { cancelable: true })
+    document.dispatchEvent(cancelRequest)
+    if (cancelRequest.defaultPrevented) return
     void goToWorkflowOrigin({ clearFocus: true })
   }
 }
@@ -421,11 +522,13 @@ function hideWorkflowEscapeHint(): void {
 function syncWorkflowEscapeOrigin(): void {
   if (surfaceMode.value !== 'workflow') {
     workflowEscapeOriginPath.value = null
+    workflowEscapeOriginState.value = null
     hideWorkflowEscapeHint()
     return
   }
 
   const workflowOrigin = readWorkflowOriginFromHistoryState()
+  workflowEscapeOriginState.value = workflowOrigin
   workflowEscapeOriginPath.value = workflowOrigin?.path ?? null
   if (!workflowOrigin) {
     hideWorkflowEscapeHint()
@@ -441,12 +544,19 @@ function syncWorkflowEscapeOrigin(): void {
 }
 
 watch(
-  [availableCompanies, activeCompanyUserGroupId],
-  ([nextCompanies, nextActiveCompanyUserGroupId]) => {
-    selectedCompanyUserGroupId.value = nextActiveCompanyUserGroupId ?? nextCompanies[0]?.userGroupId ?? ''
+  [availableTenants, activeTenantUserGroupId],
+  ([nextTenants, nextActiveTenantUserGroupId]) => {
+    selectedTenantUserGroupId.value = nextActiveTenantUserGroupId ?? nextTenants[0]?.userGroupId ?? ''
   },
   { immediate: true },
 )
+
+watch(activeTenantUserGroupId, () => {
+  dataCommandActions.value = []
+  if (isCommandPaletteOpen.value) {
+    void loadCommandDataActions()
+  }
+})
 
 watch(
   () => route.fullPath,
@@ -476,7 +586,6 @@ watch(
 )
 
 onMounted(() => {
-  purgeLegacyReconciliationDrafts()
   recentCommandIds.value = listRecentCommandIds()
   window.addEventListener('keydown', handleKeyboard)
   window.addEventListener('mousedown', handleWindowMouseDown)

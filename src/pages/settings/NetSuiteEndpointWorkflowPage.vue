@@ -1,5 +1,5 @@
 <template>
-  <WorkflowPage :progress-percent="progressPercent" aria-label="NetSuite endpoint setup progress" center-stage>
+  <WorkflowPage :progress-percent="progressPercent" aria-label="NetSuite endpoint setup progress" center-stage :edit-surface="isEditing">
     <InlineValidation v-if="error" tone="error" :message="error" />
     <p v-if="success" class="success-copy">{{ success }}</p>
 
@@ -12,6 +12,7 @@
       ]"
       :question="currentQuestion"
       :primary-label="primaryLabel"
+      :primary-action-variant="primaryActionVariant"
       :show-enter-hint="!isEditing"
       :show-back="showBack"
       :show-cancel-action="isEditing"
@@ -19,6 +20,7 @@
       cancel-test-id="cancel-netsuite-endpoint"
       :allow-select-enter="isCreateSelectStep"
       :submit-disabled="submitDisabled"
+      :show-primary-action="canEditTenantSettings"
       :primary-test-id="primaryTestId"
       @submit="handlePrimarySubmit"
       @back="goBack"
@@ -218,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect, { type WorkflowSelectOption } from '../../components/workflow/WorkflowSelect.vue'
@@ -227,9 +229,11 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { useAuthState, useUiPermissions } from '../../lib/auth'
 import type { NsRestletConfigRecord } from '../../lib/api/types'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { CONFIG_ID_MAX_LENGTH, exceedsConfigIdMaxLength } from './configId'
+import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 
 type EndpointCreateStepId =
   | 'endpointUrl'
@@ -262,18 +266,24 @@ interface EndpointForm {
 
 const route = useRoute()
 const router = useRouter()
+const authState = useAuthState()
+const permissions = useUiPermissions()
 
-const form = reactive<EndpointForm>({
-  nsRestletConfigId: '',
-  description: '',
-  endpointUrl: '',
-  httpMethod: 'POST',
-  nsAuthConfigId: '',
-  headersJson: '',
-  connectTimeoutSeconds: 30,
-  readTimeoutSeconds: 60,
-  isActive: 'Y',
-})
+function createDefaultEndpointForm(): EndpointForm {
+  return {
+    nsRestletConfigId: '',
+    description: '',
+    endpointUrl: '',
+    httpMethod: 'POST',
+    nsAuthConfigId: '',
+    headersJson: '',
+    connectTimeoutSeconds: 30,
+    readTimeoutSeconds: 60,
+    isActive: 'Y',
+  }
+}
+
+const form = reactive<EndpointForm>(createDefaultEndpointForm())
 
 const httpMethodOptions: AppSelectOption[] = [
   { value: 'POST', label: 'POST' },
@@ -292,6 +302,7 @@ const success = ref<string | null>(null)
 const currentStepIndex = ref(0)
 
 const activeEndpointConfigId = computed(() => String(route.params.nsRestletConfigId ?? '').trim())
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 const isEditing = computed(() => activeEndpointConfigId.value.length > 0)
 
 const createSteps: EndpointCreateStep[] = [
@@ -330,9 +341,15 @@ const primaryTestId = computed(() => (
     ? 'save-netsuite-endpoint'
     : 'wizard-next'
 ))
+const primaryActionVariant = computed<'default' | 'save'>(() => (
+  isEditing.value || currentCreateStep.value.id === 'nsRestletConfigId'
+    ? 'save'
+    : 'default'
+))
 const showBack = computed(() => !isEditing.value && currentStepIndex.value > 0)
 const isCreateSelectStep = computed(() => !isEditing.value && currentCreateStep.value.kind === 'select')
 const submitDisabled = computed(() => {
+  if (!canEditTenantSettings.value) return true
   if (loading.value) return true
   if (isEditing.value) return false
 
@@ -368,9 +385,19 @@ function applyRecord(record: NsRestletConfigRecord): void {
   form.isActive = record.isActive ?? 'Y'
 }
 
+function resetCreateForm(): void {
+  Object.assign(form, createDefaultEndpointForm())
+  currentStepIndex.value = 0
+  error.value = null
+  success.value = null
+}
+
 async function loadAuthOptions(): Promise<void> {
   const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 })
-  authOptions.value = (response.authConfigs ?? []).map((item) => ({
+  authOptions.value = filterRecordsForActiveTenant(
+    response.authConfigs ?? [],
+    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  ).map((item) => ({
     value: item.nsAuthConfigId,
     label: resolveRecordLabel({
       description: item.description,
@@ -384,7 +411,10 @@ async function loadEndpointConfig(): Promise<void> {
   if (!isEditing.value) return
 
   const response = await settingsFacade.listNsRestletConfigs({ pageIndex: 0, pageSize: 200 })
-  const matchingConfig = (response.restletConfigs ?? []).find(
+  const matchingConfig = filterRecordsForActiveTenant(
+    response.restletConfigs ?? [],
+    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  ).find(
     (config) => config.nsRestletConfigId === activeEndpointConfigId.value,
   )
   if (!matchingConfig) {
@@ -397,6 +427,9 @@ async function loadEndpointConfig(): Promise<void> {
 async function load(): Promise<void> {
   loading.value = true
   error.value = null
+  success.value = null
+  if (!isEditing.value) resetCreateForm()
+
   try {
     await Promise.all([loadAuthOptions(), loadEndpointConfig()])
   } catch (loadError) {
@@ -425,6 +458,11 @@ async function handlePrimarySubmit(): Promise<void> {
 }
 
 async function save(): Promise<void> {
+  if (!canEditTenantSettings.value) {
+    error.value = 'You do not have permission to save NetSuite endpoint settings for the active tenant.'
+    return
+  }
+
   loading.value = true
   error.value = null
   success.value = null
@@ -460,7 +498,7 @@ async function cancelEdit(): Promise<void> {
   await router.push('/settings/netsuite')
 }
 
-onMounted(() => {
+watch(() => route.fullPath, () => {
   void load()
-})
+}, { immediate: true })
 </script>

@@ -200,13 +200,8 @@ function loadStoredAuthTokenState(): StoredAuthToken | null {
     }
     return tokenState
   } catch {
-    // Support the brief DAR-101 intermediate shape that stored only the raw token string.
-    return {
-      value: rawToken,
-      headerName: AUTH_TOKEN_HEADER_NAME,
-      tokenType: null,
-      expiresAt: null,
-    }
+    persistAuthTokenState(null)
+    return null
   }
 }
 

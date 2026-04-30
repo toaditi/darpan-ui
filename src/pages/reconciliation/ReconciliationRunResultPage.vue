@@ -1,180 +1,293 @@
 <template>
-  <StaticPageFrame>
-    <template #hero>
-      <div class="run-result-hero">
-        <h1>{{ runName }}</h1>
-        <p class="static-page-section-description">{{ heroDescription }}</p>
+  <div class="run-result-page-shell">
+    <aside
+      v-if="savedOutput && showRuleSelector"
+      class="run-result-rule-selector"
+      :class="{ 'run-result-rule-selector--collapsed': ruleSelectorCollapsed }"
+      data-testid="run-result-rule-selector"
+      aria-label="Rule Selector"
+    >
+      <div
+        v-if="!ruleSelectorCollapsed"
+        class="run-result-rule-selector__panel"
+        data-testid="run-result-rule-list"
+      >
+        <div class="run-result-rule-selector__options">
+          <button
+            type="button"
+            class="run-result-rule-selector__option"
+            :class="{ 'run-result-rule-selector__option--active': selectedRuleFilterKey === ALL_RULE_FILTER_KEY }"
+            data-rule-filter-key="all"
+            :aria-pressed="selectedRuleFilterKey === ALL_RULE_FILTER_KEY ? 'true' : 'false'"
+            @click="selectRuleFilter(ALL_RULE_FILTER_KEY)"
+          >
+            <span class="run-result-rule-selector__option-label">All</span>
+            <span class="run-result-rule-selector__option-detail">{{ ruleSelectorAllDetail }}</span>
+            <span class="run-result-rule-selector__option-count">{{ diffDetailRows.length }}</span>
+          </button>
+
+          <button
+            v-for="option in ruleSelectorOptions"
+            :key="option.key"
+            type="button"
+            class="run-result-rule-selector__option"
+            :class="{ 'run-result-rule-selector__option--active': selectedRuleFilterKey === option.key }"
+            :data-rule-filter-key="option.key"
+            :aria-pressed="selectedRuleFilterKey === option.key ? 'true' : 'false'"
+            @click="selectRuleFilter(option.key)"
+          >
+            <span class="run-result-rule-selector__option-label">{{ option.label }}</span>
+            <span class="run-result-rule-selector__option-detail">{{ option.detail }}</span>
+            <span class="run-result-rule-selector__option-count">{{ option.count }}</span>
+          </button>
+        </div>
       </div>
-    </template>
 
-    <StaticPageSection>
-      <p v-if="loading" class="section-note" data-testid="run-result-loading">Loading saved result…</p>
-      <InlineValidation v-else-if="loadError" tone="error" :message="loadError" />
-
-      <section v-else-if="savedOutput" class="pilot-diff-details">
-        <div class="pilot-diff-details__bucket-grid">
-          <button
-            v-for="bucket in diffDetailBuckets"
-            :key="bucket.key"
-            :data-testid="bucket.testId"
-            type="button"
-            class="pilot-diff-bucket"
-            :class="{ 'pilot-diff-bucket--active': activeDiffBuckets.includes(bucket.key) }"
-            :aria-pressed="activeDiffBuckets.includes(bucket.key) ? 'true' : 'false'"
-            @click="toggleDiffBucket(bucket.key)"
-          >
-            <span class="pilot-diff-bucket__label">{{ bucket.label }}</span>
-            <strong>{{ bucket.count }}</strong>
-          </button>
-        </div>
-
-        <div v-if="showDiffDetailsToolbar" class="pilot-diff-details__toolbar">
-          <label class="pilot-diff-details__search">
-            <div class="pilot-diff-details__search-field">
-              <input
-                v-model="diffDetailsSearch"
-                data-testid="diff-details-search"
-                class="pilot-diff-details__search-input"
-                type="text"
-                aria-label="Record search"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="Search record id"
-              />
-              <button
-                v-if="diffDetailsSearch.trim().length > 0"
-                type="button"
-                data-testid="diff-details-search-clear"
-                class="pilot-diff-details__search-clear"
-                aria-label="Clear record search"
-                @click="clearDiffDetailsSearch"
-              >
-                ×
-              </button>
-            </div>
-          </label>
-        </div>
-
-        <div
-          v-if="filteredDiffDetailRows.length > 0"
-          class="pilot-diff-details__pagination"
-          data-testid="diff-details-pagination"
+      <button
+        type="button"
+        class="run-result-rule-selector__toggle"
+        data-testid="run-result-rule-selector-toggle"
+        :aria-label="ruleSelectorCollapsed ? 'Expand rule selector' : 'Collapse rule selector'"
+        :aria-expanded="ruleSelectorCollapsed ? 'false' : 'true'"
+        @click="toggleRuleSelectorCollapsed"
+      >
+        <svg
+          class="run-result-rule-selector__toggle-icon"
+          :class="{ 'run-result-rule-selector__toggle-icon--collapsed': ruleSelectorCollapsed }"
+          viewBox="0 0 20 20"
+          aria-hidden="true"
+          focusable="false"
         >
-          <button
-            type="button"
-            data-testid="diff-page-previous"
-            :disabled="diffDetailsPageIndex === 0"
-            @click="goToDiffDetailsPage(diffDetailsPageIndex - 1)"
-          >
-            Previous
-          </button>
-          <p>Page {{ diffDetailsPageIndex + 1 }} of {{ diffDetailsPageCount }}</p>
-          <button
-            type="button"
-            data-testid="diff-page-next"
-            :disabled="diffDetailsPageIndex >= diffDetailsPageCount - 1"
-            @click="goToDiffDetailsPage(diffDetailsPageIndex + 1)"
-          >
-            Next
-          </button>
-        </div>
+          <path d="M12.3 4.8 7.1 10l5.2 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M16 4.8 10.8 10l5.2 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </aside>
 
-        <AppTableFrame
-          v-if="pagedDiffDetailRows.length > 0"
-          :columns="diffDetailColumns"
-          :rows="pagedDiffDetailRowsAsRows"
-          row-key="rowKey"
-          row-test-id="diff-details-row"
-        >
-          <template #header-actions>
-            <button
-              v-if="downloadableOutputFile"
-              type="button"
-              class="app-table__header-action"
-              data-testid="run-result-download"
-              aria-label="Download saved result"
-              @click="downloadSavedResult"
+    <StaticPageFrame>
+      <template #hero>
+        <div class="run-result-hero">
+          <StaticEditableTitle
+            v-model="editableRunName"
+            :editable="canEditTenantSettings && Boolean(savedOutput && savedRunId) && !savingRunName"
+            aria-label="Run name"
+            test-id="run-result-title"
+            fallback="Selected Run"
+            @commit="saveRunName"
+          />
+          <p class="static-page-section-description">{{ heroDescription }}</p>
+        </div>
+      </template>
+
+      <StaticPageSection>
+        <p v-if="loading" class="section-note" data-testid="run-result-loading">Loading saved result…</p>
+        <InlineValidation v-else-if="loadError" tone="error" :message="loadError" />
+
+        <section v-else-if="savedOutput" class="reconciliation-diff-details">
+          <div class="reconciliation-diff-details__bucket-grid">
+            <template
+              v-for="bucket in diffDetailBuckets"
+              :key="bucket.key"
             >
-              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                <path
-                  d="M10 2.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5Zm-5 11a.75.75 0 0 1 .75.75v1.5c0 .14.11.25.25.25h8c.14 0 .25-.11.25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 14 17.5H6A1.75 1.75 0 0 1 4.25 15.75v-1.5A.75.75 0 0 1 5 13.5Z"
-                  fill="currentColor"
+              <button
+                v-if="bucket.bucketKey"
+                :data-testid="bucket.testId"
+                type="button"
+                class="reconciliation-diff-bucket"
+                :class="{ 'reconciliation-diff-bucket--active': activeDiffBuckets.includes(bucket.bucketKey) }"
+                :aria-pressed="activeDiffBuckets.includes(bucket.bucketKey) ? 'true' : 'false'"
+                @click="toggleDiffBucket(bucket.bucketKey)"
+              >
+                <span class="reconciliation-diff-bucket__label">{{ bucket.label }}</span>
+                <strong>{{ bucket.count }}</strong>
+              </button>
+              <div
+                v-else
+                :data-testid="bucket.testId"
+                class="reconciliation-diff-bucket reconciliation-diff-bucket--active reconciliation-diff-bucket--static"
+              >
+                <span class="reconciliation-diff-bucket__label">{{ bucket.label }}</span>
+                <strong>{{ bucket.count }}</strong>
+              </div>
+            </template>
+          </div>
+
+          <div v-if="showDiffDetailsToolbar" class="reconciliation-diff-details__toolbar">
+            <label class="reconciliation-diff-details__search">
+              <div class="reconciliation-diff-details__search-field">
+                <input
+                  v-model="diffDetailsSearch"
+                  data-testid="diff-details-search"
+                  class="reconciliation-diff-details__search-input"
+                  type="text"
+                  aria-label="Record search"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder="Search record id"
                 />
-              </svg>
+                <button
+                  v-if="diffDetailsSearch.trim().length > 0"
+                  type="button"
+                  data-testid="diff-details-search-clear"
+                  class="reconciliation-diff-details__search-clear"
+                  aria-label="Clear record search"
+                  @click="clearDiffDetailsSearch"
+                >
+                  ×
+                </button>
+              </div>
+            </label>
+          </div>
+
+          <div
+            v-if="filteredDiffDetailRows.length > 0"
+            class="reconciliation-diff-details__pagination"
+            data-testid="diff-details-pagination"
+          >
+            <button
+              type="button"
+              data-testid="diff-page-previous"
+              :disabled="diffDetailsPageIndex === 0"
+              @click="goToDiffDetailsPage(diffDetailsPageIndex - 1)"
+            >
+              Previous
             </button>
-          </template>
+            <p>Page {{ diffDetailsPageIndex + 1 }} of {{ diffDetailsPageCount }}</p>
+            <button
+              type="button"
+              data-testid="diff-page-next"
+              :disabled="diffDetailsPageIndex >= diffDetailsPageCount - 1"
+              @click="goToDiffDetailsPage(diffDetailsPageIndex + 1)"
+            >
+              Next
+            </button>
+          </div>
 
-          <template #cell-recordId="{ row }">
-            <strong>{{ row.recordId }}</strong>
-          </template>
+          <AppTableFrame
+            v-if="pagedDiffDetailRows.length > 0"
+            :columns="diffDetailColumns"
+            :rows="pagedDiffDetailRowsAsRows"
+            row-key="rowKey"
+            row-test-id="diff-details-row"
+          >
+            <template #header-actions>
+              <button
+                v-if="downloadableOutputFile"
+                type="button"
+                class="app-table__header-action"
+                data-testid="run-result-download"
+                aria-label="Download saved result"
+                @click="downloadSavedResult"
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path
+                    d="M10 2.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5Zm-5 11a.75.75 0 0 1 .75.75v1.5c0 .14.11.25.25.25h8c.14 0 .25-.11.25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 14 17.5H6A1.75 1.75 0 0 1 4.25 15.75v-1.5A.75.75 0 0 1 5 13.5Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </button>
+            </template>
 
-          <template #cell-jsonText="{ row }">
-            <pre class="run-result-table__json">{{ row.jsonText }}</pre>
-          </template>
+            <template #cell-recordId="{ row }">
+              <strong>{{ row.recordId }}</strong>
+            </template>
 
-          <template #cell-actions>
-            <span aria-hidden="true"></span>
-          </template>
-        </AppTableFrame>
-        <p v-else data-testid="diff-details-empty" class="section-note">
-          {{ diffDetailsEmptyMessage }}
-        </p>
-      </section>
-    </StaticPageSection>
+            <template #cell-detailText="{ row }">
+              <pre class="run-result-table__json">{{ row.detailText }}</pre>
+            </template>
 
-    <div v-if="savedOutput" class="run-result-actions">
-      <RouterLink
-        class="pilot-run-history-link"
-        data-testid="run-result-view-history"
-        :to="runHistoryRoute"
-      >
-        View all previous runs
-      </RouterLink>
-      <RouterLink
-        class="static-page-action-tile static-page-action-tile--inline"
-        data-testid="run-result-open-workflow"
-        :to="workflowRoute"
-      >
-        Open Run
-      </RouterLink>
-    </div>
-  </StaticPageFrame>
+            <template #cell-actions>
+              <span aria-hidden="true"></span>
+            </template>
+          </AppTableFrame>
+          <p v-else data-testid="diff-details-empty" class="section-note">
+            {{ diffDetailsEmptyMessage }}
+          </p>
+        </section>
+      </StaticPageSection>
+
+      <div v-if="savedOutput" class="run-result-actions">
+        <RouterLink
+          class="reconciliation-run-history-link"
+          data-testid="run-result-view-history"
+          :to="runHistoryRoute"
+        >
+          View all previous runs
+        </RouterLink>
+        <RouterLink
+          v-if="canEditTenantSettings"
+          class="static-page-action-tile static-page-action-tile--inline"
+          data-testid="run-result-open-workflow"
+          :to="workflowRoute"
+        >
+          Open Run
+        </RouterLink>
+      </div>
+    </StaticPageFrame>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, type RouteLocationRaw } from 'vue-router'
 import AppTableFrame from '../../components/ui/AppTableFrame.vue'
+import StaticEditableTitle from '../../components/ui/StaticEditableTitle.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
-import type { GetPilotGeneratedOutputFile, PilotGeneratedOutput } from '../../lib/api/types'
+import type { GetGeneratedOutputFile, GeneratedOutput } from '../../lib/api/types'
+import { useUiPermissions } from '../../lib/auth'
+import {
+  buildReconciliationDiffRoute,
+  buildReconciliationRunHistoryRoute,
+  type ReconciliationRunRouteContext,
+} from '../../lib/reconciliationRoutes'
+import { formatSavedResultDateTime } from '../../lib/utils/date'
+import { downloadTextFile } from '../../lib/utils/download'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
-type DiffBucketKey = 'file-1' | 'file-2'
+type DiffBucketKey = 'file-1' | 'file-2' | 'rule'
 
 interface DiffDetailsMetadata {
   file1Label?: string
   file2Label?: string
   timestamp?: string
+  savedRunId?: string
+  savedRunName?: string
+  savedRunType?: string
   reconciliationMappingId?: string
   reconciliationMappingName?: string
+  ruleSetId?: string
+  compareScopeId?: string
 }
 
 interface DiffDetailsSummary {
   totalDifferences?: number
   onlyInFile1Count?: number
   onlyInFile2Count?: number
+  missingObjectDifferenceCount?: number
+  ruleDifferenceCount?: number
 }
 
 interface DiffDetailsRecord {
+  diffType?: string
   type?: string
   id?: string | number
+  primaryId?: string | number
   presentIn?: string
   missingIn?: string
   data?: unknown
+  field?: string
+  file1Value?: unknown
+  file2Value?: unknown
+  ruleId?: string
+  ruleName?: string
+  ruleLabel?: string
+  ruleDescription?: string
+  severity?: string
+  message?: string
 }
 
 interface DiffDetailsPayload {
@@ -186,8 +299,27 @@ interface DiffDetailsPayload {
 interface NormalizedDiffDetailRow {
   rowKey: string
   recordId: string
-  missingBucket: DiffBucketKey
-  jsonText: string
+  bucket: DiffBucketKey
+  detailText: string
+  ruleFilterKey: string
+  ruleId: string
+  ruleLabel: string
+}
+
+interface RuleSelectorOption {
+  key: string
+  label: string
+  detail: string
+  count: number
+  bucketKeys: DiffBucketKey[]
+}
+
+interface DiffDetailBucketCard {
+  key: string
+  label: string
+  count: number
+  testId: string
+  bucketKey?: DiffBucketKey
 }
 
 const diffDetailColumns = [
@@ -197,8 +329,8 @@ const diffDetailColumns = [
     colStyle: { width: '13rem' },
   },
   {
-    key: 'jsonText',
-    label: 'Record JSON',
+    key: 'detailText',
+    label: 'Diff Detail',
   },
   {
     key: 'actions',
@@ -211,27 +343,37 @@ const diffDetailColumns = [
 ]
 
 const route = useRoute()
+const permissions = useUiPermissions()
 const loading = ref(false)
 const loadError = ref<string | null>(null)
-const savedOutput = ref<PilotGeneratedOutput | null>(null)
-const downloadableOutputFile = ref<GetPilotGeneratedOutputFile | null>(null)
+const savedOutput = ref<GeneratedOutput | null>(null)
+const downloadableOutputFile = ref<GetGeneratedOutputFile | null>(null)
+const editableRunName = ref('')
+const persistedRunName = ref('')
+const savingRunName = ref(false)
 const diffDetailsMeta = ref<DiffDetailsMetadata>({})
 const diffDetailsSummary = ref<DiffDetailsSummary>({})
 const diffDetailRows = ref<NormalizedDiffDetailRow[]>([])
-const selectedDiffBuckets = ref<DiffBucketKey[]>(['file-1', 'file-2'])
+const selectedDiffBuckets = ref<DiffBucketKey[]>(['file-1', 'file-2', 'rule'])
+const selectedRuleFilterKey = ref('all')
+const ruleSelectorCollapsed = ref(false)
 const diffDetailsSearch = ref('')
 const diffDetailsPageIndex = ref(0)
 
 const DIFF_DETAILS_PAGE_SIZE = 5
-const DIFF_BUCKET_ORDER: DiffBucketKey[] = ['file-1', 'file-2']
+const DIFF_BUCKET_ORDER: DiffBucketKey[] = ['file-1', 'file-2', 'rule']
+const ALL_RULE_FILTER_KEY = 'all'
+const BASE_RULE_FILTER_KEY = 'base-diff'
 
-const reconciliationMappingId = computed(() =>
-  typeof route.params.reconciliationMappingId === 'string' ? route.params.reconciliationMappingId.trim() : '',
+const savedRunId = computed(() =>
+  typeof route.params.savedRunId === 'string' ? route.params.savedRunId.trim() : '',
 )
 const outputFileName = computed(() =>
   typeof route.params.outputFileName === 'string' ? route.params.outputFileName.trim() : '',
 )
-const runName = computed(() => (typeof route.query.runName === 'string' && route.query.runName.trim() ? route.query.runName.trim() : 'Selected Run'))
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const routeRunName = computed(() => (typeof route.query.runName === 'string' && route.query.runName.trim() ? route.query.runName.trim() : 'Selected Run'))
+const runName = computed(() => editableRunName.value || routeRunName.value)
 const file1SystemLabel = computed(() =>
   typeof route.query.file1SystemLabel === 'string' && route.query.file1SystemLabel.trim() ? route.query.file1SystemLabel.trim() : 'System 1',
 )
@@ -239,29 +381,23 @@ const file2SystemLabel = computed(() =>
   typeof route.query.file2SystemLabel === 'string' && route.query.file2SystemLabel.trim() ? route.query.file2SystemLabel.trim() : 'System 2',
 )
 const heroDescription = computed(() =>
-  savedOutput.value?.createdDate ? formatOutputCreatedDate(savedOutput.value.createdDate) : 'Review the saved reconciliation output for this run.',
+  savedOutput.value?.createdDate ? formatSavedResultDateTime(savedOutput.value.createdDate) : 'Review the saved reconciliation output for this run.',
 )
-const workflowRoute = computed<RouteLocationRaw>(() => ({
-  name: 'reconciliation-pilot-diff',
-  query: {
-    mappingId: reconciliationMappingId.value,
-    runName: runName.value,
-    file1SystemLabel: diffDetailsFile1Label.value,
-    file2SystemLabel: diffDetailsFile2Label.value,
-  },
-  state: buildWorkflowOriginState('Run Result', route.fullPath),
+const reconciliationRunRouteContext = computed<ReconciliationRunRouteContext>(() => ({
+  savedRunId: savedRunId.value,
+  runName: runName.value,
+  file1SystemLabel: diffDetailsFile1Label.value,
+  file2SystemLabel: diffDetailsFile2Label.value,
 }))
-const runHistoryRoute = computed<RouteLocationRaw>(() => ({
-  name: 'reconciliation-run-history',
-  params: {
-    reconciliationMappingId: reconciliationMappingId.value,
-  },
-  query: {
-    runName: runName.value,
-    file1SystemLabel: diffDetailsFile1Label.value,
-    file2SystemLabel: diffDetailsFile2Label.value,
-  },
-}))
+const workflowRoute = computed<RouteLocationRaw>(() =>
+  buildReconciliationDiffRoute(
+    reconciliationRunRouteContext.value,
+    buildWorkflowOriginState('Run Result', route.fullPath),
+  ),
+)
+const runHistoryRoute = computed<RouteLocationRaw>(() =>
+  buildReconciliationRunHistoryRoute(reconciliationRunRouteContext.value),
+)
 const diffDetailsFile1Label = computed(
   () => diffDetailsMeta.value.file1Label || savedOutput.value?.file1Label || file1SystemLabel.value || 'File 1',
 )
@@ -271,37 +407,134 @@ const diffDetailsFile2Label = computed(
 const activeDiffBuckets = computed<DiffBucketKey[]>(() =>
   DIFF_BUCKET_ORDER.filter((bucket) => selectedDiffBuckets.value.includes(bucket)),
 )
-const diffDetailBuckets = computed(() => [
+const overviewDiffDetailBuckets = computed<DiffDetailBucketCard[]>(() => [
   {
-    key: 'file-1' as const,
+    key: 'file-1',
+    bucketKey: 'file-1',
     label: `Missing from ${diffDetailsFile1Label.value}`,
     count:
       diffDetailsSummary.value.onlyInFile2Count ??
-      diffDetailRows.value.filter((row) => row.missingBucket === 'file-1').length,
+      diffDetailRows.value.filter((row) => row.bucket === 'file-1').length,
     testId: 'diff-bucket-file-1',
   },
   {
-    key: 'file-2' as const,
+    key: 'file-2',
+    bucketKey: 'file-2',
     label: `Missing from ${diffDetailsFile2Label.value}`,
     count:
       diffDetailsSummary.value.onlyInFile1Count ??
-      diffDetailRows.value.filter((row) => row.missingBucket === 'file-2').length,
+      diffDetailRows.value.filter((row) => row.bucket === 'file-2').length,
     testId: 'diff-bucket-file-2',
   },
+  {
+    key: 'rule',
+    bucketKey: 'rule',
+    label: 'Rule differences',
+    count:
+      diffDetailsSummary.value.ruleDifferenceCount ??
+      diffDetailRows.value.filter((row) => row.bucket === 'rule').length,
+    testId: 'diff-bucket-rule',
+  },
 ])
-const activeBucketDiffDetailRows = computed(() =>
-  diffDetailRows.value.filter((row) => activeDiffBuckets.value.includes(row.missingBucket)),
+const ruleSelectorOptions = computed<RuleSelectorOption[]>(() => {
+  const baseRows = diffDetailRows.value.filter((row) => row.ruleFilterKey === BASE_RULE_FILTER_KEY)
+  const ruleEntries = new Map<string, {
+    key: string
+    ruleId: string
+    detail: string
+    count: number
+    bucketKeys: Set<DiffBucketKey>
+  }>()
+
+  diffDetailRows.value.forEach((row) => {
+    if (row.ruleFilterKey === BASE_RULE_FILTER_KEY) return
+
+    const existingEntry = ruleEntries.get(row.ruleFilterKey)
+    if (existingEntry) {
+      existingEntry.count += 1
+      existingEntry.bucketKeys.add(row.bucket)
+      if (!existingEntry.detail && row.ruleLabel) existingEntry.detail = row.ruleLabel
+      return
+    }
+
+    ruleEntries.set(row.ruleFilterKey, {
+      key: row.ruleFilterKey,
+      ruleId: row.ruleId,
+      detail: row.ruleLabel,
+      count: 1,
+      bucketKeys: new Set([row.bucket]),
+    })
+  })
+
+  const options: RuleSelectorOption[] = []
+
+  if (baseRows.length > 0) {
+    const baseBuckets = DIFF_BUCKET_ORDER.filter((bucket) => baseRows.some((row) => row.bucket === bucket))
+    options.push({
+      key: BASE_RULE_FILTER_KEY,
+      label: 'Rule 0',
+      detail: 'Base comparison',
+      count: baseRows.length,
+      bucketKeys: baseBuckets.length > 0 ? baseBuckets : ['file-1', 'file-2'],
+    })
+  }
+
+  Array.from(ruleEntries.values()).forEach((entry, index) => {
+    options.push({
+      key: entry.key,
+      label: resolveRuleOptionLabel(entry.ruleId, index + 1),
+      detail: entry.detail || humanizeRuleIdentifier(entry.ruleId),
+      count: entry.count,
+      bucketKeys: DIFF_BUCKET_ORDER.filter((bucket) => entry.bucketKeys.has(bucket)),
+    })
+  })
+
+  return options
+})
+const selectedRuleSelectorOption = computed(() =>
+  ruleSelectorOptions.value.find((option) => option.key === selectedRuleFilterKey.value),
 )
+const diffDetailBuckets = computed<DiffDetailBucketCard[]>(() => {
+  if (selectedRuleFilterKey.value === ALL_RULE_FILTER_KEY) return overviewDiffDetailBuckets.value
+
+  if (selectedRuleFilterKey.value === BASE_RULE_FILTER_KEY) {
+    return overviewDiffDetailBuckets.value.filter((bucket) => bucket.bucketKey === 'file-1' || bucket.bucketKey === 'file-2')
+  }
+
+  return [
+    {
+      key: 'selected-rule-total',
+      label: 'Total results',
+      count:
+        selectedRuleSelectorOption.value?.count ??
+        diffDetailRows.value.filter((row) => row.ruleFilterKey === selectedRuleFilterKey.value).length,
+      testId: 'diff-bucket-total-results',
+    },
+  ]
+})
+const showRuleSelector = computed(() =>
+  ruleSelectorOptions.value.length > 1 || ruleSelectorOptions.value.some((option) => option.key !== BASE_RULE_FILTER_KEY),
+)
+const ruleSelectorAllDetail = computed(() =>
+  `${diffDetailRows.value.length} ${diffDetailRows.value.length === 1 ? 'difference' : 'differences'}`,
+)
+const activeBucketDiffDetailRows = computed(() =>
+  diffDetailRows.value.filter((row) => activeDiffBuckets.value.includes(row.bucket)),
+)
+const activeRuleDiffDetailRows = computed(() => {
+  if (selectedRuleFilterKey.value === ALL_RULE_FILTER_KEY) return activeBucketDiffDetailRows.value
+  return activeBucketDiffDetailRows.value.filter((row) => row.ruleFilterKey === selectedRuleFilterKey.value)
+})
 const filteredDiffDetailRows = computed(() => {
   const searchValue = diffDetailsSearch.value.trim().toLowerCase()
 
-  return activeBucketDiffDetailRows.value.filter((row) => {
+  return activeRuleDiffDetailRows.value.filter((row) => {
     if (!searchValue) return true
     return row.recordId.toLowerCase().includes(searchValue)
   })
 })
 const showDiffDetailsToolbar = computed(
-  () => activeBucketDiffDetailRows.value.length > 0 || diffDetailsSearch.value.trim().length > 0,
+  () => activeRuleDiffDetailRows.value.length > 0 || diffDetailsSearch.value.trim().length > 0,
 )
 const diffDetailsEmptyMessage = computed(() => {
   if (diffDetailsSearch.value.trim().length > 0) {
@@ -312,6 +545,9 @@ const diffDetailsEmptyMessage = computed(() => {
   }
   if (activeBucketDiffDetailRows.value.length === 0 && diffDetailRows.value.length > 0) {
     return 'No records are available in the selected diff bucket.'
+  }
+  if (activeRuleDiffDetailRows.value.length === 0 && selectedRuleFilterKey.value !== ALL_RULE_FILTER_KEY) {
+    return 'No records are available for the selected rule.'
   }
   return 'No diff detail records are available.'
 })
@@ -333,6 +569,39 @@ function normalizeDiffToken(value: unknown): string {
     .replace(/^_+|_+$/g, '')
 }
 
+function humanizeRuleIdentifier(ruleId: string): string {
+  const normalizedRuleId = normalizeDiffLabel(ruleId)
+  if (!normalizedRuleId) return 'Rule difference'
+
+  return normalizedRuleId
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+function resolveRuleOptionLabel(ruleId: string, fallbackIndex: number): string {
+  const normalizedRuleId = normalizeDiffLabel(ruleId)
+  const numberedRuleMatch =
+    normalizedRuleId.match(/(?:^|[_\-\s])rule[_\-\s]*(\d+)$/i) ??
+    normalizedRuleId.match(/(?:^|[_\-\s])(\d+)$/)
+  if (numberedRuleMatch?.[1]) return `Rule ${Number(numberedRuleMatch[1])}`
+
+  return `Rule ${fallbackIndex}`
+}
+
+function resolveRuleRowDetail(record: DiffDetailsRecord, fallbackRuleId: string): string {
+  return (
+    normalizeDiffLabel(record.ruleLabel) ||
+    normalizeDiffLabel(record.ruleName) ||
+    normalizeDiffLabel(record.ruleDescription) ||
+    normalizeDiffLabel(record.field) ||
+    normalizeDiffLabel(record.message) ||
+    humanizeRuleIdentifier(fallbackRuleId)
+  )
+}
+
 function normalizeDiffBucketSelection(buckets: DiffBucketKey[]): DiffBucketKey[] {
   return DIFF_BUCKET_ORDER.filter((bucket) => buckets.includes(bucket))
 }
@@ -340,25 +609,55 @@ function normalizeDiffBucketSelection(buckets: DiffBucketKey[]): DiffBucketKey[]
 function resetDiffDetailsState(): void {
   savedOutput.value = null
   downloadableOutputFile.value = null
+  editableRunName.value = routeRunName.value
+  persistedRunName.value = routeRunName.value
+  savingRunName.value = false
   diffDetailsMeta.value = {}
   diffDetailsSummary.value = {}
   diffDetailRows.value = []
   selectedDiffBuckets.value = [...DIFF_BUCKET_ORDER]
+  selectedRuleFilterKey.value = ALL_RULE_FILTER_KEY
+  ruleSelectorCollapsed.value = false
   diffDetailsSearch.value = ''
   diffDetailsPageIndex.value = 0
 }
 
-function downloadText(filename: string, text: string, contentType: string): void {
-  const blob = new Blob([text], { type: contentType || 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  URL.revokeObjectURL(url)
+async function saveRunName(nextRunName: string): Promise<void> {
+  const normalizedRunName = nextRunName.trim()
+  const previousRunName = persistedRunName.value || routeRunName.value
+  if (!canEditTenantSettings.value) {
+    editableRunName.value = previousRunName
+    return
+  }
+  if (!savedRunId.value) return
+  if (!normalizedRunName) {
+    editableRunName.value = previousRunName
+    return
+  }
+  if (normalizedRunName === previousRunName || savingRunName.value) return
+
+  savingRunName.value = true
+  loadError.value = null
+
+  try {
+    const response = await reconciliationFacade.saveSavedRunName({
+      savedRunId: savedRunId.value,
+      runName: normalizedRunName,
+    })
+    const savedRunName = response.savedRun?.runName || normalizedRunName
+    editableRunName.value = savedRunName
+    persistedRunName.value = savedRunName
+  } catch (error) {
+    editableRunName.value = previousRunName
+    loadError.value = error instanceof ApiCallError ? error.message : 'Unable to save run name.'
+  } finally {
+    savingRunName.value = false
+  }
 }
 
 function stringifyDiffJson(value: unknown): string {
+  if (value == null) return ''
+
   if (typeof value === 'string') {
     try {
       return JSON.stringify(JSON.parse(value), null, 2)
@@ -368,17 +667,23 @@ function stringifyDiffJson(value: unknown): string {
   }
 
   try {
-    return JSON.stringify(value ?? {}, null, 2)
+    return JSON.stringify(value, null, 2)
   } catch {
-    return String(value ?? '')
+    return String(value)
   }
+}
+
+function resolveDiffType(record: DiffDetailsRecord): string {
+  return normalizeDiffLabel(record.diffType || record.type)
 }
 
 function resolveDiffRecordId(record: DiffDetailsRecord, rowIndex: number): string {
   if (record.id != null && String(record.id).trim()) return String(record.id).trim()
+  if (record.primaryId != null && String(record.primaryId).trim()) return String(record.primaryId).trim()
 
   if (record.data && typeof record.data === 'object') {
     const candidate =
+      (record.data as Record<string, unknown>).primaryId ??
       (record.data as Record<string, unknown>).record_id ??
       (record.data as Record<string, unknown>).recordId ??
       (record.data as Record<string, unknown>).compare_id ??
@@ -398,7 +703,7 @@ function resolveMissingBucket(
   const missingToken = normalizeDiffToken(record.missingIn)
   const file1Token = normalizeDiffToken(file1LabelValue)
   const file2Token = normalizeDiffToken(file2LabelValue)
-  const typeToken = normalizeDiffToken(record.type)
+  const typeToken = normalizeDiffToken(resolveDiffType(record))
   const presentToken = normalizeDiffToken(record.presentIn)
 
   if (missingToken && missingToken === file1Token) return 'file-1'
@@ -407,7 +712,81 @@ function resolveMissingBucket(
   if (file2Token && typeToken.includes(`missing_in_${file2Token}`)) return 'file-2'
   if (presentToken && presentToken === file1Token) return 'file-2'
   if (presentToken && presentToken === file2Token) return 'file-1'
-  return 'file-2'
+  return 'rule'
+}
+
+function isMissingDiffRecord(record: DiffDetailsRecord): boolean {
+  const typeToken = normalizeDiffToken(resolveDiffType(record))
+  return Boolean(record.missingIn || record.presentIn || typeToken.startsWith('missing_in_'))
+}
+
+function parseDiffData(rawData: unknown): unknown {
+  if (typeof rawData !== 'string') return rawData
+
+  try {
+    return JSON.parse(rawData)
+  } catch {
+    return rawData
+  }
+}
+
+function buildDiffDetailPayload(record: DiffDetailsRecord, parsedData: unknown): unknown {
+  if (parsedData != null && !(typeof parsedData === 'string' && !parsedData.trim())) {
+    return parsedData
+  }
+
+  const diffDetail = {
+    diffType: resolveDiffType(record) || undefined,
+    primaryId:
+      record.primaryId != null && String(record.primaryId).trim() ? String(record.primaryId).trim() : undefined,
+    field: normalizeDiffLabel(record.field) || undefined,
+    file1Value: record.file1Value,
+    file2Value: record.file2Value,
+    severity: normalizeDiffLabel(record.severity) || undefined,
+    ruleId: normalizeDiffLabel(record.ruleId) || undefined,
+    message: normalizeDiffLabel(record.message) || undefined,
+  }
+
+  const normalizedDetail = Object.fromEntries(Object.entries(diffDetail).filter(([, value]) => value != null))
+  return Object.keys(normalizedDetail).length > 0 ? normalizedDetail : null
+}
+
+function resolveRuleDescriptor(
+  record: DiffDetailsRecord,
+  bucket: DiffBucketKey,
+  rowIndex: number,
+): Pick<NormalizedDiffDetailRow, 'ruleFilterKey' | 'ruleId' | 'ruleLabel'> {
+  if (bucket !== 'rule') {
+    return {
+      ruleFilterKey: BASE_RULE_FILTER_KEY,
+      ruleId: BASE_RULE_FILTER_KEY,
+      ruleLabel: 'Base comparison',
+    }
+  }
+
+  const ruleId =
+    normalizeDiffLabel(record.ruleId) ||
+    normalizeDiffLabel(record.ruleName) ||
+    resolveDiffType(record) ||
+    `rule-${rowIndex + 1}`
+  const ruleFilterKey = normalizeDiffToken(ruleId) || `rule_${rowIndex + 1}`
+
+  return {
+    ruleFilterKey,
+    ruleId,
+    ruleLabel: resolveRuleRowDetail(record, ruleId),
+  }
+}
+
+function resolveDiffBucket(
+  record: DiffDetailsRecord,
+  file1LabelValue: string,
+  file2LabelValue: string,
+): DiffBucketKey {
+  if (isMissingDiffRecord(record)) {
+    return resolveMissingBucket(record, file1LabelValue, file2LabelValue)
+  }
+  return 'rule'
 }
 
 function normalizeDiffDetailRows(
@@ -416,18 +795,10 @@ function normalizeDiffDetailRows(
   file2LabelValue: string,
 ): NormalizedDiffDetailRow[] {
   return (payload.differences ?? []).map((record, index) => {
-    const parsedData =
-      typeof record.data === 'string'
-        ? (() => {
-            try {
-              return JSON.parse(record.data)
-            } catch {
-              return record.data
-            }
-          })()
-        : record.data
-
-    const missingBucket = resolveMissingBucket(record, file1LabelValue, file2LabelValue)
+    const parsedData = parseDiffData(record.data)
+    const detailPayload = buildDiffDetailPayload(record, parsedData)
+    const bucket = resolveDiffBucket(record, file1LabelValue, file2LabelValue)
+    const ruleDescriptor = resolveRuleDescriptor(record, bucket, index)
     const recordId = resolveDiffRecordId(
       {
         ...record,
@@ -437,15 +808,16 @@ function normalizeDiffDetailRows(
     )
 
     return {
-      rowKey: `${missingBucket}-${recordId}-${index}`,
+      rowKey: `${bucket}-${recordId}-${index}`,
       recordId,
-      missingBucket,
-      jsonText: stringifyDiffJson(parsedData),
+      bucket,
+      detailText: stringifyDiffJson(detailPayload),
+      ...ruleDescriptor,
     }
   })
 }
 
-function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsPayload): PilotGeneratedOutput {
+function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsPayload): GeneratedOutput {
   const file1LabelValue = normalizeDiffLabel(payload.metadata?.file1Label) || normalizeDiffLabel(file1SystemLabel.value) || 'File 1'
   const file2LabelValue = normalizeDiffLabel(payload.metadata?.file2Label) || normalizeDiffLabel(file2SystemLabel.value) || 'File 2'
   const totalDifferences = payload.summary?.totalDifferences ?? payload.differences?.length ?? 0
@@ -461,8 +833,13 @@ function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsP
     sourceFormat: 'json',
     availableFormats: ['json', 'csv'],
     preferredDownloadFormat: 'csv',
-    reconciliationMappingId: payload.metadata?.reconciliationMappingId || reconciliationMappingId.value,
-    mappingName: payload.metadata?.reconciliationMappingName || runName.value,
+    savedRunId: payload.metadata?.savedRunId || payload.metadata?.reconciliationMappingId || payload.metadata?.ruleSetId || savedRunId.value,
+    savedRunName: payload.metadata?.savedRunName || payload.metadata?.reconciliationMappingName || runName.value,
+    savedRunType: payload.metadata?.savedRunType || (payload.metadata?.ruleSetId ? 'ruleset' : 'mapping'),
+    reconciliationMappingId: payload.metadata?.reconciliationMappingId,
+    mappingName: payload.metadata?.reconciliationMappingName,
+    ruleSetId: payload.metadata?.ruleSetId,
+    compareScopeId: payload.metadata?.compareScopeId,
     file1Label: file1LabelValue,
     file2Label: file2LabelValue,
     totalDifferences,
@@ -473,7 +850,10 @@ function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsP
 }
 
 async function loadSavedResult(): Promise<void> {
-  if (!reconciliationMappingId.value || !outputFileName.value) {
+  const requestedSavedRunId = savedRunId.value
+  const requestedOutputFileName = outputFileName.value
+
+  if (!requestedSavedRunId || !requestedOutputFileName) {
     resetDiffDetailsState()
     loadError.value = 'Saved result details are unavailable without a selected run result.'
     return
@@ -484,20 +864,25 @@ async function loadSavedResult(): Promise<void> {
   resetDiffDetailsState()
 
   try {
-    const response = await reconciliationFacade.getPilotGeneratedOutput({
-      fileName: outputFileName.value,
+    const response = await reconciliationFacade.getGeneratedOutput({
+      fileName: requestedOutputFileName,
       format: 'json',
     })
+
+    if (savedRunId.value !== requestedSavedRunId || outputFileName.value !== requestedOutputFileName) return
+
     const contentText = response.outputFile?.contentText
     if (!contentText) {
       throw new Error('Unable to load saved result.')
     }
 
     const payload = JSON.parse(contentText) as DiffDetailsPayload
-    const descriptor = buildGeneratedOutputFromPayload(outputFileName.value, payload)
+    const descriptor = buildGeneratedOutputFromPayload(requestedOutputFileName, payload)
 
     savedOutput.value = descriptor
     downloadableOutputFile.value = response.outputFile ?? null
+    editableRunName.value = descriptor.savedRunName || routeRunName.value
+    persistedRunName.value = editableRunName.value
     diffDetailsMeta.value = {
       file1Label: descriptor.file1Label,
       file2Label: descriptor.file2Label,
@@ -510,10 +895,14 @@ async function loadSavedResult(): Promise<void> {
     }
     diffDetailRows.value = normalizeDiffDetailRows(payload, descriptor.file1Label || 'File 1', descriptor.file2Label || 'File 2')
   } catch (error) {
+    if (savedRunId.value !== requestedSavedRunId || outputFileName.value !== requestedOutputFileName) return
+
     resetDiffDetailsState()
     loadError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved result.'
   } finally {
-    loading.value = false
+    if (savedRunId.value === requestedSavedRunId && outputFileName.value === requestedOutputFileName) {
+      loading.value = false
+    }
   }
 }
 
@@ -534,30 +923,44 @@ function toggleDiffBucket(bucket: DiffBucketKey): void {
   diffDetailsPageIndex.value = 0
 }
 
-function formatOutputCreatedDate(createdDate?: string): string {
-  if (!createdDate) return 'Saved result'
+function toggleRuleSelectorCollapsed(): void {
+  ruleSelectorCollapsed.value = !ruleSelectorCollapsed.value
+}
 
-  const parsedDate = new Date(createdDate)
-  if (Number.isNaN(parsedDate.getTime())) return createdDate
+function selectRuleFilter(nextRuleFilterKey: string): void {
+  selectedRuleFilterKey.value = nextRuleFilterKey
 
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(parsedDate)
+  if (nextRuleFilterKey === ALL_RULE_FILTER_KEY) {
+    selectedDiffBuckets.value = [...DIFF_BUCKET_ORDER]
+  } else {
+    const selectedOption = ruleSelectorOptions.value.find((option) => option.key === nextRuleFilterKey)
+    if (selectedOption) {
+      selectedDiffBuckets.value = normalizeDiffBucketSelection(selectedOption.bucketKeys)
+    }
+  }
+
+  diffDetailsPageIndex.value = 0
 }
 
 function downloadSavedResult(): void {
   if (!downloadableOutputFile.value) return
 
-  downloadText(
+  downloadTextFile(
     downloadableOutputFile.value.downloadFileName || downloadableOutputFile.value.fileName || outputFileName.value || 'saved-result.json',
     downloadableOutputFile.value.contentText,
-    downloadableOutputFile.value.contentType,
+    downloadableOutputFile.value.contentType || 'application/json',
   )
 }
 
 watch(diffDetailsSearch, () => {
   diffDetailsPageIndex.value = 0
+})
+
+watch(ruleSelectorOptions, (options) => {
+  if (selectedRuleFilterKey.value === ALL_RULE_FILTER_KEY) return
+  if (options.some((option) => option.key === selectedRuleFilterKey.value)) return
+
+  selectedRuleFilterKey.value = ALL_RULE_FILTER_KEY
 })
 
 watch(filteredDiffDetailRows, () => {
@@ -566,7 +969,7 @@ watch(filteredDiffDetailRows, () => {
   }
 })
 
-watch([reconciliationMappingId, outputFileName], () => {
+watch([savedRunId, outputFileName], () => {
   void loadSavedResult()
 }, { immediate: true })
 </script>
@@ -581,18 +984,123 @@ watch([reconciliationMappingId, outputFileName], () => {
   margin: 0;
 }
 
-.pilot-diff-details {
+.run-result-page-shell {
+  position: relative;
+}
+
+.run-result-rule-selector {
+  position: fixed;
+  z-index: 45;
+  top: 50vh;
+  left: max(0.5rem, env(safe-area-inset-left));
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transform: translateY(-50%);
+}
+
+.run-result-rule-selector--collapsed {
+  gap: 0;
+}
+
+.run-result-rule-selector__panel {
+  display: grid;
+  gap: 0.45rem;
+  width: min(13.5rem, calc(100vw - 4rem));
+  padding: 0.45rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--surface) 94%, white);
+  box-shadow: 0 0.85rem 2rem rgb(15 23 42 / 8%);
+}
+
+.run-result-rule-selector__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.55rem;
+  min-height: 2.55rem;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--surface) 94%, white);
+  color: var(--text-muted);
+  box-shadow: 0 0.85rem 2rem rgb(15 23 42 / 8%);
+}
+
+.run-result-rule-selector__toggle:hover {
+  border-color: color-mix(in oklab, var(--accent) 42%, var(--border));
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.run-result-rule-selector__toggle-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  transition: transform 160ms ease;
+}
+
+.run-result-rule-selector__toggle-icon--collapsed {
+  transform: rotate(180deg);
+}
+
+.run-result-rule-selector__options {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.run-result-rule-selector__option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 0.5rem;
+  align-items: center;
+  min-height: 3.35rem;
+  padding: 0.6rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--surface-2) 92%, white);
+  color: var(--text);
+  text-align: left;
+}
+
+.run-result-rule-selector__option:hover {
+  border-color: color-mix(in oklab, var(--accent) 38%, var(--border));
+}
+
+.run-result-rule-selector__option--active {
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--border));
+  background: color-mix(in oklab, var(--surface-2) 78%, var(--accent));
+}
+
+.run-result-rule-selector__option-detail {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.run-result-rule-selector__option-count {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 0.86rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.reconciliation-diff-details {
   display: grid;
   gap: var(--space-3);
 }
 
-.pilot-diff-details__bucket-grid {
+.reconciliation-diff-details__bucket-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
-.pilot-diff-bucket {
+.reconciliation-diff-bucket {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -610,25 +1118,29 @@ watch([reconciliationMappingId, outputFileName], () => {
     background 160ms ease;
 }
 
-.pilot-diff-bucket:hover {
+.reconciliation-diff-bucket:hover {
   transform: translateY(-1px);
 }
 
-.pilot-diff-bucket--active {
+.reconciliation-diff-bucket--static:hover {
+  transform: none;
+}
+
+.reconciliation-diff-bucket--active {
   border-color: color-mix(in oklab, var(--accent) 58%, var(--border));
   background: color-mix(in oklab, var(--surface-2) 80%, var(--accent));
 }
 
-.pilot-diff-bucket__label {
+.reconciliation-diff-bucket__label {
   color: var(--text-muted);
 }
 
-.pilot-diff-bucket strong {
+.reconciliation-diff-bucket strong {
   font-size: 1.9rem;
   line-height: 1;
 }
 
-.pilot-diff-details__toolbar {
+.reconciliation-diff-details__toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -636,15 +1148,15 @@ watch([reconciliationMappingId, outputFileName], () => {
   gap: var(--space-3);
 }
 
-.pilot-diff-details__search {
+.reconciliation-diff-details__search {
   min-width: min(100%, 22rem);
 }
 
-.pilot-diff-details__search-field {
+.reconciliation-diff-details__search-field {
   position: relative;
 }
 
-.pilot-diff-details__search-input {
+.reconciliation-diff-details__search-input {
   width: 100%;
   min-height: 3rem;
   padding: 0.8rem 2.9rem 0.8rem 0.95rem;
@@ -654,7 +1166,7 @@ watch([reconciliationMappingId, outputFileName], () => {
   color: var(--text);
 }
 
-.pilot-diff-details__search-clear {
+.reconciliation-diff-details__search-clear {
   position: absolute;
   top: 50%;
   right: 0.55rem;
@@ -673,7 +1185,7 @@ watch([reconciliationMappingId, outputFileName], () => {
   transform: translateY(-50%);
 }
 
-.pilot-diff-details__search-clear:hover {
+.reconciliation-diff-details__search-clear:hover {
   background: color-mix(in oklab, var(--surface-2) 84%, var(--accent));
   color: var(--text);
 }
@@ -687,14 +1199,14 @@ watch([reconciliationMappingId, outputFileName], () => {
   color: var(--text);
 }
 
-.pilot-diff-details__pagination {
+.reconciliation-diff-details__pagination {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.pilot-diff-details__pagination p {
+.reconciliation-diff-details__pagination p {
   margin: 0;
   color: var(--text-muted);
   text-align: center;
@@ -706,24 +1218,36 @@ watch([reconciliationMappingId, outputFileName], () => {
   gap: var(--space-3);
 }
 
-.pilot-run-history-link {
+.reconciliation-run-history-link {
   color: var(--text-muted);
   text-decoration: none;
   font-size: 0.9rem;
 }
 
-.pilot-run-history-link:hover {
+.reconciliation-run-history-link:hover {
   color: var(--text);
   text-decoration: underline;
 }
 
 @media (max-width: 760px) {
-  .pilot-diff-details__pagination {
+  .run-result-rule-selector {
+    position: static;
+    width: auto;
+    margin: 0 var(--space-3) var(--space-3);
+    transform: none;
+  }
+
+  .run-result-rule-selector__panel {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .reconciliation-diff-details__pagination {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .pilot-diff-details__bucket-grid {
+  .reconciliation-diff-details__bucket-grid {
     grid-template-columns: 1fr;
   }
 

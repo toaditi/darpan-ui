@@ -26,52 +26,41 @@
       >
         <RouterLink
           v-for="row in rows"
-          :key="row.reconciliationMappingId"
-          :to="buildEditRoute(row.reconciliationMappingId)"
+          :key="row.savedRunId"
+          :to="buildOpenRoute(row)"
           class="static-page-tile static-page-record-tile"
           data-testid="run-tile"
         >
           <span class="static-page-tile-title">{{ savedRunName(row) }}</span>
         </RouterLink>
       </div>
-
-      <RouterLink
-        v-if="rows.length === 0 && !loading && !error"
-        :to="createRoute"
-        class="static-page-action-tile static-page-action-tile--inline"
-        data-testid="runs-empty-create-action"
-      >
-        Create Run
-      </RouterLink>
     </StaticPageSection>
-
-    <RouterLink
-      v-if="rows.length > 0"
-      :to="createRoute"
-      class="static-page-action-tile static-page-create-action"
-      data-testid="runs-create-action"
-    >
-      Create Run
-    </RouterLink>
   </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, type RouteLocationRaw } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
-import type { PilotMappingSummary } from '../../lib/api/types'
+import type { SavedRunSummary } from '../../lib/api/types'
+import {
+  buildReconciliationRuleSetDraftState,
+  type ReconciliationRuleSetDraft,
+  type ReconciliationRulePreAction,
+  type ReconciliationRulePreActionEntry,
+  type ReconciliationRulePreActionFieldSide,
+} from '../../lib/reconciliationRuleSetDraft'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
 
-const rows = ref<PilotMappingSummary[]>([])
+const rows = ref<SavedRunSummary[]>([])
 const pageIndex = ref(0)
 const pageSize = ref(12)
 const pageCount = ref(1)
@@ -81,25 +70,134 @@ const error = ref<string | null>(null)
 
 const workflowOriginState = computed(() => buildWorkflowOriginState('Run Editor', route.fullPath || '/settings/runs'))
 
-const createRoute = computed(() => ({
-  path: '/reconciliation/create',
-  state: workflowOriginState.value,
-}))
-
-function savedRunName(row: PilotMappingSummary): string {
+function savedRunName(row: SavedRunSummary): string {
   return resolveRecordLabel({
-    primary: row.mappingName,
+    primary: row.runName,
     description: row.description,
-    fallbackId: row.reconciliationMappingId,
+    fallbackId: row.savedRunId,
   })
 }
 
-function buildEditRoute(
-  reconciliationMappingId: string,
-): { name: string; params: { reconciliationMappingId: string }; state: Record<string, string> } {
+function buildRuleSetDraft(row: SavedRunSummary): ReconciliationRuleSetDraft | null {
+  const file1Option = row.systemOptions.find((option) => option.fileSide === 'FILE_1')
+    ?? row.systemOptions.find((option) => option.enumId === row.defaultFile1SystemEnumId)
+  const file2Option = row.systemOptions.find((option) => option.fileSide === 'FILE_2')
+    ?? row.systemOptions.find((option) => option.enumId === row.defaultFile2SystemEnumId)
+
+  if (!file1Option?.enumId || !file1Option.idFieldExpression || !file2Option?.enumId || !file2Option.idFieldExpression) {
+    return null
+  }
+
+  return {
+    savedRunId: row.savedRunId,
+    runName: savedRunName(row),
+    description: row.description,
+    file1SystemEnumId: file1Option.enumId,
+    file1SystemLabel: file1Option.label || file1Option.enumCode || file1Option.description,
+    file1FileTypeEnumId: file1Option.fileTypeEnumId || 'DftCsv',
+    file1SchemaFileName: file1Option.schemaFileName,
+    file1PrimaryIdExpression: file1Option.idFieldExpression,
+    file2SystemEnumId: file2Option.enumId,
+    file2SystemLabel: file2Option.label || file2Option.enumCode || file2Option.description,
+    file2FileTypeEnumId: file2Option.fileTypeEnumId || 'DftCsv',
+    file2SchemaFileName: file2Option.schemaFileName,
+    file2PrimaryIdExpression: file2Option.idFieldExpression,
+    rules: row.rules?.map((rule, index) => ({
+      ruleId: rule.ruleId,
+      file1FieldPath: rule.file1FieldPath ?? '',
+      file2FieldPath: rule.file2FieldPath ?? '',
+      operator: rule.operator || '=',
+      sequenceNum: rule.sequenceNum ?? index + 1,
+      preActions: normalizePreActions(rule.preActions) ?? readExpressionPreActions(rule.expression),
+      ruleText: rule.ruleText,
+      ruleLogic: rule.ruleLogic,
+      ruleType: rule.ruleType,
+      expression: rule.expression,
+      enabled: rule.enabled,
+      severity: rule.severity,
+    })).filter((rule) => rule.file1FieldPath && rule.file2FieldPath),
+  }
+}
+
+function normalizePreAction(value: unknown): ReconciliationRulePreAction | null {
+  if (typeof value !== 'string') return null
+
+  const normalized = value.trim().toUpperCase()
+  if (normalized === 'STRING_TO_INTEGER' || normalized === 'TO_INT' || normalized === 'TO_INTEGER') return 'STRING_TO_INT'
+  if (normalized === 'TO_NUMBER') return 'STRING_TO_NUMBER'
+  return normalized === 'STRING_TO_INT' || normalized === 'STRING_TO_NUMBER' ? normalized : null
+}
+
+function normalizePreActionFieldSide(value: unknown): ReconciliationRulePreActionFieldSide | null {
+  if (typeof value !== 'string') return null
+
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'file1' || normalized === 'file_1' || normalized === 'left') return 'file1'
+  if (normalized === 'file2' || normalized === 'file_2' || normalized === 'right') return 'file2'
+  return null
+}
+
+function normalizePreActions(value: unknown): ReconciliationRulePreActionEntry[] | undefined {
+  const rawValues = Array.isArray(value) ? value : (value ? [value] : [])
+  const normalized = rawValues.flatMap((rawValue): ReconciliationRulePreActionEntry[] => {
+    if (typeof rawValue === 'string') {
+      const action = normalizePreAction(rawValue)
+      return action ? [{ fieldSide: 'file1', action }, { fieldSide: 'file2', action }] : []
+    }
+
+    if (!rawValue || typeof rawValue !== 'object') return []
+
+    const record = rawValue as Record<string, unknown>
+    const action = normalizePreAction(record.action ?? record.preAction)
+    const fieldSide = normalizePreActionFieldSide(record.fieldSide ?? record.field ?? record.side)
+    return action && fieldSide ? [{ fieldSide, action }] : []
+  })
+
+  const seen = new Set<string>()
+  const deduped = normalized.filter((entry) => {
+    const key = `${entry.fieldSide}:${entry.action}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  return deduped.length ? deduped : undefined
+}
+
+function readExpressionPreActions(expression: string | undefined): ReconciliationRulePreActionEntry[] | undefined {
+  if (!expression?.trim()) return undefined
+
+  try {
+    const parsed = JSON.parse(expression) as Record<string, unknown>
+    return normalizePreActions(parsed.preActions ?? parsed.preAction)
+  } catch {
+    return undefined
+  }
+}
+
+function buildOpenRoute(row: SavedRunSummary): RouteLocationRaw {
+  if (row.runType === 'mapping' && row.reconciliationMappingId) {
+    return {
+      name: 'settings-runs-edit',
+      params: { reconciliationMappingId: row.reconciliationMappingId },
+      state: workflowOriginState.value,
+    }
+  }
+
+  const ruleSetDraft = buildRuleSetDraft(row)
+  if (row.runType === 'ruleset' && ruleSetDraft) {
+    return {
+      name: 'reconciliation-ruleset-manager',
+      state: {
+        ...workflowOriginState.value,
+        ...buildReconciliationRuleSetDraftState(ruleSetDraft, 'ruleset-manager'),
+      },
+    }
+  }
+
   return {
     name: 'settings-runs-edit',
-    params: { reconciliationMappingId },
+    params: { reconciliationMappingId: row.reconciliationMappingId || row.savedRunId },
     state: workflowOriginState.value,
   }
 }
@@ -108,12 +206,12 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const response = await reconciliationFacade.listPilotMappings({
+    const response = await reconciliationFacade.listSavedRuns({
       pageIndex: pageIndex.value,
       pageSize: pageSize.value,
       query: '',
     })
-    rows.value = response.mappings ?? []
+    rows.value = response.savedRuns ?? []
     pageCount.value = response.pagination?.pageCount ?? 1
   } catch (loadError) {
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load runs.'

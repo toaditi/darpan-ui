@@ -10,6 +10,14 @@ const route = vi.hoisted(() => ({
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listSftpServers = vi.hoisted(() => vi.fn())
 const saveSftpServer = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'john.doe',
+    activeTenantUserGroupId: 'KREWE',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
@@ -25,6 +33,21 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
+}))
+
 import SftpServerWorkflowPage from '../SftpServerWorkflowPage.vue'
 
 describe('SftpServerWorkflowPage', () => {
@@ -35,6 +58,12 @@ describe('SftpServerWorkflowPage', () => {
     push.mockReset()
     listSftpServers.mockReset()
     saveSftpServer.mockReset()
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      activeTenantUserGroupId: 'KREWE',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
   })
 
   it('saves a new SFTP server and returns to the standalone dashboard', async () => {
@@ -121,6 +150,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -156,6 +186,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -194,6 +225,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -230,6 +262,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -259,6 +292,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -292,6 +326,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -325,6 +360,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -375,6 +411,7 @@ describe('SftpServerWorkflowPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',

@@ -4,15 +4,11 @@ export interface ApiEnvelope {
   errors: string[]
 }
 
-export type SessionScopeType = 'GLOBAL' | 'COMPANY' | 'ANONYMOUS'
+export type SessionScopeType = 'GLOBAL' | 'TENANT' | 'ANONYMOUS'
 
-export interface SessionCompanyOption {
+export interface SessionTenantOption {
   userGroupId: string
   label?: string
-}
-
-export interface ApiResult<T> extends ApiEnvelope {
-  data?: T
 }
 
 export interface PaginationMeta {
@@ -37,9 +33,11 @@ export interface SessionInfo {
   timeZone?: string
   scopeType?: SessionScopeType
   customerScopeId?: string | null
-  activeCompanyUserGroupId?: string | null
-  activeCompanyLabel?: string | null
-  availableCompanies?: SessionCompanyOption[]
+  activeTenantUserGroupId?: string | null
+  activeTenantLabel?: string | null
+  availableTenants?: SessionTenantOption[]
+  activeTenantPermissionGroupIds?: string[]
+  canEditActiveTenantData?: boolean
   isSuperAdmin?: boolean
 }
 
@@ -55,7 +53,7 @@ export interface SessionInfoResponse extends ApiEnvelope {
   sessionInfo?: SessionInfo | null
 }
 
-export interface SaveActiveCompanyResponse extends ApiEnvelope {
+export interface SaveActiveTenantResponse extends ApiEnvelope {
   authenticated: boolean
   sessionInfo?: SessionInfo | null
 }
@@ -157,7 +155,7 @@ export interface PaginatedResponse extends ApiEnvelope {
   pagination: PaginationMeta
 }
 
-export interface PilotMappingSystemOption {
+export interface MappingSystemOption {
   enumId: string
   enumCode?: string
   description?: string
@@ -168,7 +166,43 @@ export interface PilotMappingSystemOption {
   schemaFileName?: string
 }
 
-export interface PilotMappingSummary {
+export interface SavedRunSystemOption extends MappingSystemOption {
+  fileSide?: string
+}
+
+export interface SavedRunRule {
+  ruleId?: string
+  sequenceNum?: number
+  ruleText?: string
+  ruleLogic?: string
+  ruleType?: string
+  expression?: string
+  enabled?: string
+  severity?: string
+  file1FieldPath?: string
+  file2FieldPath?: string
+  operator?: string
+  preActions?: Array<string | { fieldSide?: string, action?: string, preAction?: string }>
+}
+
+export interface SavedRunSummary {
+  savedRunId: string
+  runName: string
+  description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
+  runType?: string
+  reconciliationMappingId?: string
+  ruleSetId?: string
+  compareScopeId?: string
+  requiresSystemSelection: boolean
+  defaultFile1SystemEnumId?: string
+  defaultFile2SystemEnumId?: string
+  systemOptions: SavedRunSystemOption[]
+  rules?: SavedRunRule[]
+}
+
+export interface MappingSummary {
   reconciliationMappingId: string
   mappingName: string
   description?: string
@@ -177,10 +211,10 @@ export interface PilotMappingSummary {
   requiresSystemSelection: boolean
   defaultFile1SystemEnumId?: string
   defaultFile2SystemEnumId?: string
-  systemOptions: PilotMappingSystemOption[]
+  systemOptions: MappingSystemOption[]
 }
 
-export interface PilotMappingDetailMember {
+export interface MappingDetailMember {
   mappingMemberId: string
   systemEnumId?: string
   systemLabel?: string
@@ -189,13 +223,13 @@ export interface PilotMappingDetailMember {
   fieldPath?: string
 }
 
-export interface PilotMappingDetail {
+export interface MappingDetail {
   reconciliationMappingId: string
   mappingName: string
-  members: PilotMappingDetailMember[]
+  members: MappingDetailMember[]
 }
 
-export interface SavedPilotMapping {
+export interface SavedMapping {
   reconciliationMappingId: string
   mappingName: string
   companyUserGroupId?: string
@@ -208,13 +242,18 @@ export interface SavedPilotMapping {
   file2FieldPath?: string
 }
 
-export interface PilotGeneratedOutput {
+export interface GeneratedOutput {
   fileName: string
   sourceFormat: string
   availableFormats: string[]
   preferredDownloadFormat?: string
+  savedRunId?: string
+  savedRunName?: string
+  savedRunType?: string
   reconciliationMappingId?: string
   mappingName?: string
+  ruleSetId?: string
+  compareScopeId?: string
   reconciliationType?: string
   file1Label?: string
   file2Label?: string
@@ -225,9 +264,13 @@ export interface PilotGeneratedOutput {
   sizeBytes?: number
 }
 
-export interface RunPilotGenericDiffResult {
-  reconciliationMappingId: string
-  mappingName?: string
+export interface RunSavedRunDiffResult {
+  savedRunId: string
+  runName?: string
+  runType?: string
+  reconciliationMappingId?: string
+  ruleSetId?: string
+  compareScopeId?: string
   file1Name?: string
   file2Name?: string
   file1SystemEnumId?: string
@@ -236,10 +279,10 @@ export interface RunPilotGenericDiffResult {
   file2SystemLabel?: string
   validationErrors?: string[]
   processingWarnings?: string[]
-  generatedOutput?: PilotGeneratedOutput
+  generatedOutput?: GeneratedOutput
 }
 
-export interface GetPilotGeneratedOutputFile {
+export interface GetGeneratedOutputFile {
   fileName: string
   downloadFileName: string
   sourceFormat: string
@@ -260,42 +303,78 @@ export interface ListNsRestletConfigsResponse extends PaginatedResponse {
   restletConfigs: NsRestletConfigRecord[]
 }
 
-export interface ListPilotMappingsResponse extends PaginatedResponse {
+export interface ListMappingsResponse extends PaginatedResponse {
   pinnedReconciliationMappingIds?: string[]
-  mappings: PilotMappingSummary[]
+  mappings: MappingSummary[]
+}
+
+export interface ListSavedRunsResponse extends PaginatedResponse {
+  pinnedSavedRunIds?: string[]
+  savedRuns: SavedRunSummary[]
 }
 
 export interface SaveDashboardPinnedMappingsResponse extends ApiEnvelope {
   pinnedReconciliationMappingIds?: string[]
 }
 
-export interface RunPilotGenericDiffResponse extends ApiEnvelope {
+export interface SaveDashboardPinnedSavedRunsResponse extends ApiEnvelope {
+  pinnedSavedRunIds?: string[]
+}
+
+export interface SaveSavedRunNameResponse extends ApiEnvelope {
+  savedRun?: SavedRunSummary
+}
+
+export interface DeleteSavedRunResponse extends ApiEnvelope {
+  deleted?: boolean
+  deletedSavedRunId?: string
+  deletedRunType?: string
+  deletedGeneratedOutputCount?: number
+  deletedRuleCount?: number
+  deletedCompareScopeCount?: number
+  deletedCompareSourceCount?: number
+  deletedMappingMemberCount?: number
+}
+
+export interface RunSavedRunDiffResponse extends ApiEnvelope {
   validationErrors?: string[]
   processingWarnings?: string[]
-  runResult?: RunPilotGenericDiffResult
+  runResult?: RunSavedRunDiffResult
 }
 
-export interface CreatePilotMappingResponse extends ApiEnvelope {
-  savedMapping?: SavedPilotMapping
+export interface CreateMappingResponse extends ApiEnvelope {
+  savedMapping?: SavedMapping
 }
 
-export interface GetPilotMappingResponse extends ApiEnvelope {
-  pilotMapping?: PilotMappingDetail
+export interface CreateRuleSetRunResponse extends ApiEnvelope {
+  savedRun?: SavedRunSummary
 }
 
-export interface SavePilotMappingResponse extends ApiEnvelope {
-  savedMapping?: SavedPilotMapping
+export interface SaveRuleSetRunResponse extends ApiEnvelope {
+  savedRun?: SavedRunSummary
 }
 
-export interface ListPilotGeneratedOutputsResponse extends PaginatedResponse {
-  generatedOutputs: PilotGeneratedOutput[]
+export interface CreateCsvRunResponse extends ApiEnvelope {
+  savedRun?: SavedRunSummary
 }
 
-export interface GetPilotGeneratedOutputResponse extends ApiEnvelope {
-  outputFile?: GetPilotGeneratedOutputFile
+export interface GetMappingResponse extends ApiEnvelope {
+  mapping?: MappingDetail
 }
 
-export interface DeletePilotGeneratedOutputResponse extends ApiEnvelope {
+export interface SaveMappingResponse extends ApiEnvelope {
+  savedMapping?: SavedMapping
+}
+
+export interface ListGeneratedOutputsResponse extends PaginatedResponse {
+  generatedOutputs: GeneratedOutput[]
+}
+
+export interface GetGeneratedOutputResponse extends ApiEnvelope {
+  outputFile?: GetGeneratedOutputFile
+}
+
+export interface DeleteGeneratedOutputResponse extends ApiEnvelope {
   deleted?: boolean
   deletedFileName?: string
   statusMessage?: string

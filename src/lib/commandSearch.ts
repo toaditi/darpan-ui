@@ -139,13 +139,19 @@ function scoreField(
   return 0
 }
 
-function scoreCommandAction(action: CommandAction, query: string, recentIndexMap: Map<string, number>): number {
-  const { phrase, tokens } = normalizeQuery(query)
+type NormalizedCommandQuery = ReturnType<typeof normalizeQuery>
+
+function scoreCommandAction(
+  action: CommandAction,
+  { phrase, tokens }: NormalizedCommandQuery,
+  recentIndexMap: Map<string, number>,
+): number {
   const label = normalizeText(action.label)
   const description = normalizeText(action.description)
   const aliases = action.aliases.map(normalizeText).filter((alias) => alias.length > 0)
 
   if (!phrase) {
+    if (action.requiresQuery) return -1
     return recentBoost(recentIndexMap.get(action.id))
   }
 
@@ -184,12 +190,13 @@ export function rankCommandActions(
   recentCommandIds: string[] = [],
 ): CommandAction[] {
   const recentIndexMap = new Map(recentCommandIds.map((commandId, index) => [commandId, index]))
+  const normalizedQuery = normalizeQuery(query)
 
   return actions
     .map((action, index) => ({
       action,
       index,
-      score: scoreCommandAction(action, query, recentIndexMap),
+      score: scoreCommandAction(action, normalizedQuery, recentIndexMap),
     }))
     .filter((entry) => entry.score >= 0)
     .sort((left, right) => right.score - left.score || left.index - right.index)

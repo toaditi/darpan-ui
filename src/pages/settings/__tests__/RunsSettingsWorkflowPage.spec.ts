@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { buildReconciliationRuleSetDraftState } from '../../../lib/reconciliationRuleSetDraft'
 
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const route = vi.hoisted(() => ({
@@ -10,8 +11,16 @@ const route = vi.hoisted(() => ({
 }))
 const listSchemas = vi.hoisted(() => vi.fn())
 const flatten = vi.hoisted(() => vi.fn())
-const getPilotMapping = vi.hoisted(() => vi.fn())
-const savePilotMapping = vi.hoisted(() => vi.fn())
+const getMapping = vi.hoisted(() => vi.fn())
+const saveMapping = vi.hoisted(() => vi.fn())
+const saveRuleSetRun = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'editor',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
@@ -26,9 +35,24 @@ vi.mock('../../../lib/api/facade', () => ({
     flatten,
   },
   reconciliationFacade: {
-    getPilotMapping,
-    savePilotMapping,
+    getMapping,
+    saveMapping,
+    saveRuleSetRun,
   },
+}))
+
+vi.mock('../../../lib/auth', () => ({
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
 }))
 
 import RunsSettingsWorkflowPage from '../RunsSettingsWorkflowPage.vue'
@@ -48,8 +72,14 @@ describe('RunsSettingsWorkflowPage', () => {
     route.params.reconciliationMappingId = 'OrderIdMap'
     listSchemas.mockReset()
     flatten.mockReset()
-    getPilotMapping.mockReset()
-    savePilotMapping.mockReset()
+    getMapping.mockReset()
+    saveMapping.mockReset()
+    saveRuleSetRun.mockReset()
+    authState.sessionInfo = {
+      userId: 'editor',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
     window.history.replaceState(
       {
         workflowOriginLabel: 'Runs',
@@ -123,11 +153,11 @@ describe('RunsSettingsWorkflowPage', () => {
       })
     })
 
-    getPilotMapping.mockResolvedValue({
+    getMapping.mockResolvedValue({
       ok: true,
       messages: [],
       errors: [],
-      pilotMapping: {
+      mapping: {
         reconciliationMappingId: 'OrderIdMap',
         mappingName: 'Order ID',
         members: [
@@ -151,7 +181,7 @@ describe('RunsSettingsWorkflowPage', () => {
       },
     })
 
-    savePilotMapping.mockResolvedValue({
+    saveMapping.mockResolvedValue({
       ok: true,
       messages: ['Saved run Order Returns.'],
       errors: [],
@@ -166,6 +196,24 @@ describe('RunsSettingsWorkflowPage', () => {
         file2FieldPath: '$.return.externalId',
       },
     })
+
+    saveRuleSetRun.mockResolvedValue({
+      ok: true,
+      messages: ['Saved RuleSet run Order Sync Revised.'],
+      errors: [],
+      savedRun: {
+        savedRunId: 'RS_ORDER_SYNC',
+        runName: 'Order Sync Revised',
+        description: 'Compares orders across systems.',
+        runType: 'ruleset',
+        ruleSetId: 'RS_ORDER_SYNC',
+        compareScopeId: 'RS_ORDER_SYNC_SCOPE',
+        requiresSystemSelection: false,
+        defaultFile1SystemEnumId: 'DarSysOms',
+        defaultFile2SystemEnumId: 'DarSysShopify',
+        systemOptions: [],
+      },
+    })
   })
 
   it('loads an editable two-source run form and saves back to the runs settings page', async () => {
@@ -178,7 +226,7 @@ describe('RunsSettingsWorkflowPage', () => {
     expect(wrapper.find('input[name="mappingName"]').element).toHaveProperty('value', 'Order ID')
     expect(wrapper.text()).not.toContain('Source 1 system:')
     expect(wrapper.text()).not.toContain('Source 2 system:')
-    expect(getPilotMapping).toHaveBeenCalledWith({ reconciliationMappingId: 'OrderIdMap' })
+    expect(getMapping).toHaveBeenCalledWith({ reconciliationMappingId: 'OrderIdMap' })
     expect(flatten).toHaveBeenCalledWith({ jsonSchemaId: '100408' })
     expect(flatten).toHaveBeenCalledWith({ jsonSchemaId: '100409' })
 
@@ -190,7 +238,7 @@ describe('RunsSettingsWorkflowPage', () => {
     await wrapper.get('[data-testid="save-run-settings"]').trigger('click')
     await flushPromises()
 
-    expect(savePilotMapping).toHaveBeenCalledWith({
+    expect(saveMapping).toHaveBeenCalledWith({
       reconciliationMappingId: 'OrderIdMap',
       mappingName: 'Order Returns',
       schema1Id: '100408',
@@ -202,11 +250,11 @@ describe('RunsSettingsWorkflowPage', () => {
   })
 
   it('preselects stored source fields when the saved mapping uses legacy field expressions', async () => {
-    getPilotMapping.mockResolvedValueOnce({
+    getMapping.mockResolvedValueOnce({
       ok: true,
       messages: [],
       errors: [],
-      pilotMapping: {
+      mapping: {
         reconciliationMappingId: 'OrderIdMap',
         mappingName: 'Order ID',
         members: [
@@ -237,6 +285,74 @@ describe('RunsSettingsWorkflowPage', () => {
     expect(wrapper.get('[data-testid="run-field-2"]').text()).toContain('$.id')
   })
 
+  it('loads a ruleset run draft and saves non-rule settings back to the run details page', async () => {
+    route.params.reconciliationMappingId = 'RS_ORDER_SYNC'
+    window.history.replaceState(
+      {
+        workflowOriginLabel: 'Run Details',
+        workflowOriginPath: '/reconciliation/ruleset-manager',
+        ...buildReconciliationRuleSetDraftState({
+          savedRunId: 'RS_ORDER_SYNC',
+          runName: 'Order Sync',
+          description: 'Compares orders across systems.',
+          file1SystemEnumId: 'DarSysOms',
+          file1SystemLabel: 'OMS',
+          file1FileTypeEnumId: 'DftJson',
+          file1JsonSchemaId: '100408',
+          file1SchemaFileName: 'Returns Feed',
+          file1PrimaryIdExpression: '$.return_id',
+          file2SystemEnumId: 'DarSysShopify',
+          file2SystemLabel: 'SHOPIFY',
+          file2FileTypeEnumId: 'DftJson',
+          file2JsonSchemaId: '100409',
+          file2SchemaFileName: 'Shopify Orders',
+          file2PrimaryIdExpression: '$.id',
+        }),
+      },
+      '',
+      '/settings/runs/edit/RS_ORDER_SYNC',
+    )
+
+    const wrapper = mount(RunsSettingsWorkflowPage)
+    await flushPromises()
+
+    expect(getMapping).not.toHaveBeenCalled()
+    expect(wrapper.find('input[name="mappingName"]').element).toHaveProperty('value', 'Order Sync')
+    expect(wrapper.text()).not.toContain('Rules')
+
+    await wrapper.find('input[name="mappingName"]').setValue('Order Sync Revised')
+    await chooseAppSelectOption(wrapper, 'run-field-1', '$.return_ref')
+    await wrapper.get('[data-testid="save-run-settings"]').trigger('click')
+    await flushPromises()
+
+    expect(saveRuleSetRun).toHaveBeenCalledWith({
+      savedRunId: 'RS_ORDER_SYNC',
+      runName: 'Order Sync Revised',
+      description: 'Compares orders across systems.',
+      file1SystemEnumId: 'DarSysOms',
+      file1FileTypeEnumId: 'DftJson',
+      file1SchemaFileName: 'Returns Feed',
+      file1PrimaryIdExpression: '$.return_ref',
+      file2SystemEnumId: 'DarSysShopify',
+      file2FileTypeEnumId: 'DftJson',
+      file2SchemaFileName: 'Shopify Orders',
+      file2PrimaryIdExpression: '$.id',
+    })
+    expect(saveMapping).not.toHaveBeenCalled()
+    expect(push).toHaveBeenCalledWith({
+      name: 'reconciliation-ruleset-manager',
+      state: expect.objectContaining({
+        reconciliationRuleSetDraft: expect.objectContaining({
+          savedRunId: 'RS_ORDER_SYNC',
+          runName: 'Order Sync Revised',
+          file1PrimaryIdExpression: '$.return_ref',
+          file2PrimaryIdExpression: '$.id',
+        }),
+        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
+      }),
+    })
+  })
+
   it('uses the schema label for the selected schema text instead of internal identifiers', async () => {
     listSchemas.mockResolvedValueOnce({
       ok: true,
@@ -259,11 +375,11 @@ describe('RunsSettingsWorkflowPage', () => {
         },
       ],
     })
-    getPilotMapping.mockResolvedValueOnce({
+    getMapping.mockResolvedValueOnce({
       ok: true,
       messages: [],
       errors: [],
-      pilotMapping: {
+      mapping: {
         reconciliationMappingId: 'OrderIdMap',
         mappingName: 'Order ID',
         members: [

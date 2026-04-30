@@ -10,6 +10,10 @@
           <slot />
         </section>
       </div>
+
+      <div v-if="$slots.actions" class="static-page-actions">
+        <slot name="actions" />
+      </div>
     </section>
   </main>
 </template>

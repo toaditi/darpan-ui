@@ -1,5 +1,5 @@
 <template>
-  <form class="wizard-question-shell" @submit.prevent="emit('submit')" @keydown.enter="handleEnter">
+  <form class="wizard-question-shell" @submit.prevent="emit('submit')" @keydown.enter="handleEnter" @change="handleFileChange">
     <slot name="context"></slot>
 
     <div class="wizard-prompt-row">
@@ -14,7 +14,8 @@
       <button v-if="showBack" type="button" class="wizard-back" @click="emit('back')">Back</button>
 
       <AppSaveAction
-        v-if="showPrimaryAction && primaryLabel === 'Save'"
+        v-if="showPrimaryAction && primaryActionVariant === 'save'"
+        data-primary-action="true"
         :disabled="submitDisabled"
         :label="primaryLabel"
         :test-id="primaryTestId"
@@ -25,6 +26,7 @@
         v-else-if="showPrimaryAction"
         type="button"
         class="wizard-next"
+        data-primary-action="true"
         :disabled="submitDisabled"
         :data-testid="primaryTestId || undefined"
         @click="emit('submit')"
@@ -47,8 +49,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useSlots } from 'vue'
+import { computed, onBeforeUnmount, onMounted, useSlots } from 'vue'
 import { requestSubmitOnEnter } from '../../lib/keyboard'
+import { WORKFLOW_CANCEL_REQUEST_EVENT } from '../../lib/uiEvents'
 import AppCancelAction from '../ui/AppCancelAction.vue'
 import AppSaveAction from '../ui/AppSaveAction.vue'
 
@@ -60,6 +63,7 @@ const props = withDefaults(
     showBack?: boolean
     showEnterHint?: boolean
     showPrimaryAction?: boolean
+    primaryActionVariant?: 'default' | 'save'
     allowSelectEnter?: boolean
     allowFileEnter?: boolean
     primaryTestId?: string
@@ -74,6 +78,7 @@ const props = withDefaults(
     showBack: false,
     showEnterHint: true,
     showPrimaryAction: true,
+    primaryActionVariant: 'default',
     allowSelectEnter: false,
     allowFileEnter: false,
     primaryTestId: '',
@@ -91,6 +96,8 @@ const emit = defineEmits<{
 }>()
 
 const slots = useSlots()
+let pendingPrimaryFocusTimer: number | null = null
+
 const hasActions = computed(() => (
   props.showBack
   || props.showCancelAction
@@ -103,9 +110,47 @@ function handleEnter(event: KeyboardEvent): void {
   requestSubmitOnEnter(event, {
     allowSelect: props.allowSelectEnter,
     allowFile: props.allowFileEnter,
+    allowCheckbox: true,
     disabled: props.submitDisabled,
   })
 }
+
+function handleWorkflowCancelRequest(event: Event): void {
+  if (!props.showCancelAction || props.cancelDisabled) return
+
+  event.preventDefault()
+  emit('cancel')
+}
+
+function clearPendingPrimaryFocus(): void {
+  if (pendingPrimaryFocusTimer === null) return
+
+  window.clearTimeout(pendingPrimaryFocusTimer)
+  pendingPrimaryFocusTimer = null
+}
+
+function handleFileChange(event: Event): void {
+  const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null
+  const target = event.target
+  if (!form || !(target instanceof HTMLInputElement) || target.type !== 'file' || !target.files?.length) return
+
+  clearPendingPrimaryFocus()
+  pendingPrimaryFocusTimer = window.setTimeout(() => {
+    pendingPrimaryFocusTimer = null
+    const primaryAction = form.querySelector<HTMLButtonElement>('[data-primary-action="true"]')
+    if (!primaryAction || primaryAction.disabled) return
+    primaryAction.focus()
+  }, 0)
+}
+
+onMounted(() => {
+  document.addEventListener(WORKFLOW_CANCEL_REQUEST_EVENT, handleWorkflowCancelRequest)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener(WORKFLOW_CANCEL_REQUEST_EVENT, handleWorkflowCancelRequest)
+  clearPendingPrimaryFocus()
+})
 </script>
 
 <style scoped>

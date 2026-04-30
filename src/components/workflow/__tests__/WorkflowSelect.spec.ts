@@ -48,4 +48,30 @@ describe('WorkflowSelect', () => {
     expect(wrapper.get('[data-testid="workflow-select"]').attributes('aria-expanded')).toBe('false')
     expect(wrapper.find('[data-testid="workflow-select-option"]').exists()).toBe(false)
   })
+
+  it('closes the menu on Escape before workflow-level handlers can consume it', async () => {
+    const wrapper = mount(WorkflowSelect, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'POST',
+        options: [
+          { value: 'POST', label: 'POST' },
+          { value: 'PUT', label: 'PUT' },
+          { value: 'GET', label: 'GET' },
+        ],
+        placeholder: 'Select HTTP method',
+        testId: 'workflow-select',
+      },
+    })
+
+    await wrapper.get('[data-testid="workflow-select"]').trigger('click')
+    const option = wrapper.get('[data-testid="workflow-select-option"][data-option-value="PUT"]')
+    ;(option.element as HTMLButtonElement).focus()
+
+    await option.trigger('keydown.escape')
+
+    expect(wrapper.get('[data-testid="workflow-select"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="workflow-select-option"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="workflow-select"]').element)
+  })
 })

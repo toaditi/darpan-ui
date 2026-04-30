@@ -11,6 +11,14 @@ const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listNsAuthConfigs = vi.hoisted(() => vi.fn())
 const listNsRestletConfigs = vi.hoisted(() => vi.fn())
 const saveNsRestletConfig = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'john.doe',
+    activeTenantUserGroupId: 'KREWE',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
@@ -27,6 +35,21 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
+}))
+
 import NetSuiteEndpointWorkflowPage from '../NetSuiteEndpointWorkflowPage.vue'
 
 describe('NetSuiteEndpointWorkflowPage', () => {
@@ -38,6 +61,12 @@ describe('NetSuiteEndpointWorkflowPage', () => {
     listNsAuthConfigs.mockReset()
     listNsRestletConfigs.mockReset()
     saveNsRestletConfig.mockReset()
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      activeTenantUserGroupId: 'KREWE',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
   })
 
   it('saves a new NetSuite endpoint config and returns to the combined dashboard', async () => {
@@ -49,6 +78,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -112,6 +142,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -161,6 +192,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsRestletConfigId: 'endpoint-primary',
           description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
           endpointUrl: 'https://netsuite.example.com/restlet',
           httpMethod: 'POST',
           nsAuthConfigId: 'auth-primary',
@@ -191,6 +223,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -209,6 +242,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsRestletConfigId: 'endpoint-primary',
           description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
           endpointUrl: 'https://netsuite.example.com/restlet',
           httpMethod: 'GET',
           nsAuthConfigId: 'auth-primary',
@@ -253,6 +287,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -271,6 +306,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsRestletConfigId: 'endpoint-primary',
           description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
           endpointUrl: 'https://netsuite.example.com/restlet',
           httpMethod: 'GET',
           nsAuthConfigId: 'auth-primary',
@@ -311,6 +347,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -329,6 +366,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsRestletConfigId: 'endpoint-primary',
           description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
           endpointUrl: 'https://netsuite.example.com/restlet',
           httpMethod: 'GET',
           nsAuthConfigId: 'auth-primary',
@@ -364,6 +402,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -382,6 +421,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsRestletConfigId: 'endpoint-primary',
           description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
           endpointUrl: 'https://netsuite.example.com/restlet',
           httpMethod: 'GET',
           nsAuthConfigId: 'auth-primary',
@@ -421,6 +461,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -439,6 +480,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
         {
           nsRestletConfigId: 'endpoint-primary',
           description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
           endpointUrl: 'https://netsuite.example.com/restlet',
           httpMethod: 'GET',
           nsAuthConfigId: 'auth-primary',

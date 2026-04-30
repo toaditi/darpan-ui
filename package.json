@@ -1,9 +1,9 @@
 {
   "name": "darpan-ui",
-  "version": "1.1.1",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Temporary Darpan UI pilot app (Vue + TypeScript + Vite)",
+  "description": "Darpan frontend app (Vue + TypeScript + Vite)",
   "scripts": {
     "dev": "vite",
     "dev:stack": "./scripts/dev-stack.sh",

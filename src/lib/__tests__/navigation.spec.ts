@@ -14,4 +14,10 @@ describe('resolveInternalRedirectTarget', () => {
     expect(resolveInternalRedirectTarget('//example.com/escape')).toBe('/')
     expect(resolveInternalRedirectTarget('not-a-route')).toBe('/')
   })
+
+  it('falls back for login self-redirects', () => {
+    expect(resolveInternalRedirectTarget('/login')).toBe('/')
+    expect(resolveInternalRedirectTarget('/login?redirect=/login')).toBe('/')
+    expect(resolveInternalRedirectTarget('/login/?redirect=/settings/sftp')).toBe('/')
+  })
 })

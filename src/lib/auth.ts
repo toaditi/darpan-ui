@@ -4,14 +4,20 @@ import { ApiCallError, clearAuthToken, setAuthTokenContract } from './api/client
 import { authFacade } from './api/facade'
 import type {
   LoginSessionResponse,
-  SaveActiveCompanyResponse,
-  SessionCompanyOption,
+  SaveActiveTenantResponse,
+  SessionTenantOption,
   SessionInfo,
   SessionInfoResponse,
 } from './api/types'
 import { resolveInternalRedirectTarget } from './navigation'
 
 export type AuthStatus = 'authenticated' | 'unauthenticated' | 'verification-failed'
+
+export interface UiPermissionPolicy {
+  canViewTenantSettings: boolean
+  canEditTenantSettings: boolean
+  canManageGlobalSettings: boolean
+}
 
 interface AuthState {
   checked: boolean
@@ -47,7 +53,7 @@ function formatApiError(error: ApiCallError): string {
     failures?: Array<{ status?: number; raw?: string }>
   }
 
-  if (error.message.includes('Invalid JSON response') && Array.isArray(details.attemptedUrls) && details.attemptedUrls.length > 0) {
+  if (Array.isArray(details.attemptedUrls) && details.attemptedUrls.length > 0) {
     const preview = details.attemptedUrls.slice(0, 3).join(', ')
     const firstFailure = Array.isArray(details.failures) ? details.failures[0] : undefined
     const statusHint = firstFailure?.status ? ` First status: ${firstFailure.status}.` : ''
@@ -63,7 +69,7 @@ function normalizeUserId(value: unknown): string | null {
   return normalized ? normalized : null
 }
 
-function normalizeCompanyOption(value: unknown): SessionCompanyOption | null {
+function normalizeTenantOption(value: unknown): SessionTenantOption | null {
   if (!value || typeof value !== 'object') {
     return null
   }
@@ -86,14 +92,14 @@ function normalizeSessionInfo(sessionInfo: SessionInfo | null | undefined): Sess
     throw new Error('Auth contract violation: authenticated response missing sessionInfo.userId')
   }
 
-  const availableCompanies = Array.isArray(sessionInfo?.availableCompanies)
-    ? sessionInfo.availableCompanies
-        .map((company) => normalizeCompanyOption(company))
-        .filter((company): company is SessionCompanyOption => company !== null)
+  const availableTenants = Array.isArray(sessionInfo?.availableTenants)
+    ? sessionInfo.availableTenants
+        .map((tenant) => normalizeTenantOption(tenant))
+        .filter((tenant): tenant is SessionTenantOption => tenant !== null)
     : []
-  const activeCompanyUserGroupId = normalizeUserId(sessionInfo?.activeCompanyUserGroupId)
-  const activeCompany = activeCompanyUserGroupId
-    ? availableCompanies.find((company) => company.userGroupId === activeCompanyUserGroupId) ?? null
+  const activeTenantUserGroupId = normalizeUserId(sessionInfo?.activeTenantUserGroupId)
+  const activeTenant = activeTenantUserGroupId
+    ? availableTenants.find((tenant) => tenant.userGroupId === activeTenantUserGroupId) ?? null
     : null
 
   return {
@@ -101,12 +107,24 @@ function normalizeSessionInfo(sessionInfo: SessionInfo | null | undefined): Sess
     userId: normalizedUserId,
     username: sessionInfo?.username?.toString()?.trim() || normalizedUserId,
     customerScopeId: sessionInfo?.customerScopeId?.toString()?.trim() || null,
-    activeCompanyUserGroupId,
-    activeCompanyLabel:
-      sessionInfo?.activeCompanyLabel?.toString()?.trim() ||
-      activeCompany?.label ||
-      (activeCompanyUserGroupId ? activeCompanyUserGroupId : null),
-    availableCompanies,
+    activeTenantUserGroupId,
+    activeTenantLabel:
+      sessionInfo?.activeTenantLabel?.toString()?.trim() ||
+      activeTenant?.label ||
+      (activeTenantUserGroupId ? activeTenantUserGroupId : null),
+    availableTenants,
+  }
+}
+
+export function buildUiPermissionPolicy(sessionInfo: SessionInfo | null | undefined): UiPermissionPolicy {
+  const isAuthenticated = Boolean(sessionInfo?.userId)
+  const isSuperAdmin = sessionInfo?.isSuperAdmin === true
+  const canEditActiveTenantData = sessionInfo?.canEditActiveTenantData === true
+
+  return {
+    canViewTenantSettings: isAuthenticated,
+    canEditTenantSettings: canEditActiveTenantData || isSuperAdmin,
+    canManageGlobalSettings: isSuperAdmin,
   }
 }
 
@@ -150,6 +168,10 @@ function applyAuthResponse(response: SessionInfoResponse | LoginSessionResponse,
 
 export function buildAuthRedirect(redirectTarget: unknown): RouteLocationRaw {
   const redirect = resolveInternalRedirectTarget(redirectTarget)
+  if (redirect === '/') {
+    return { name: 'login' }
+  }
+
   return {
     name: 'login',
     query: { redirect },
@@ -255,15 +277,15 @@ export async function logoutSession(): Promise<boolean> {
   }
 }
 
-export async function saveActiveCompany(activeCompanyUserGroupId: string): Promise<boolean> {
+export async function saveActiveTenant(activeTenantUserGroupId: string): Promise<boolean> {
   if (authBypass) {
     return true
   }
 
   try {
-    const response: SaveActiveCompanyResponse = await authFacade.saveActiveCompany(activeCompanyUserGroupId)
+    const response: SaveActiveTenantResponse = await authFacade.saveActiveTenant(activeTenantUserGroupId)
     if (response.authenticated) {
-      const errorMessage = response.ok ? null : response.errors?.[0] ?? 'Unable to switch company.'
+      const errorMessage = response.ok ? null : response.errors?.[0] ?? 'Unable to switch tenant.'
       applyAuthenticatedSession(response.sessionInfo, errorMessage)
       return response.ok
     }
@@ -271,7 +293,7 @@ export async function saveActiveCompany(activeCompanyUserGroupId: string): Promi
     clearAuthToken()
     applyAuthState({
       status: 'unauthenticated',
-      error: response.errors?.[0] ?? 'Authentication required to change the active company.',
+      error: response.errors?.[0] ?? 'Authentication required to change the active tenant.',
     })
     return false
   } catch (error) {
@@ -295,4 +317,18 @@ export async function saveActiveCompany(activeCompanyUserGroupId: string): Promi
 
 export function useAuthState() {
   return authState
+}
+
+export function useUiPermissions(): UiPermissionPolicy {
+  return {
+    get canViewTenantSettings() {
+      return buildUiPermissionPolicy(authState.sessionInfo).canViewTenantSettings
+    },
+    get canEditTenantSettings() {
+      return buildUiPermissionPolicy(authState.sessionInfo).canEditTenantSettings
+    },
+    get canManageGlobalSettings() {
+      return buildUiPermissionPolicy(authState.sessionInfo).canManageGlobalSettings
+    },
+  }
 }

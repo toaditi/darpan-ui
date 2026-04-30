@@ -6,14 +6,7 @@ const route = vi.hoisted(() => ({
   fullPath: '/settings/runs',
 }))
 
-const listPilotMappings = vi.hoisted(() => vi.fn())
-const authState = vi.hoisted(() => ({
-  sessionInfo: {
-    userId: 'john.doe',
-    isSuperAdmin: false,
-    availableCompanies: [] as Array<{ userGroupId: string; label?: string }>,
-  },
-}))
+const listSavedRuns = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-router', () => ({
   RouterLink: {
@@ -25,12 +18,8 @@ vi.mock('vue-router', () => ({
 
 vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
-    listPilotMappings,
+    listSavedRuns,
   },
-}))
-
-vi.mock('../../../lib/auth', () => ({
-  useAuthState: () => authState,
 }))
 
 import RunsSettingsPage from '../RunsSettingsPage.vue'
@@ -38,43 +27,78 @@ import RunsSettingsPage from '../RunsSettingsPage.vue'
 describe('RunsSettingsPage', () => {
   beforeEach(() => {
     route.fullPath = '/settings/runs'
-    listPilotMappings.mockReset()
-    authState.sessionInfo = {
-      userId: 'john.doe',
-      isSuperAdmin: false,
-      availableCompanies: [],
-    }
+    listSavedRuns.mockReset()
   })
 
-  it('renders saved runs as dashboard tiles and launches the existing create workflow with runs origin state', async () => {
-    listPilotMappings.mockResolvedValue({
+  it('renders saved runs as dashboard tiles and routes mapping and ruleset rows to editor surfaces', async () => {
+    listSavedRuns.mockResolvedValue({
       ok: true,
       messages: [],
       errors: [],
-      mappings: [
+      savedRuns: [
         {
-          reconciliationMappingId: 'OrderIdMap',
-          mappingName: 'Order ID',
+          savedRunId: 'OrderIdMap',
+          runName: 'Order ID',
           description: 'Order ID',
+          runType: 'mapping',
+          reconciliationMappingId: 'OrderIdMap',
           requiresSystemSelection: false,
           defaultFile1SystemEnumId: 'OMS',
           defaultFile2SystemEnumId: 'SHOPIFY',
           systemOptions: [],
         },
+        {
+          savedRunId: 'RS_ORDER_CSV',
+          runName: 'CSV Order Compare',
+          description: 'CSV Order Compare',
+          runType: 'ruleset',
+          ruleSetId: 'RS_ORDER_CSV',
+          compareScopeId: 'CS_ORDER_CSV',
+          requiresSystemSelection: false,
+          defaultFile1SystemEnumId: 'OMS',
+          defaultFile2SystemEnumId: 'SHOPIFY',
+          systemOptions: [
+            {
+              fileSide: 'FILE_1',
+              enumId: 'OMS',
+              label: 'OMS',
+              fileTypeEnumId: 'DftCsv',
+              idFieldExpression: 'order_id',
+            },
+            {
+              fileSide: 'FILE_2',
+              enumId: 'SHOPIFY',
+              label: 'SHOPIFY',
+              fileTypeEnumId: 'DftCsv',
+              idFieldExpression: 'id',
+            },
+          ],
+          rules: [
+            {
+              ruleId: 'RS_ORDER_CSV_RULE_1',
+              sequenceNum: 1,
+              file1FieldPath: 'total',
+              file2FieldPath: 'current_total',
+              operator: '=',
+            },
+          ],
+        },
       ],
-      pagination: { pageIndex: 0, pageSize: 12, totalCount: 1, pageCount: 1 },
+      pagination: { pageIndex: 0, pageSize: 12, totalCount: 2, pageCount: 1 },
     })
 
     const wrapper = mount(RunsSettingsPage)
     await flushPromises()
 
+    const runTiles = wrapper.findAll('[data-testid="run-tile"]')
     expect(wrapper.find('.static-page-frame').exists()).toBe(true)
-    expect(wrapper.findAll('[data-testid="run-tile"]')).toHaveLength(1)
+    expect(runTiles).toHaveLength(2)
     expect(wrapper.get('[data-testid="saved-runs"]').classes()).toContain('static-page-record-grid')
     expect(wrapper.get('[data-testid="saved-runs"]').classes()).toContain('static-page-record-grid--fixed')
-    expect(wrapper.get('[data-testid="run-tile"]').text()).toBe('Order ID')
+    expect(runTiles[0]?.text()).toBe('Order ID')
+    expect(runTiles[1]?.text()).toBe('CSV Order Compare')
     expect(wrapper.find('h1').text()).toBe('Run Editor')
-    expect(JSON.parse(wrapper.get('[data-testid="run-tile"]').attributes('data-to') ?? '{}')).toEqual({
+    expect(JSON.parse(runTiles[0]?.attributes('data-to') ?? '{}')).toEqual({
       name: 'settings-runs-edit',
       params: { reconciliationMappingId: 'OrderIdMap' },
       state: {
@@ -82,21 +106,47 @@ describe('RunsSettingsPage', () => {
         workflowOriginPath: '/settings/runs',
       },
     })
-    expect(JSON.parse(wrapper.get('[data-testid="runs-create-action"]').attributes('data-to') ?? '{}')).toEqual({
-      path: '/reconciliation/create',
+    expect(JSON.parse(runTiles[1]?.attributes('data-to') ?? '{}')).toEqual({
+      name: 'reconciliation-ruleset-manager',
       state: {
+        reconciliationRuleSetDraft: {
+          savedRunId: 'RS_ORDER_CSV',
+          runName: 'CSV Order Compare',
+          description: 'CSV Order Compare',
+          file1SystemEnumId: 'OMS',
+          file1SystemLabel: 'OMS',
+          file1FileTypeEnumId: 'DftCsv',
+          file1PrimaryIdExpression: 'order_id',
+          file2SystemEnumId: 'SHOPIFY',
+          file2SystemLabel: 'SHOPIFY',
+          file2FileTypeEnumId: 'DftCsv',
+          file2PrimaryIdExpression: 'id',
+          rules: [
+            {
+              ruleId: 'RS_ORDER_CSV_RULE_1',
+              file1FieldPath: 'total',
+              file2FieldPath: 'current_total',
+              operator: '=',
+              sequenceNum: 1,
+            },
+          ],
+        },
+        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
         workflowOriginLabel: 'Run Editor',
         workflowOriginPath: '/settings/runs',
       },
     })
+    expect(wrapper.find('[data-testid="runs-create-action"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="runs-empty-create-action"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Create Run')
   })
 
-  it('shows an inline create action when no runs exist', async () => {
-    listPilotMappings.mockResolvedValue({
+  it('does not offer creation when no runs exist because Run Editor is edit-only', async () => {
+    listSavedRuns.mockResolvedValue({
       ok: true,
       messages: [],
       errors: [],
-      mappings: [],
+      savedRuns: [],
       pagination: { pageIndex: 0, pageSize: 12, totalCount: 0, pageCount: 1 },
     })
 
@@ -105,31 +155,25 @@ describe('RunsSettingsPage', () => {
 
     expect(wrapper.text()).toContain('No runs')
     expect(wrapper.find('[data-testid="runs-create-action"]').exists()).toBe(false)
-    expect(JSON.parse(wrapper.get('[data-testid="runs-empty-create-action"]').attributes('data-to') ?? '{}')).toEqual({
-      path: '/reconciliation/create',
-      state: {
-        workflowOriginLabel: 'Run Editor',
-        workflowOriginPath: '/settings/runs',
-      },
-    })
+    expect(wrapper.find('[data-testid="runs-empty-create-action"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Create Run')
   })
 
-  it('does not render tenant labels on saved runs even for super-admin sessions', async () => {
-    authState.sessionInfo = {
-      userId: 'john.doe',
-      isSuperAdmin: true,
-      availableCompanies: [{ userGroupId: 'GORJANA', label: 'Gorjana' }],
-    }
-    listPilotMappings.mockResolvedValue({
+  it('does not render tenant labels on saved runs', async () => {
+    listSavedRuns.mockResolvedValue({
       ok: true,
       messages: [],
       errors: [],
-      mappings: [
+      savedRuns: [
         {
-          reconciliationMappingId: 'OrderIdMap',
-          mappingName: 'Order ID',
-          description: 'Order ID',
-          companyUserGroupId: 'GORJANA',
+          savedRunId: 'RS_ORDER_CSV',
+          runName: 'CSV Order Compare',
+          description: 'CSV Order Compare',
+          companyUserGroupId: 'KREWE',
+          companyLabel: 'Krewe',
+          runType: 'ruleset',
+          ruleSetId: 'RS_ORDER_CSV',
+          compareScopeId: 'CS_ORDER_CSV',
           requiresSystemSelection: false,
           defaultFile1SystemEnumId: 'OMS',
           defaultFile2SystemEnumId: 'SHOPIFY',
@@ -142,7 +186,8 @@ describe('RunsSettingsPage', () => {
     const wrapper = mount(RunsSettingsPage)
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="run-tile"]').text()).toBe('Order ID')
+    expect(wrapper.get('[data-testid="run-tile"]').text()).toBe('CSV Order Compare')
+    expect(wrapper.text()).not.toContain('Krewe')
   })
 
   it('keeps the runs page on the shared static dashboard contract without page-local styling', () => {
@@ -152,7 +197,7 @@ describe('RunsSettingsPage', () => {
     expect(pageSource).toContain('title="Saved Runs"')
     expect(pageSource).toContain('static-page-record-grid static-page-record-grid--fixed')
     expect(pageSource).toContain('class="static-page-tile static-page-record-tile"')
-    expect(pageSource).toContain('class="static-page-action-tile static-page-create-action"')
+    expect(pageSource).not.toContain('static-page-create-action')
     expect(pageSource).not.toContain('<style scoped>')
   })
 })

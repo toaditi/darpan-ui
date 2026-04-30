@@ -1,5 +1,5 @@
 <template>
-  <WorkflowPage :progress-percent="progressPercent" aria-label="AI provider setup progress" center-stage>
+  <WorkflowPage :progress-percent="progressPercent" aria-label="AI provider setup progress" center-stage :edit-surface="isEditing">
     <InlineValidation v-if="error" tone="error" :message="error" />
     <p v-if="success" class="success-copy">{{ success }}</p>
 
@@ -12,6 +12,7 @@
       ]"
       :question="currentQuestion"
       :primary-label="primaryLabel"
+      :primary-action-variant="primaryActionVariant"
       :show-enter-hint="!isEditing"
       :show-back="showBack"
       :show-cancel-action="isEditing"
@@ -19,6 +20,7 @@
       cancel-test-id="cancel-llm-settings"
       :allow-select-enter="isCreateSelectStep"
       :submit-disabled="submitDisabled"
+      :show-primary-action="canManageGlobalSettings"
       :primary-test-id="primaryTestId"
       @submit="handlePrimarySubmit"
       @back="goBack"
@@ -170,6 +172,7 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { useUiPermissions } from '../../lib/auth'
 
 type LlmProvider = 'OPENAI' | 'GEMINI'
 type CreateStepId = 'llmProvider' | 'llmEnabled' | 'llmModel' | 'llmBaseUrl' | 'llmTimeoutSeconds' | 'llmApiKey'
@@ -191,6 +194,7 @@ interface LlmForm {
 
 const route = useRoute()
 const router = useRouter()
+const permissions = useUiPermissions()
 
 const providerDefaults: Record<LlmProvider, { llmModel: string; llmBaseUrl: string; llmTimeoutSeconds: string }> = {
   OPENAI: {
@@ -239,6 +243,7 @@ const hasStoredLlmApiKey = ref(false)
 const hasFallbackLlmApiKey = ref(false)
 const fallbackLlmKeyEnvName = ref('')
 const loadVersion = ref(0)
+const canManageGlobalSettings = computed(() => permissions.canManageGlobalSettings)
 
 const activeProvider = computed(() => normalizeProvider(route.params.llmProvider))
 const isEditing = computed(() => activeProvider.value !== '')
@@ -266,9 +271,15 @@ const primaryTestId = computed(() => (
     ? 'save-llm-settings'
     : 'wizard-next'
 ))
+const primaryActionVariant = computed<'default' | 'save'>(() => (
+  isEditing.value || currentCreateStep.value.id === 'llmApiKey'
+    ? 'save'
+    : 'default'
+))
 const showBack = computed(() => !isEditing.value && currentStepIndex.value > 0)
 const isCreateSelectStep = computed(() => !isEditing.value && currentCreateStep.value.kind === 'select')
 const submitDisabled = computed(() => {
+  if (!canManageGlobalSettings.value) return true
   if (loading.value) return true
   if (isEditing.value) return false
 
@@ -313,6 +324,11 @@ function normalizeProvider(rawProvider: unknown): LlmProvider | '' {
 }
 
 async function load(): Promise<void> {
+  if (!canManageGlobalSettings.value) {
+    error.value = 'Only super admins can access AI settings.'
+    return
+  }
+
   const provider = activeProvider.value
   if (!provider) return
 
@@ -405,6 +421,11 @@ async function handlePrimarySubmit(): Promise<void> {
 }
 
 async function save(): Promise<void> {
+  if (!canManageGlobalSettings.value) {
+    error.value = 'Only super admins can update AI settings.'
+    return
+  }
+
   loading.value = true
   error.value = null
   success.value = null

@@ -11,7 +11,9 @@ const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'john.doe',
     isSuperAdmin: false,
-    availableCompanies: [] as Array<{ userGroupId: string; label?: string }>,
+    canEditActiveTenantData: true,
+    activeTenantUserGroupId: 'KREWE',
+    availableTenants: [] as Array<{ userGroupId: string; label?: string }>,
   },
 }))
 
@@ -31,6 +33,17 @@ vi.mock('../../../lib/api/facade', () => ({
 
 vi.mock('../../../lib/auth', () => ({
   useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
 }))
 
 import SftpServersPage from '../SftpServersPage.vue'
@@ -42,7 +55,9 @@ describe('SftpServersPage', () => {
     authState.sessionInfo = {
       userId: 'john.doe',
       isSuperAdmin: false,
-      availableCompanies: [],
+      canEditActiveTenantData: true,
+      activeTenantUserGroupId: 'KREWE',
+      availableTenants: [],
     }
   })
 
@@ -55,6 +70,7 @@ describe('SftpServersPage', () => {
         {
           sftpServerId: 'sftp-primary',
           description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
           port: 22,
           username: 'etl-user',
@@ -99,11 +115,16 @@ describe('SftpServersPage', () => {
     })
   })
 
-  it('does not render tenant labels on saved tiles even for super-admin sessions', async () => {
+  it('filters out saved tiles from other tenants without rendering tenant labels', async () => {
     authState.sessionInfo = {
       userId: 'john.doe',
       isSuperAdmin: true,
-      availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+      canEditActiveTenantData: true,
+      activeTenantUserGroupId: 'KREWE',
+      availableTenants: [
+        { userGroupId: 'KREWE', label: 'Krewe' },
+        { userGroupId: 'GORJANA', label: 'Gorjana' },
+      ],
     }
     listSftpServers.mockResolvedValue({
       ok: true,
@@ -111,7 +132,7 @@ describe('SftpServersPage', () => {
       errors: [],
       servers: [
         {
-          sftpServerId: 'sftp-primary',
+          sftpServerId: 'sftp-krewe',
           description: 'Primary SFTP',
           companyUserGroupId: 'KREWE',
           host: 'sftp.example.com',
@@ -120,14 +141,27 @@ describe('SftpServersPage', () => {
           hasPassword: true,
           hasPrivateKey: false,
         },
+        {
+          sftpServerId: 'sftp-gorjana',
+          description: 'Gorjana SFTP',
+          companyUserGroupId: 'GORJANA',
+          host: 'gorjana.example.com',
+          port: 22,
+          username: 'gorjana-user',
+          hasPassword: true,
+          hasPrivateKey: false,
+        },
       ],
-      pagination: { pageIndex: 0, pageSize: 12, totalCount: 1, pageCount: 1 },
+      pagination: { pageIndex: 0, pageSize: 12, totalCount: 2, pageCount: 1 },
     })
 
     const wrapper = mount(SftpServersPage)
     await flushPromises()
 
+    expect(wrapper.findAll('[data-testid="sftp-server-tile"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="sftp-server-tile"]').text()).toBe('Primary SFTP')
+    expect(wrapper.text()).not.toContain('Gorjana SFTP')
+    expect(wrapper.text()).not.toContain('Krewe')
   })
 
   it('shows an empty-state create action when no SFTP servers exist', async () => {
@@ -151,6 +185,41 @@ describe('SftpServersPage', () => {
         workflowOriginPath: '/settings/sftp',
       },
     })
+  })
+
+  it('renders saved records without create affordances for a view-only active tenant', async () => {
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: false,
+      canEditActiveTenantData: false,
+      activeTenantUserGroupId: 'KREWE',
+      availableTenants: [],
+    }
+    listSftpServers.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      servers: [
+        {
+          sftpServerId: 'sftp-primary',
+          description: 'Primary SFTP',
+          companyUserGroupId: 'KREWE',
+          host: 'sftp.example.com',
+          port: 22,
+          username: 'etl-user',
+          hasPassword: true,
+          hasPrivateKey: false,
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 12, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(SftpServersPage)
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="sftp-server-tile"]')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="sftp-create-action"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sftp-empty-create-action"]').exists()).toBe(false)
   })
 
   it('omits descriptive helper copy from the dashboard chrome', async () => {

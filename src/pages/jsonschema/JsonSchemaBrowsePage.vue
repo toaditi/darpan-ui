@@ -43,7 +43,7 @@
       </div>
 
       <RouterLink
-        v-if="schemaCards.length === 0 && !loading && !error"
+        v-if="canEditTenantSettings && schemaCards.length === 0 && !loading && !error"
         :to="createSchemaRoute"
         class="static-page-action-tile static-page-action-tile--inline"
         data-testid="schema-library-empty-create"
@@ -53,7 +53,7 @@
     </StaticPageSection>
 
     <RouterLink
-      v-if="schemaCards.length > 0"
+      v-if="canEditTenantSettings && schemaCards.length > 0"
       :to="createSchemaRoute"
       class="static-page-action-tile"
       data-testid="schema-library-create"
@@ -72,16 +72,19 @@ import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade } from '../../lib/api/facade'
+import { useUiPermissions } from '../../lib/auth'
 import type { JsonSchemaSummary } from '../../lib/api/types'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
+const permissions = useUiPermissions()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
 const schemaCards = ref<JsonSchemaSummary[]>([])
 const showAllSchemas = ref(false)
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 
 const visibleSchemaCards = computed(() => (showAllSchemas.value ? schemaCards.value : schemaCards.value.slice(0, 5)))
 const hasMoreSchemas = computed(() => schemaCards.value.length > 5 && !showAllSchemas.value)

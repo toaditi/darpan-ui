@@ -1,6 +1,7 @@
 export interface EnterSubmitOptions {
   allowSelect?: boolean
   allowFile?: boolean
+  allowCheckbox?: boolean
   disabled?: boolean
 }
 
@@ -14,9 +15,10 @@ function isSupportedHtmlTarget(target: EventTarget | null): target is HTMLElemen
 
 export function shouldTriggerPrimaryEnterAction(
   event: KeyboardEvent,
-  { allowSelect = false, allowFile = false, disabled = false }: EnterSubmitOptions = {},
+  { allowSelect = false, allowFile = false, allowCheckbox = false, disabled = false }: EnterSubmitOptions = {},
 ): boolean {
   if (disabled || event.defaultPrevented || event.repeat || event.isComposing) return false
+  if (event.key.toLowerCase() !== 'enter') return false
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false
 
   if (!isSupportedHtmlTarget(event.target)) return true
@@ -30,6 +32,7 @@ export function shouldTriggerPrimaryEnterAction(
   if (target instanceof HTMLInputElement) {
     const blockedTypes = new Set(['button', 'checkbox', 'radio', 'reset', 'submit'])
     if (target.type === 'file') return allowFile
+    if (target.type === 'checkbox') return allowCheckbox
     return !blockedTypes.has(target.type)
   }
 

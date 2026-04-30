@@ -38,7 +38,7 @@ jobs:
       - name: Type check
         run: npm run type-check
 
-      - name: Report pilot backend target configuration
+      - name: Report backend target configuration
         run: |
           if [ -n "$VITE_DARPAN_RPC_URL" ]; then
             echo "Using configured VITE_DARPAN_RPC_URL for this Pages build."

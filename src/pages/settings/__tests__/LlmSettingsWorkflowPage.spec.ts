@@ -26,6 +26,13 @@ const routeControls = vi.hoisted(() => ({
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getLlmSettings = vi.hoisted(() => vi.fn())
 const saveLlmSettings = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'admin',
+    isSuperAdmin: true,
+    canEditActiveTenantData: false,
+  },
+}))
 
 vi.mock('vue-router', () => {
   routeControls.route = shallowReactive({
@@ -49,6 +56,20 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
+}))
+
 import LlmSettingsWorkflowPage from '../LlmSettingsWorkflowPage.vue'
 
 describe('LlmSettingsWorkflowPage', () => {
@@ -57,6 +78,11 @@ describe('LlmSettingsWorkflowPage', () => {
     push.mockReset()
     getLlmSettings.mockReset()
     saveLlmSettings.mockReset()
+    authState.sessionInfo = {
+      userId: 'admin',
+      isSuperAdmin: true,
+      canEditActiveTenantData: false,
+    }
   })
 
   it('saves a new AI provider config from the stepped workflow and returns to the AI dashboard', async () => {

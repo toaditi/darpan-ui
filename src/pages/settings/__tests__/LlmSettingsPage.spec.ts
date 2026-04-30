@@ -6,6 +6,13 @@ const saveLlmSettings = vi.hoisted(() => vi.fn())
 const route = vi.hoisted(() => ({
   fullPath: '/settings/ai',
 }))
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'admin',
+    isSuperAdmin: true,
+    canEditActiveTenantData: false,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   RouterLink: {
@@ -22,13 +29,47 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
+}))
+
 import LlmSettingsPage from '../LlmSettingsPage.vue'
 
 describe('LlmSettingsPage', () => {
   beforeEach(() => {
     route.fullPath = '/settings/ai'
+    authState.sessionInfo = {
+      userId: 'admin',
+      isSuperAdmin: true,
+      canEditActiveTenantData: false,
+    }
     getLlmSettings.mockReset()
     saveLlmSettings.mockReset()
+  })
+
+  it('fails closed for non-super-admin sessions', async () => {
+    authState.sessionInfo = {
+      userId: 'editor',
+      isSuperAdmin: false,
+      canEditActiveTenantData: true,
+    }
+
+    const wrapper = mount(LlmSettingsPage)
+    await flushPromises()
+
+    expect(getLlmSettings).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Only super admins can access AI settings.')
+    expect(wrapper.find('[data-testid="llm-create-action"]').exists()).toBe(false)
   })
 
   it('renders a single primary LLM section and the remaining provider tiles', async () => {

@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" class="command-overlay" @click.self="close">
+    <div v-if="open" class="command-overlay app-popup-backdrop" @click.self="close">
       <section
         :class="['command-panel', { 'command-panel--keyboard': interactionMode === 'keyboard' }]"
         role="dialog"
@@ -34,6 +34,7 @@
         <p id="command-palette-hint" class="mono-copy">
           Use Up/Down to select a result. Press Enter to open the selected match.
         </p>
+        <p v-if="showDataSearchLoading" class="mono-copy" role="status">Searching records...</p>
 
         <div v-if="grouped.length === 0" class="empty-state compact">
           <h3>No matching results</h3>
@@ -76,6 +77,7 @@ const props = defineProps<{
   open: boolean
   actions: CommandAction[]
   recentCommandIds?: string[]
+  dataSearchLoading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -113,6 +115,7 @@ const grouped = computed(() => {
 })
 
 const showGroupLabels = computed(() => grouped.value.length > 1)
+const showDataSearchLoading = computed(() => props.dataSearchLoading === true && query.value.trim().length > 0)
 
 onBeforeUpdate(() => {
   actionRefs.value = []

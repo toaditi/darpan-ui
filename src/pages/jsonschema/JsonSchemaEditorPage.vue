@@ -2,7 +2,15 @@
   <StaticPageFrame>
     <template #hero>
       <div class="stack-sm">
-        <h1>{{ heroTitle }}</h1>
+        <StaticEditableTitle
+          :model-value="heroTitle"
+          :editable="canEditTarget"
+          aria-label="Schema name"
+          test-id="schema-editor-title"
+          fallback="Schema Editor"
+          @update:model-value="setEditableTitle"
+          @commit="setEditableTitle"
+        />
       </div>
     </template>
 
@@ -44,7 +52,7 @@
               v-model="systemEnumId"
               class="schema-editor-summary-select"
               :options="systemOptions"
-              :disabled="loading || systemOptions.length === 0"
+              :disabled="!canEditTarget || loading || systemOptions.length === 0"
               placeholder="Select system"
               test-id="schema-editor-system"
             />
@@ -58,7 +66,7 @@
     </StaticPageSection>
 
     <StaticPageSection v-if="!showInitialLoadFailureState && hasTarget">
-      <form class="stack-md" @submit.prevent="saveRefinedFields">
+      <form id="schema-editor-refined-form" class="stack-md" @submit.prevent="saveRefinedFields">
         <AppTableFrame :columns="refinedFieldColumns" :rows="refinedFieldRows">
           <template #header-actions>
             <button
@@ -79,13 +87,14 @@
           </template>
 
           <template #cell-fieldPath="{ row }">
-            <input v-model="row.fieldPath" type="text" placeholder="$.order.id" />
+            <input v-model="row.fieldPath" type="text" placeholder="$.order.id" :disabled="!canEditTarget" />
           </template>
 
           <template #cell-type="{ row }">
             <AppSelect
               :model-value="String(row.type ?? '')"
               :options="fieldTypeOptions"
+              :disabled="!canEditTarget"
               @update:model-value="row.type = $event as JsonSchemaField['type']"
             />
           </template>
@@ -93,7 +102,7 @@
           <template #cell-required="{ row }">
             <div class="app-table__control-wrap app-table__control-wrap--start">
               <label class="checkbox-inline checkbox-inline--control-only">
-                <input v-model="row.required" class="app-table__checkbox" type="checkbox" aria-label="Required field" />
+                <input v-model="row.required" class="app-table__checkbox" type="checkbox" aria-label="Required field" :disabled="!canEditTarget" />
               </label>
             </div>
           </template>
@@ -101,6 +110,7 @@
           <template #cell-actions="{ index }">
             <div class="app-table__control-wrap app-table__control-wrap--end">
               <button
+                v-if="canEditTarget"
                 type="button"
                 :class="rowDeleteActionClass"
                 aria-label="Remove field row"
@@ -114,7 +124,7 @@
           </template>
 
           <template #append-row="{ columnCount }">
-            <tr>
+            <tr v-if="canEditTarget">
               <td :colspan="columnCount" class="app-table__append-cell">
                 <div class="app-table__append-action">
                   <button
@@ -136,49 +146,56 @@
             </tr>
           </template>
         </AppTableFrame>
-
-        <div class="action-row schema-editor-footer-row">
-          <AppSaveAction
-            type="submit"
-            class="schema-editor-footer-action"
-            test-id="save-refined-fields"
-            label="Save refined fields"
-            :disabled="footerActionsDisabled"
-          />
-          <button
-            type="button"
-            :class="footerDeleteActionClass"
-            data-testid="delete-schema"
-            aria-label="Delete schema"
-            :disabled="footerActionsDisabled"
-            @click="deleteSchema"
-          >
-            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-              <path :d="trashIconPath" :transform="footerTrashIconTransform" fill="currentColor" />
-            </svg>
-          </button>
-        </div>
       </form>
     </StaticPageSection>
 
     <InlineValidation v-if="error && !showInitialLoadFailureState" tone="error" :message="error" />
     <p v-if="success" class="success-copy">{{ success }}</p>
+
+    <template v-if="canEditTarget" #actions>
+      <div class="action-row schema-editor-footer-row">
+        <AppSaveAction
+          type="submit"
+          form="schema-editor-refined-form"
+          class="schema-editor-footer-action"
+          test-id="save-refined-fields"
+          label="Save refined fields"
+          :disabled="footerActionsDisabled"
+        />
+        <button
+          type="button"
+          :class="footerDeleteActionClass"
+          data-testid="delete-schema"
+          aria-label="Delete schema"
+          :disabled="footerActionsDisabled"
+          @click="deleteSchema"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path :d="trashIconPath" :transform="footerTrashIconTransform" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
+    </template>
   </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppTableFrame from '../../components/ui/AppTableFrame.vue'
 import AppSaveAction from '../../components/ui/AppSaveAction.vue'
 import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
+import StaticEditableTitle from '../../components/ui/StaticEditableTitle.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
 import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
+import { useUiPermissions } from '../../lib/auth'
+import { formatDateTime } from '../../lib/utils/date'
+import { downloadTextFile } from '../../lib/utils/download'
 
 interface EditableFieldRow {
   fieldPath: string
@@ -201,6 +218,7 @@ const props = defineProps<{
 
 const route = useRoute()
 const router = useRouter()
+const permissions = useUiPermissions()
 
 const currentSchemaId = ref(props.jsonSchemaId ?? String(route.params.jsonSchemaId ?? '').trim())
 const schemaName = ref('')
@@ -211,6 +229,7 @@ const systemOptions = ref<AppSelectOption[]>([])
 const lastUpdatedStamp = ref('')
 const schemaText = ref('')
 const fieldRows = ref<EditableFieldRow[]>([])
+const editableTitleTarget = ref<'description' | 'schemaName'>('schemaName')
 const loading = ref(false)
 const savingRefined = ref(false)
 const deletingSchema = ref(false)
@@ -220,7 +239,7 @@ const initialLoadCompleted = ref(false)
 const initialLoadSucceeded = ref(false)
 
 const hasTarget = computed(() => currentSchemaId.value.length > 0)
-const canEditTarget = computed(() => hasTarget.value && initialLoadSucceeded.value)
+const canEditTarget = computed(() => permissions.canEditTenantSettings && hasTarget.value && initialLoadSucceeded.value)
 const showInitialLoadFailureState = computed(() => hasTarget.value && initialLoadCompleted.value && !initialLoadSucceeded.value)
 const footerActionsDisabled = computed(() => !canEditTarget.value || savingRefined.value || deletingSchema.value)
 const heroTitle = computed(() => {
@@ -244,6 +263,26 @@ const refinedFieldColumns = [
 ]
 const refinedFieldRows = computed(() => fieldRows.value as Array<Record<string, unknown>>)
 
+function resolveTargetSchemaId(): string {
+  return (props.jsonSchemaId ?? String(route.params.jsonSchemaId ?? '')).trim()
+}
+
+function resetEditorState(nextSchemaId: string): void {
+  currentSchemaId.value = nextSchemaId
+  schemaName.value = ''
+  description.value = ''
+  systemEnumId.value = ''
+  systemLabel.value = ''
+  lastUpdatedStamp.value = ''
+  schemaText.value = ''
+  fieldRows.value = []
+  editableTitleTarget.value = 'schemaName'
+  error.value = null
+  success.value = null
+  initialLoadCompleted.value = false
+  initialLoadSucceeded.value = false
+}
+
 function parseBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
   if (typeof value === 'string') return ['y', 'yes', 'true', '1'].includes(value.toLowerCase())
@@ -259,10 +298,7 @@ function normalizeFieldType(value: unknown): JsonSchemaField['type'] {
 }
 
 function formatDate(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim()) return '-'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return value
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed)
+  return formatDateTime(value, { locale: 'en-US' })
 }
 
 function toSystemOption(option: EnumOption): AppSelectOption {
@@ -272,14 +308,13 @@ function toSystemOption(option: EnumOption): AppSelectOption {
   }
 }
 
-function downloadText(filename: string, text: string): void {
-  const blob = new Blob([text], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  URL.revokeObjectURL(url)
+function setEditableTitle(value: string): void {
+  if (editableTitleTarget.value === 'description') {
+    description.value = value
+    return
+  }
+
+  schemaName.value = value
 }
 
 function addFieldRow(): void {
@@ -296,7 +331,7 @@ function removeFieldRow(index: number): void {
 
 function downloadSchema(): void {
   if (!schemaText.value.trim()) return
-  downloadText(`${schemaName.value || 'schema'}.json`, schemaText.value)
+  downloadTextFile(`${schemaName.value || 'schema'}.json`, schemaText.value, 'application/json')
 }
 
 function getSchemaDeleteLabel(): string {
@@ -333,6 +368,7 @@ async function loadSchema(): Promise<void> {
     currentSchemaId.value = schemaData.jsonSchemaId
     schemaName.value = schemaData.schemaName
     description.value = schemaData.description ?? ''
+    editableTitleTarget.value = description.value.trim() ? 'description' : 'schemaName'
     systemEnumId.value = schemaData.systemEnumId ?? ''
     systemLabel.value = schemaData.systemLabel ?? ''
     lastUpdatedStamp.value = schemaData.lastUpdatedStamp ?? ''
@@ -352,6 +388,7 @@ async function reload(): Promise<void> {
   initialLoadCompleted.value = false
   initialLoadSucceeded.value = false
   await loadSchema()
+  await loadSystemOptions()
 }
 
 async function loadSystemOptions(): Promise<void> {
@@ -418,9 +455,15 @@ async function deleteSchema(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  void Promise.all([loadSchema(), loadSystemOptions()])
-})
+async function initializeEditor(): Promise<void> {
+  resetEditorState(resolveTargetSchemaId())
+  await loadSchema()
+  await loadSystemOptions()
+}
+
+watch(() => [props.jsonSchemaId, route.fullPath], () => {
+  void initializeEditor()
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -440,4 +483,5 @@ onMounted(() => {
 .schema-editor-summary-select {
   margin-top: 0.1rem;
 }
+
 </style>

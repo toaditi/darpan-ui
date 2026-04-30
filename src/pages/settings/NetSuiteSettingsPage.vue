@@ -36,7 +36,7 @@
       </div>
 
       <RouterLink
-        v-if="authRows.length === 0 && !authLoading && !authError"
+        v-if="canEditTenantSettings && authRows.length === 0 && !authLoading && !authError"
         :to="authCreateRoute"
         class="static-page-action-tile static-page-action-tile--inline"
         data-testid="netsuite-auth-create-action"
@@ -46,7 +46,7 @@
     </StaticPageSection>
 
     <RouterLink
-      v-if="authRows.length > 0"
+      v-if="canEditTenantSettings && authRows.length > 0"
       :to="authCreateRoute"
       class="static-page-action-tile static-page-create-action"
       data-testid="netsuite-auth-create-action"
@@ -88,7 +88,7 @@
       </div>
 
       <RouterLink
-        v-if="endpointRows.length === 0 && !endpointLoading && !endpointError"
+        v-if="canEditTenantSettings && endpointRows.length === 0 && !endpointLoading && !endpointError"
         :to="endpointCreateRoute"
         class="static-page-action-tile static-page-action-tile--inline"
         data-testid="netsuite-endpoint-create-action"
@@ -98,7 +98,7 @@
     </StaticPageSection>
 
     <RouterLink
-      v-if="endpointRows.length > 0"
+      v-if="canEditTenantSettings && endpointRows.length > 0"
       :to="endpointCreateRoute"
       class="static-page-action-tile static-page-create-action"
       data-testid="netsuite-endpoint-create-action"
@@ -117,11 +117,15 @@ import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { useAuthState, useUiPermissions } from '../../lib/auth'
 import type { NsAuthConfigRecord, NsRestletConfigRecord } from '../../lib/api/types'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
+import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
+const authState = useAuthState()
+const permissions = useUiPermissions()
 
 const authRows = ref<NsAuthConfigRecord[]>([])
 const authPageIndex = ref(0)
@@ -136,6 +140,7 @@ const endpointPageSize = ref(10)
 const endpointPageCount = ref(1)
 const endpointLoading = ref(false)
 const endpointError = ref<string | null>(null)
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 
 const workflowOriginState = computed(() => buildWorkflowOriginState('NetSuite', route.fullPath || '/settings/netsuite'))
 
@@ -189,7 +194,10 @@ async function loadAuthConfigs(): Promise<void> {
       pageIndex: authPageIndex.value,
       pageSize: authPageSize.value,
     })
-    authRows.value = response.authConfigs ?? []
+    authRows.value = filterRecordsForActiveTenant(
+      response.authConfigs ?? [],
+      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    )
     authPageCount.value = response.pagination?.pageCount ?? 1
   } catch (loadError) {
     authError.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load NetSuite auth configs.'
@@ -206,7 +214,10 @@ async function loadEndpointConfigs(): Promise<void> {
       pageIndex: endpointPageIndex.value,
       pageSize: endpointPageSize.value,
     })
-    endpointRows.value = response.restletConfigs ?? []
+    endpointRows.value = filterRecordsForActiveTenant(
+      response.restletConfigs ?? [],
+      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    )
     endpointPageCount.value = response.pagination?.pageCount ?? 1
   } catch (loadError) {
     endpointError.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load endpoint configs.'

@@ -5,7 +5,12 @@ const authState = vi.hoisted(() => ({
   checked: true,
   error: null as string | null,
   status: 'unauthenticated' as 'authenticated' | 'unauthenticated' | 'verification-failed',
-  sessionInfo: null as { userId: string; username?: string } | null,
+  sessionInfo: null as {
+    userId: string
+    username?: string
+    canEditActiveTenantData?: boolean
+    isSuperAdmin?: boolean
+  } | null,
   get authenticated() {
     return this.status === 'authenticated'
   },
@@ -26,6 +31,17 @@ vi.mock('../../lib/auth', () => ({
   buildAuthRedirect: (redirect: string) => ({ name: 'login', query: { redirect } }),
   ensureAuthenticated,
   useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo?.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo?.userId)
+    },
+  }),
 }))
 
 import router from '../index'
@@ -65,7 +81,7 @@ describe('router auth guard', () => {
   it('allows authenticated users to open the standalone SFTP dashboard', async () => {
     ensureAuthenticated.mockResolvedValue(true)
     authState.status = 'authenticated'
-    authState.sessionInfo = { userId: '100000', username: 'pilot.customer' }
+    authState.sessionInfo = { userId: '100000', username: 'test.customer' }
     await router.push('/settings/sftp')
 
     expect(router.currentRoute.value.name).toBe('settings-sftp')
@@ -74,9 +90,64 @@ describe('router auth guard', () => {
   it('redirects the legacy SFTP route to the standalone dashboard for authenticated users', async () => {
     ensureAuthenticated.mockResolvedValue(true)
     authState.status = 'authenticated'
-    authState.sessionInfo = { userId: '100000', username: 'pilot.customer' }
+    authState.sessionInfo = { userId: '100000', username: 'test.customer' }
     await router.push('/connections/sftp')
 
     expect(router.currentRoute.value.name).toBe('settings-sftp')
+  })
+
+  it('redirects view-only tenant users away from tenant mutation workflows', async () => {
+    ensureAuthenticated.mockResolvedValue(true)
+    authState.status = 'authenticated'
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'view.customer',
+      canEditActiveTenantData: false,
+      isSuperAdmin: false,
+    }
+
+    await router.push('/settings/sftp/create')
+
+    expect(router.currentRoute.value.name).toBe('settings-sftp')
+  })
+
+  it('allows editor tenant users to open tenant mutation workflows', async () => {
+    ensureAuthenticated.mockResolvedValue(true)
+    authState.status = 'authenticated'
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'editor.customer',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
+
+    await router.push('/settings/sftp/create')
+
+    expect(router.currentRoute.value.name).toBe('settings-sftp-create')
+  })
+
+  it('restricts AI settings routes to super admins', async () => {
+    ensureAuthenticated.mockResolvedValue(true)
+    authState.status = 'authenticated'
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'editor.customer',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
+
+    await router.push('/settings/ai')
+
+    expect(router.currentRoute.value.name).toBe('hub')
+
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'admin.customer',
+      canEditActiveTenantData: false,
+      isSuperAdmin: true,
+    }
+    await router.push('/settings/ai')
+
+    expect(router.currentRoute.value.name).toBe('settings-ai')
   })
 })

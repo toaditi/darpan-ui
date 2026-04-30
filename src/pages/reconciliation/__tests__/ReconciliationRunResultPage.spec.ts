@@ -5,18 +5,26 @@ import { ApiCallError } from '../../../lib/api/client'
 
 const route = vi.hoisted(() => ({
   params: {
-    reconciliationMappingId: 'OrderIdMap',
-    outputFileName: 'Order-ID-diff-20260331-063304.json',
+    savedRunId: 'RS_ORDER_CSV',
+    outputFileName: 'CSV-Order-Compare-diff-20260331-063304.json',
   },
   query: {
-    runName: 'Order ID',
+    runName: 'CSV Order Compare',
     file1SystemLabel: 'OMS',
     file2SystemLabel: 'SHOPIFY',
   },
   fullPath:
-    '/reconciliation/run-result/OrderIdMap/Order-ID-diff-20260331-063304.json?runName=Order%20ID&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY',
+    '/reconciliation/run-result/RS_ORDER_CSV/CSV-Order-Compare-diff-20260331-063304.json?runName=CSV%20Order%20Compare&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY',
 }))
-const getPilotGeneratedOutput = vi.hoisted(() => vi.fn())
+const getGeneratedOutput = vi.hoisted(() => vi.fn())
+const saveSavedRunName = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'editor',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   RouterLink: {
@@ -28,8 +36,23 @@ vi.mock('vue-router', () => ({
 
 vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
-    getPilotGeneratedOutput,
+    getGeneratedOutput,
+    saveSavedRunName,
   },
+}))
+
+vi.mock('../../../lib/auth', () => ({
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
 }))
 
 import ReconciliationRunResultPage from '../ReconciliationRunResultPage.vue'
@@ -40,8 +63,8 @@ function buildGeneratedOutputFile(contentText: string) {
     messages: [],
     errors: [],
     outputFile: {
-      fileName: 'Order-ID-diff-20260331-063304.json',
-      downloadFileName: 'Order-ID-diff-20260331-063304.json',
+      fileName: 'CSV-Order-Compare-diff-20260331-063304.json',
+      downloadFileName: 'CSV-Order-Compare-diff-20260331-063304.json',
       sourceFormat: 'json',
       format: 'json',
       contentType: 'application/json',
@@ -55,8 +78,11 @@ const defaultDiffDetails = {
     timestamp: '2026-03-31 08:11:06.134',
     file1Label: 'OMS',
     file2Label: 'SHOPIFY',
-    reconciliationMappingId: 'OrderIdMap',
-    reconciliationMappingName: 'Order ID',
+    savedRunId: 'RS_ORDER_CSV',
+    savedRunName: 'CSV Order Compare',
+    savedRunType: 'ruleset',
+    ruleSetId: 'RS_ORDER_CSV',
+    compareScopeId: 'CS_ORDER_CSV',
   },
   summary: {
     totalDifferences: 2,
@@ -83,32 +109,55 @@ const defaultDiffDetails = {
 
 describe('ReconciliationRunResultPage', () => {
   beforeEach(() => {
-    route.params.reconciliationMappingId = 'OrderIdMap'
-    route.params.outputFileName = 'Order-ID-diff-20260331-063304.json'
-    route.query.runName = 'Order ID'
+    authState.sessionInfo = {
+      userId: 'editor',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
+    route.params.savedRunId = 'RS_ORDER_CSV'
+    route.params.outputFileName = 'CSV-Order-Compare-diff-20260331-063304.json'
+    route.query.runName = 'CSV Order Compare'
     route.query.file1SystemLabel = 'OMS'
     route.query.file2SystemLabel = 'SHOPIFY'
     route.fullPath =
-      '/reconciliation/run-result/OrderIdMap/Order-ID-diff-20260331-063304.json?runName=Order%20ID&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY'
+      '/reconciliation/run-result/RS_ORDER_CSV/CSV-Order-Compare-diff-20260331-063304.json?runName=CSV%20Order%20Compare&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY'
 
-    getPilotGeneratedOutput.mockReset()
-    getPilotGeneratedOutput.mockResolvedValue(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails)))
+    getGeneratedOutput.mockReset()
+    getGeneratedOutput.mockResolvedValue(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails)))
+    saveSavedRunName.mockReset()
+    saveSavedRunName.mockResolvedValue({
+      ok: true,
+      messages: ['Saved run CSV Order Compare Revised.'],
+      errors: [],
+      savedRun: {
+        savedRunId: 'RS_ORDER_CSV',
+        runName: 'CSV Order Compare Revised',
+        runType: 'ruleset',
+        requiresSystemSelection: false,
+        systemOptions: [],
+      },
+    })
   })
 
   it('loads saved result details on the static surface and links back to history and workflow', async () => {
     const wrapper = mount(ReconciliationRunResultPage)
     await flushPromises()
 
-    expect(getPilotGeneratedOutput).toHaveBeenCalledWith({
-      fileName: 'Order-ID-diff-20260331-063304.json',
+    expect(getGeneratedOutput).toHaveBeenCalledWith({
+      fileName: 'CSV-Order-Compare-diff-20260331-063304.json',
       format: 'json',
     })
     expect(wrapper.find('.static-page-frame').exists()).toBe(true)
     expect(wrapper.find('.wizard-progress-track').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Order ID')
-    expect(wrapper.text()).not.toContain('Saved result from')
+    expect(wrapper.text()).toContain('CSV Order Compare')
+    const editableTitle = wrapper.get('[data-testid="run-result-title"]')
+    expect(editableTitle.element.tagName).toBe('H1')
+    expect(editableTitle.attributes('contenteditable')).toBe('plaintext-only')
+    expect(editableTitle.attributes('aria-label')).toBe('Run name')
+    expect(editableTitle.classes()).toContain('static-page-inline-edit-title')
     expect(wrapper.text()).toContain('Missing from OMS')
     expect(wrapper.text()).toContain('Missing from SHOPIFY')
+    expect(wrapper.text()).toContain('Rule differences')
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('"order_id": "1001"')
     expect(wrapper.get('[data-testid="run-result-download"]').attributes('aria-label')).toBe('Download saved result')
@@ -119,19 +168,19 @@ describe('ReconciliationRunResultPage', () => {
     expect(JSON.parse(wrapper.get('[data-testid="run-result-view-history"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-run-history',
       params: {
-        reconciliationMappingId: 'OrderIdMap',
+        savedRunId: 'RS_ORDER_CSV',
       },
       query: {
-        runName: 'Order ID',
+        runName: 'CSV Order Compare',
         file1SystemLabel: 'OMS',
         file2SystemLabel: 'SHOPIFY',
       },
     })
     expect(JSON.parse(wrapper.get('[data-testid="run-result-open-workflow"]').attributes('data-to') ?? '{}')).toEqual({
-      name: 'reconciliation-pilot-diff',
+      name: 'reconciliation-diff',
       query: {
-        mappingId: 'OrderIdMap',
-        runName: 'Order ID',
+        savedRunId: 'RS_ORDER_CSV',
+        runName: 'CSV Order Compare',
         file1SystemLabel: 'OMS',
         file2SystemLabel: 'SHOPIFY',
       },
@@ -140,10 +189,20 @@ describe('ReconciliationRunResultPage', () => {
         workflowOriginPath: route.fullPath,
       },
     })
+
+    editableTitle.element.textContent = 'CSV Order Compare Revised'
+    await editableTitle.trigger('input')
+    await editableTitle.trigger('blur')
+    await flushPromises()
+
+    expect(saveSavedRunName).toHaveBeenCalledWith({
+      savedRunId: 'RS_ORDER_CSV',
+      runName: 'CSV Order Compare Revised',
+    })
   })
 
   it('filters and paginates saved diff details', async () => {
-    getPilotGeneratedOutput.mockResolvedValue(
+    getGeneratedOutput.mockResolvedValue(
       buildGeneratedOutputFile(
         JSON.stringify({
           metadata: defaultDiffDetails.metadata,
@@ -193,8 +252,146 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.text()).toContain('Page 1 of 2')
   })
 
+  it('renders rule difference rows with primary ids and diff metadata instead of empty JSON objects', async () => {
+    getGeneratedOutput.mockResolvedValue(
+      buildGeneratedOutputFile(
+        JSON.stringify({
+          metadata: defaultDiffDetails.metadata,
+          summary: {
+            totalDifferences: 3,
+            onlyInFile1Count: 1,
+            onlyInFile2Count: 1,
+            missingObjectDifferenceCount: 2,
+            ruleDifferenceCount: 1,
+          },
+          differences: [
+            defaultDiffDetails.differences[0],
+            defaultDiffDetails.differences[1],
+            {
+              diffType: 'FIELD_MISMATCH',
+              primaryId: '6678202450051',
+              field: 'grand_total = total_amount',
+              file1Value: '89.89',
+              file2Value: '90.32',
+              ruleId: 'FIELD_COMPARISON_1',
+              severity: 'WARN',
+              message: 'Field comparison failed: grand_total = total_amount',
+            },
+          ],
+        }),
+      ),
+    )
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Rule differences')
+    expect(wrapper.text()).toContain('6678202450051')
+    expect(wrapper.text()).toContain('"diffType": "FIELD_MISMATCH"')
+    expect(wrapper.text()).toContain('"field": "grand_total = total_amount"')
+    expect(wrapper.text()).toContain('"file1Value": "89.89"')
+    expect(wrapper.text()).toContain('"file2Value": "90.32"')
+    expect(wrapper.text()).not.toContain('row-3')
+    expect(wrapper.text()).not.toContain('{}')
+  })
+
+  it('shows a collapsible rule selector that filters result rows by rule', async () => {
+    getGeneratedOutput.mockResolvedValue(
+      buildGeneratedOutputFile(
+        JSON.stringify({
+          metadata: defaultDiffDetails.metadata,
+          summary: {
+            totalDifferences: 4,
+            onlyInFile1Count: 1,
+            onlyInFile2Count: 1,
+            missingObjectDifferenceCount: 2,
+            ruleDifferenceCount: 2,
+          },
+          differences: [
+            defaultDiffDetails.differences[0],
+            defaultDiffDetails.differences[1],
+            {
+              diffType: 'FIELD_MISMATCH',
+              primaryId: '1002',
+              field: 'OMS order id = Shopify order id',
+              file1Value: '1002',
+              file2Value: 'gid://shopify/Order/1002',
+              ruleId: 'ORDER_ID_MATCH',
+              severity: 'WARN',
+            },
+            {
+              diffType: 'FIELD_MISMATCH',
+              primaryId: '1004',
+              field: 'Payment total = Shopify total',
+              file1Value: '40.00',
+              file2Value: '42.00',
+              ruleId: 'PAYMENT_TOTAL_MATCH',
+              severity: 'WARN',
+            },
+          ],
+        }),
+      ),
+    )
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    const selector = wrapper.get('[data-testid="run-result-rule-selector"]')
+    expect(selector.element.closest('.static-page-section')).toBeNull()
+    expect(selector.element.closest('.static-page-frame')).toBeNull()
+    expect(wrapper.get('[data-testid="run-result-rule-selector-toggle"]').text()).toBe('')
+    expect(wrapper.find('[data-testid="run-result-rule-list"]').exists()).toBe(true)
+    expect(selector.text()).not.toContain('Rule Selector')
+    expect(selector.text()).toContain('Rule 0')
+    expect(selector.text()).toContain('Base comparison')
+    expect(selector.text()).toContain('Rule 1')
+    expect(selector.text()).toContain('OMS order id = Shopify order id')
+    expect(selector.text()).toContain('Rule 2')
+    expect(selector.text()).toContain('Payment total = Shopify total')
+    expect(wrapper.find('[data-testid="diff-bucket-file-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="diff-bucket-file-2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="diff-bucket-rule"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(4)
+
+    await selector.get('[data-rule-filter-key="order_id_match"]').trigger('click')
+
+    const selectedRuleTotal = wrapper.get('[data-testid="diff-bucket-total-results"]')
+    expect(selectedRuleTotal.element.tagName).toBe('DIV')
+    expect(selectedRuleTotal.text()).toContain('Total results')
+    expect(selectedRuleTotal.text()).toContain('1')
+    expect(wrapper.find('[data-testid="diff-bucket-file-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="diff-bucket-file-2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="diff-bucket-rule"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('1002')
+    expect(wrapper.text()).not.toContain('1004')
+    expect(wrapper.text()).not.toContain('"order_id": "1001"')
+    expect(selector.get('[data-rule-filter-key="order_id_match"]').attributes('aria-pressed')).toBe('true')
+
+    await selector.get('[data-rule-filter-key="base-diff"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="diff-bucket-total-results"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="diff-bucket-file-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="diff-bucket-file-2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="diff-bucket-rule"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
+    expect(wrapper.text()).toContain('"order_id": "1001"')
+    expect(wrapper.text()).not.toContain('1002')
+
+    await selector.get('[data-rule-filter-key="all"]').trigger('click')
+
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(4)
+
+    await wrapper.get('[data-testid="run-result-rule-selector-toggle"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="run-result-rule-selector"]').classes()).toContain('run-result-rule-selector--collapsed')
+    expect(wrapper.get('[data-testid="run-result-rule-selector-toggle"]').text()).toBe('')
+    expect(wrapper.find('[data-testid="run-result-rule-list"]').exists()).toBe(false)
+    expect(wrapper.find('[data-rule-filter-key="order_id_match"]').exists()).toBe(false)
+  })
+
   it('shows an inline error when the saved result cannot be loaded', async () => {
-    getPilotGeneratedOutput.mockRejectedValue(new ApiCallError('Unable to load saved result.', 503))
+    getGeneratedOutput.mockRejectedValue(new ApiCallError('Unable to load saved result.', 503))
 
     const wrapper = mount(ReconciliationRunResultPage)
     await flushPromises()
@@ -205,14 +402,27 @@ describe('ReconciliationRunResultPage', () => {
   it('renders diff details through the shared app table frame instead of a page-local table shell', () => {
     const source = readFileSync('src/pages/reconciliation/ReconciliationRunResultPage.vue', 'utf8')
 
-    expect(source).toContain('.pilot-diff-details__toolbar')
+    expect(source).toContain('.reconciliation-diff-details__toolbar')
     expect(source).toContain('justify-content: space-between;')
-    expect(source).toContain('.pilot-diff-details__pagination')
+    expect(source).toContain('.reconciliation-diff-details__pagination')
     expect(source).toContain('justify-content: space-between;')
     expect(source).toContain("import AppTableFrame from '../../components/ui/AppTableFrame.vue'")
     expect(source).toContain('<AppTableFrame')
     expect(source).toContain("label: 'Record ID'")
-    expect(source).toContain("label: 'Record JSON'")
-    expect(source).not.toContain('class="pilot-diff-table"')
+    expect(source).toContain("label: 'Diff Detail'")
+    expect(source).toContain('run-result-rule-selector__panel')
+    expect(source).toContain('run-result-rule-selector__option-count')
+    expect(source).toContain('diff-bucket-total-results')
+    expect(source).toContain('reconciliation-diff-bucket--static')
+    expect(source).not.toContain('run-result-rule-selector__header')
+    expect(source).not.toContain('<strong>{{ option.count }}</strong>')
+    expect(source).not.toContain('<strong>{{ diffDetailRows.length }}</strong>')
+    expect(source).not.toContain('.run-result-rule-selector__option-label {\n  font-weight: 700;')
+    expect(source).toContain('position: fixed;')
+    expect(source).toContain('left: max(0.5rem, env(safe-area-inset-left));')
+    expect(source).toMatch(/\.run-result-rule-selector\s*\{[\s\S]*?align-items: center;/)
+    expect(source).not.toContain('padding-left: clamp')
+    expect(source).not.toContain('padding-left: 4rem')
+    expect(source).not.toContain('class="reconciliation-diff-table"')
   })
 })

@@ -1,5 +1,5 @@
 <template>
-  <WorkflowPage :progress-percent="progressPercent" aria-label="SFTP server setup progress" center-stage>
+  <WorkflowPage :progress-percent="progressPercent" aria-label="SFTP server setup progress" center-stage :edit-surface="isEditing">
     <InlineValidation v-if="error" tone="error" :message="error" />
     <p v-if="success" class="success-copy">{{ success }}</p>
 
@@ -12,6 +12,7 @@
       ]"
       :question="currentQuestion"
       :primary-label="primaryLabel"
+      :primary-action-variant="primaryActionVariant"
       :show-enter-hint="!isEditing"
       :show-back="showBack"
       :show-cancel-action="isEditing"
@@ -19,6 +20,7 @@
       :cancel-disabled="loading"
       cancel-test-id="cancel-sftp-server"
       :submit-disabled="submitDisabled"
+      :show-primary-action="canEditTenantSettings"
       :primary-test-id="primaryTestId"
       @submit="handlePrimarySubmit"
       @back="goBack"
@@ -211,7 +213,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
@@ -220,7 +222,9 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { useAuthState, useUiPermissions } from '../../lib/auth'
 import type { SftpServerRecord } from '../../lib/api/types'
+import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 
 type SftpCreateStepId =
   | 'host'
@@ -251,17 +255,23 @@ interface SftpForm {
 
 const route = useRoute()
 const router = useRouter()
+const authState = useAuthState()
+const permissions = useUiPermissions()
 
-const form = reactive<SftpForm>({
-  sftpServerId: '',
-  description: '',
-  host: '',
-  port: 22,
-  username: '',
-  password: '',
-  privateKey: '',
-  remoteAttributes: 'Y',
-})
+function createDefaultSftpForm(): SftpForm {
+  return {
+    sftpServerId: '',
+    description: '',
+    host: '',
+    port: 22,
+    username: '',
+    password: '',
+    privateKey: '',
+    remoteAttributes: 'Y',
+  }
+}
+
+const form = reactive<SftpForm>(createDefaultSftpForm())
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -283,6 +293,7 @@ const createSteps: SftpCreateStep[] = [
 ]
 
 const activeServerId = computed(() => String(route.params.sftpServerId ?? '').trim())
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 const isEditing = computed(() => activeServerId.value.length > 0)
 const currentCreateStep = computed<SftpCreateStep>(() => {
   const lastStepIndex = Math.max(0, createSteps.length - 1)
@@ -308,9 +319,15 @@ const primaryTestId = computed(() => (
     ? 'save-sftp-server'
     : 'wizard-next'
 ))
+const primaryActionVariant = computed<'default' | 'save'>(() => (
+  isEditing.value || currentCreateStep.value.id === 'sftpServerId'
+    ? 'save'
+    : 'default'
+))
 const showBack = computed(() => !isEditing.value && currentStepIndex.value > 0)
 const isCreateSelectStep = computed(() => !isEditing.value && currentCreateStep.value.kind === 'select')
 const submitDisabled = computed(() => {
+  if (!canEditTenantSettings.value) return true
   if (loading.value) return true
   if (isEditing.value) return false
 
@@ -339,6 +356,13 @@ function applyRecord(record: SftpServerRecord): void {
   form.remoteAttributes = record.remoteAttributes ?? 'Y'
 }
 
+function resetCreateForm(): void {
+  Object.assign(form, createDefaultSftpForm())
+  currentStepIndex.value = 0
+  error.value = null
+  success.value = null
+}
+
 async function loadServer(): Promise<void> {
   if (!isEditing.value) return
 
@@ -346,7 +370,10 @@ async function loadServer(): Promise<void> {
   error.value = null
   try {
     const response = await settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 })
-    const matchingServer = (response.servers ?? []).find((server) => server.sftpServerId === activeServerId.value)
+    const matchingServer = filterRecordsForActiveTenant(
+      response.servers ?? [],
+      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    ).find((server) => server.sftpServerId === activeServerId.value)
     if (!matchingServer) {
       error.value = `Unable to find SFTP server "${activeServerId.value}".`
       return
@@ -378,6 +405,11 @@ async function handlePrimarySubmit(): Promise<void> {
 }
 
 async function save(): Promise<void> {
+  if (!canEditTenantSettings.value) {
+    error.value = 'You do not have permission to save SFTP servers for the active tenant.'
+    return
+  }
+
   loading.value = true
   error.value = null
   success.value = null
@@ -408,7 +440,17 @@ async function cancelEdit(): Promise<void> {
   await router.push('/settings/sftp')
 }
 
-onMounted(() => {
-  void loadServer()
-})
+async function initializeForRoute(): Promise<void> {
+  if (!isEditing.value) {
+    resetCreateForm()
+    loading.value = false
+    return
+  }
+
+  await loadServer()
+}
+
+watch(() => route.fullPath, () => {
+  void initializeForRoute()
+}, { immediate: true })
 </script>

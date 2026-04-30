@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { buildAuthRedirect, ensureAuthenticated } from '../lib/auth'
+import { buildAuthRedirect, ensureAuthenticated, useUiPermissions } from '../lib/auth'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -21,28 +21,40 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, section: 'roadmap', staticPageLabel: 'Reconciliation Roadmap' },
   },
   {
-    path: '/reconciliation/pilot-diff',
-    name: 'reconciliation-pilot-diff',
-    component: () => import('../pages/reconciliation/PilotGenericDiffPage.vue'),
-    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'workflow' },
+    path: '/reconciliation/diff',
+    name: 'reconciliation-diff',
+    component: () => import('../pages/reconciliation/ReconciliationDiffPage.vue'),
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-runs', tenantSwitchRedirectName: 'hub', section: 'reconciliation', surfaceMode: 'workflow' },
   },
   {
-    path: '/reconciliation/run-result/:reconciliationMappingId/:outputFileName',
+    path: '/reconciliation/run-result/:savedRunId/:outputFileName',
     name: 'reconciliation-run-result',
     component: () => import('../pages/reconciliation/ReconciliationRunResultPage.vue'),
-    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run Result' },
+    meta: { requiresAuth: true, tenantSwitchRedirectName: 'hub', section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run Result' },
   },
   {
     path: '/reconciliation/create',
     name: 'reconciliation-create',
     component: () => import('../pages/reconciliation/ReconciliationCreateFlowPage.vue'),
-    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-runs', tenantSwitchRedirectName: 'hub', section: 'reconciliation', surfaceMode: 'workflow' },
   },
   {
-    path: '/reconciliation/run-history/:reconciliationMappingId',
+    path: '/reconciliation/ruleset-manager',
+    name: 'reconciliation-ruleset-manager',
+    component: () => import('../pages/reconciliation/ReconciliationRuleSetManagerPage.vue'),
+    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Ruleset Manager' },
+  },
+  {
+    path: '/reconciliation/ruleset-manager/rules',
+    name: 'reconciliation-ruleset-editor',
+    component: () => import('../pages/reconciliation/ReconciliationRuleSetEditorPage.vue'),
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-runs', tenantSwitchRedirectName: 'hub', section: 'reconciliation', surfaceMode: 'workflow' },
+  },
+  {
+    path: '/reconciliation/run-history/:savedRunId',
     name: 'reconciliation-run-history',
     component: () => import('../pages/reconciliation/ReconciliationRunHistoryPage.vue'),
-    meta: { requiresAuth: true, section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run History' },
+    meta: { requiresAuth: true, tenantSwitchRedirectName: 'hub', section: 'reconciliation', surfaceMode: 'static', staticPageLabel: 'Run History' },
   },
   {
     path: '/connections',
@@ -87,20 +99,20 @@ const routes: RouteRecordRaw[] = [
     path: '/settings/ai',
     name: 'settings-ai',
     component: () => import('../pages/settings/LlmSettingsPage.vue'),
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'static', staticPageLabel: 'AI' },
+    meta: { requiresAuth: true, requiresGlobalSettings: true, section: 'connections', surfaceMode: 'static', staticPageLabel: 'AI' },
   },
   {
     path: '/settings/ai/create',
     name: 'settings-ai-create',
     component: () => import('../pages/settings/LlmSettingsWorkflowPage.vue'),
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresGlobalSettings: true, tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/ai/edit/:llmProvider',
     name: 'settings-ai-edit',
     component: () => import('../pages/settings/LlmSettingsWorkflowPage.vue'),
     props: true,
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresGlobalSettings: true, tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/netsuite',
@@ -119,7 +131,7 @@ const routes: RouteRecordRaw[] = [
     name: 'settings-runs-edit',
     component: () => import('../pages/settings/RunsSettingsWorkflowPage.vue'),
     props: true,
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-runs', tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/sftp',
@@ -131,40 +143,40 @@ const routes: RouteRecordRaw[] = [
     path: '/settings/sftp/create',
     name: 'settings-sftp-create',
     component: () => import('../pages/settings/SftpServerWorkflowPage.vue'),
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-sftp', tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/sftp/edit/:sftpServerId',
     name: 'settings-sftp-edit',
     component: () => import('../pages/settings/SftpServerWorkflowPage.vue'),
     props: true,
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-sftp', tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/netsuite/auth/create',
     name: 'settings-netsuite-auth-create',
     component: () => import('../pages/settings/NetSuiteAuthWorkflowPage.vue'),
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-netsuite', tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/netsuite/auth/edit/:nsAuthConfigId',
     name: 'settings-netsuite-auth-edit',
     component: () => import('../pages/settings/NetSuiteAuthWorkflowPage.vue'),
     props: true,
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-netsuite', tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/netsuite/endpoints/create',
     name: 'settings-netsuite-endpoints-create',
     component: () => import('../pages/settings/NetSuiteEndpointWorkflowPage.vue'),
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-netsuite', tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/settings/netsuite/endpoints/edit/:nsRestletConfigId',
     name: 'settings-netsuite-endpoints-edit',
     component: () => import('../pages/settings/NetSuiteEndpointWorkflowPage.vue'),
     props: true,
-    meta: { requiresAuth: true, section: 'connections', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'settings-netsuite', tenantSwitchRedirectName: 'hub', section: 'connections', surfaceMode: 'workflow' },
   },
   {
     path: '/schemas',
@@ -180,7 +192,7 @@ const routes: RouteRecordRaw[] = [
     path: '/schemas/create',
     name: 'schemas-create',
     component: () => import('../pages/jsonschema/JsonSchemaWizardPage.vue'),
-    meta: { requiresAuth: true, section: 'schemas', surfaceMode: 'workflow' },
+    meta: { requiresAuth: true, requiresTenantEdit: true, tenantEditRedirectName: 'schemas-library', tenantSwitchRedirectName: 'hub', section: 'schemas', surfaceMode: 'workflow' },
   },
   {
     path: '/schemas/infer',
@@ -191,7 +203,7 @@ const routes: RouteRecordRaw[] = [
     name: 'schemas-editor',
     component: () => import('../pages/jsonschema/JsonSchemaEditorPage.vue'),
     props: true,
-    meta: { requiresAuth: true, section: 'schemas', surfaceMode: 'static', staticPageLabel: 'Schema Editor' },
+    meta: { requiresAuth: true, tenantSwitchRedirectName: 'hub', section: 'schemas', surfaceMode: 'static', staticPageLabel: 'Schema Editor' },
   },
   {
     path: '/schemas/edit/:jsonSchemaId',
@@ -221,7 +233,19 @@ router.beforeEach(async (to) => {
   if (to.meta.requiresAuth !== true) return true
 
   const authenticated = await ensureAuthenticated(true)
-  if (authenticated) return true
+  if (authenticated) {
+    const permissions = useUiPermissions()
+    if (to.meta.requiresGlobalSettings === true && !permissions.canManageGlobalSettings) {
+      return { name: 'hub' }
+    }
+
+    if (to.meta.requiresTenantEdit === true && !permissions.canEditTenantSettings) {
+      const redirectName = typeof to.meta.tenantEditRedirectName === 'string' ? to.meta.tenantEditRedirectName : 'hub'
+      return { name: redirectName }
+    }
+
+    return true
+  }
   return buildAuthRedirect(to.fullPath)
 })
 

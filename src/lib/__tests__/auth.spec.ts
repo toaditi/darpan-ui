@@ -1,34 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { installLocalStorageStub } from '../../test/localStorage'
 
 const getSessionInfo = vi.hoisted(() => vi.fn())
 const loginSession = vi.hoisted(() => vi.fn())
-const saveActiveCompanyRpc = vi.hoisted(() => vi.fn())
+const saveActiveTenantRpc = vi.hoisted(() => vi.fn())
 const logoutSessionRpc = vi.hoisted(() => vi.fn())
-
-function installLocalStorageStub(): void {
-  const store = new Map<string, string>()
-  Object.defineProperty(window, 'localStorage', {
-    configurable: true,
-    value: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, String(value))
-      },
-      removeItem: (key: string) => {
-        store.delete(key)
-      },
-      clear: () => {
-        store.clear()
-      },
-    },
-  })
-}
 
 vi.mock('../api/facade', () => ({
   authFacade: {
     getSessionInfo,
     loginSession,
-    saveActiveCompany: saveActiveCompanyRpc,
+    saveActiveTenant: saveActiveTenantRpc,
     logoutSession: logoutSessionRpc,
   },
 }))
@@ -38,7 +20,7 @@ describe('auth state', () => {
     vi.resetModules()
     getSessionInfo.mockReset()
     loginSession.mockReset()
-    saveActiveCompanyRpc.mockReset()
+    saveActiveTenantRpc.mockReset()
     logoutSessionRpc.mockReset()
     installLocalStorageStub()
   })
@@ -61,11 +43,11 @@ describe('auth state', () => {
       sessionInfo: {
         userId: 'backend-user',
         username: 'backend',
-        scopeType: 'COMPANY',
+        scopeType: 'TENANT',
         customerScopeId: 'KREWE',
-        activeCompanyUserGroupId: 'KREWE',
-        activeCompanyLabel: 'Krewe',
-        availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+        activeTenantUserGroupId: 'KREWE',
+        activeTenantLabel: 'Krewe',
+        availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
         isSuperAdmin: false,
       },
     })
@@ -78,8 +60,8 @@ describe('auth state', () => {
     expect(useAuthState().status).toBe('authenticated')
     expect(useAuthState().userId).toBe('backend-user')
     expect(useAuthState().username).toBe('backend')
-    expect(useAuthState().sessionInfo?.scopeType).toBe('COMPANY')
-    expect(useAuthState().sessionInfo?.activeCompanyUserGroupId).toBe('KREWE')
+    expect(useAuthState().sessionInfo?.scopeType).toBe('TENANT')
+    expect(useAuthState().sessionInfo?.activeTenantUserGroupId).toBe('KREWE')
   })
 
   it('stores the explicit auth token contract on login and clears it on logout', async () => {
@@ -95,11 +77,11 @@ describe('auth state', () => {
       sessionInfo: {
         userId: 'backend-user',
         username: 'backend',
-        scopeType: 'COMPANY',
+        scopeType: 'TENANT',
         customerScopeId: 'KREWE',
-        activeCompanyUserGroupId: 'KREWE',
-        activeCompanyLabel: 'Krewe',
-        availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+        activeTenantUserGroupId: 'KREWE',
+        activeTenantLabel: 'Krewe',
+        availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
         isSuperAdmin: false,
       },
     })
@@ -130,8 +112,8 @@ describe('auth state', () => {
     expect(useAuthState().error).toBeNull()
   })
 
-  it('updates the authenticated session when the active company changes', async () => {
-    saveActiveCompanyRpc.mockResolvedValue({
+  it('updates the authenticated session when the active tenant changes', async () => {
+    saveActiveTenantRpc.mockResolvedValue({
       ok: true,
       messages: [],
       errors: [],
@@ -139,11 +121,11 @@ describe('auth state', () => {
       sessionInfo: {
         userId: 'backend-user',
         username: 'backend',
-        scopeType: 'COMPANY',
+        scopeType: 'TENANT',
         customerScopeId: 'GORJANA',
-        activeCompanyUserGroupId: 'GORJANA',
-        activeCompanyLabel: 'Gorjana',
-        availableCompanies: [
+        activeTenantUserGroupId: 'GORJANA',
+        activeTenantLabel: 'Gorjana',
+        availableTenants: [
           { userGroupId: 'GORJANA', label: 'Gorjana' },
           { userGroupId: 'KREWE', label: 'Krewe' },
         ],
@@ -151,18 +133,60 @@ describe('auth state', () => {
       },
     })
 
-    const { saveActiveCompany, useAuthState } = await import('../auth')
+    const { saveActiveTenant, useAuthState } = await import('../auth')
 
-    await expect(saveActiveCompany('GORJANA')).resolves.toBe(true)
-    expect(saveActiveCompanyRpc).toHaveBeenCalledWith('GORJANA')
+    await expect(saveActiveTenant('GORJANA')).resolves.toBe(true)
+    expect(saveActiveTenantRpc).toHaveBeenCalledWith('GORJANA')
     expect(useAuthState().status).toBe('authenticated')
-    expect(useAuthState().sessionInfo?.activeCompanyUserGroupId).toBe('GORJANA')
-    expect(useAuthState().sessionInfo?.activeCompanyLabel).toBe('Gorjana')
+    expect(useAuthState().sessionInfo?.activeTenantUserGroupId).toBe('GORJANA')
+    expect(useAuthState().sessionInfo?.activeTenantLabel).toBe('Gorjana')
     expect(useAuthState().error).toBeNull()
   })
 
+  it('derives UI permissions for view-only, editor, and super-admin sessions', async () => {
+    const { buildUiPermissionPolicy } = await import('../auth')
+
+    expect(buildUiPermissionPolicy({
+      userId: 'view-only',
+      canEditActiveTenantData: false,
+      isSuperAdmin: false,
+    })).toEqual({
+      canViewTenantSettings: true,
+      canEditTenantSettings: false,
+      canManageGlobalSettings: false,
+    })
+
+    expect(buildUiPermissionPolicy({
+      userId: 'editor',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    })).toMatchObject({
+      canViewTenantSettings: true,
+      canEditTenantSettings: true,
+      canManageGlobalSettings: false,
+    })
+
+    expect(buildUiPermissionPolicy({
+      userId: 'super-admin',
+      canEditActiveTenantData: false,
+      isSuperAdmin: true,
+    })).toMatchObject({
+      canViewTenantSettings: true,
+      canEditTenantSettings: true,
+      canManageGlobalSettings: true,
+    })
+  })
+
   it('marks the state as unauthenticated when login key verification returns 401', async () => {
-    window.localStorage.setItem('darpan.authToken', 'expired-token')
+    window.localStorage.setItem(
+      'darpan.authToken',
+      JSON.stringify({
+        value: 'expired-token',
+        headerName: 'login_key',
+        tokenType: 'LOGIN_KEY',
+        expiresAt: null,
+      }),
+    )
     const { ApiCallError, getAuthToken } = await import('../api/client')
     getSessionInfo.mockRejectedValue(new ApiCallError('Login key expired', 401))
 
@@ -231,5 +255,13 @@ describe('auth state', () => {
       name: 'login',
       query: { redirect: '/connections/llm' },
     })
+  })
+
+  it('does not build login redirects that point back to login', async () => {
+    const { buildAuthRedirect } = await import('../auth')
+
+    expect(buildAuthRedirect('/login')).toEqual({ name: 'login' })
+    expect(buildAuthRedirect('/login?redirect=/login')).toEqual({ name: 'login' })
+    expect(buildAuthRedirect('/')).toEqual({ name: 'login' })
   })
 })

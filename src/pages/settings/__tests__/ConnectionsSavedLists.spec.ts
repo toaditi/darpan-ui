@@ -15,7 +15,9 @@ const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'john.doe',
     isSuperAdmin: false,
-    availableCompanies: [] as Array<{ userGroupId: string; label?: string }>,
+    canEditActiveTenantData: true,
+    activeTenantUserGroupId: 'KREWE',
+    availableTenants: [] as Array<{ userGroupId: string; label?: string }>,
   },
 }))
 
@@ -40,6 +42,17 @@ vi.mock('../../../lib/api/facade', () => ({
 
 vi.mock('../../../lib/auth', () => ({
   useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
 }))
 
 import NetSuiteSettingsPage from '../NetSuiteSettingsPage.vue'
@@ -57,7 +70,9 @@ describe('connections saved-name lists', () => {
     authState.sessionInfo = {
       userId: 'john.doe',
       isSuperAdmin: false,
-      availableCompanies: [],
+      canEditActiveTenantData: true,
+      activeTenantUserGroupId: 'KREWE',
+      availableTenants: [],
     }
   })
 
@@ -70,6 +85,7 @@ describe('connections saved-name lists', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -118,69 +134,7 @@ describe('connections saved-name lists', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
-          authType: 'BASIC',
-          username: 'service-user',
-          isActive: 'Y',
-          hasPassword: true,
-          hasApiToken: false,
-          hasPrivateKeyPem: false,
-        },
-      ],
-      pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
-    })
-    listNsRestletConfigs.mockResolvedValue({
-      ok: true,
-      messages: [],
-      errors: [],
-      restletConfigs: [
-        {
-          nsRestletConfigId: 'endpoint-primary',
-          description: 'Invoice Export',
-          endpointUrl: 'https://netsuite.example.com/restlet',
-          httpMethod: 'POST',
-          nsAuthConfigId: 'auth-primary',
-          authType: 'BASIC',
-          connectTimeoutSeconds: 30,
-          readTimeoutSeconds: 60,
-          isActive: 'Y',
-        },
-      ],
-      pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
-    })
-
-    const wrapper = mount(NetSuiteSettingsPage)
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Endpoints')
-    const tile = wrapper.get('[data-testid="netsuite-endpoint-tile"]')
-    expect(tile.text()).toBe('Invoice Export')
-    expect(wrapper.text()).not.toContain('Configure NetSuite endpoint URLs')
-    expect(wrapper.get('[data-testid="saved-endpoint-configs"]').classes()).toContain('static-page-record-grid--fixed')
-    expect(tile.attributes('data-to')).toContain('"name":"settings-netsuite-endpoints-edit"')
-    expect(tile.attributes('data-to')).toContain('"nsRestletConfigId":"endpoint-primary"')
-    expect(wrapper.get('[data-testid="netsuite-endpoint-create-action"]').attributes('data-to')).toContain(
-      '"name":"settings-netsuite-endpoints-create"',
-    )
-  })
-
-  it('does not render tenant labels on auth and endpoint tiles for super-admin sessions', async () => {
-    authState.sessionInfo = {
-      userId: 'john.doe',
-      isSuperAdmin: true,
-      availableCompanies: [
-        { userGroupId: 'GORJANA', label: 'Gorjana' },
-        { userGroupId: 'KREWE', label: 'Krewe' },
-      ],
-    }
-    listNsAuthConfigs.mockResolvedValue({
-      ok: true,
-      messages: [],
-      errors: [],
-      authConfigs: [
-        {
-          nsAuthConfigId: 'auth-primary',
-          description: 'Primary Auth',
-          companyUserGroupId: 'GORJANA',
+          companyUserGroupId: 'KREWE',
           authType: 'BASIC',
           username: 'service-user',
           isActive: 'Y',
@@ -215,7 +169,158 @@ describe('connections saved-name lists', () => {
     const wrapper = mount(NetSuiteSettingsPage)
     await flushPromises()
 
+    expect(wrapper.text()).toContain('Endpoints')
+    const tile = wrapper.get('[data-testid="netsuite-endpoint-tile"]')
+    expect(tile.text()).toBe('Invoice Export')
+    expect(wrapper.text()).not.toContain('Configure NetSuite endpoint URLs')
+    expect(wrapper.get('[data-testid="saved-endpoint-configs"]').classes()).toContain('static-page-record-grid--fixed')
+    expect(tile.attributes('data-to')).toContain('"name":"settings-netsuite-endpoints-edit"')
+    expect(tile.attributes('data-to')).toContain('"nsRestletConfigId":"endpoint-primary"')
+    expect(wrapper.get('[data-testid="netsuite-endpoint-create-action"]').attributes('data-to')).toContain(
+      '"name":"settings-netsuite-endpoints-create"',
+    )
+  })
+
+  it('keeps NetSuite records visible but hides create affordances for view-only tenants', async () => {
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: false,
+      canEditActiveTenantData: false,
+      activeTenantUserGroupId: 'KREWE',
+      availableTenants: [],
+    }
+    listNsAuthConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      authConfigs: [
+        {
+          nsAuthConfigId: 'auth-primary',
+          description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
+          authType: 'BASIC',
+          username: 'service-user',
+          isActive: 'Y',
+          hasPassword: true,
+          hasApiToken: false,
+          hasPrivateKeyPem: false,
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
+    })
+    listNsRestletConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      restletConfigs: [
+        {
+          nsRestletConfigId: 'endpoint-primary',
+          description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
+          endpointUrl: 'https://netsuite.example.com/restlet',
+          httpMethod: 'POST',
+          nsAuthConfigId: 'auth-primary',
+          authType: 'BASIC',
+          connectTimeoutSeconds: 30,
+          readTimeoutSeconds: 60,
+          isActive: 'Y',
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 10, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(NetSuiteSettingsPage)
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="netsuite-auth-tile"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="netsuite-endpoint-tile"]')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="netsuite-auth-create-action"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="netsuite-endpoint-create-action"]').exists()).toBe(false)
+  })
+
+  it('filters out auth and endpoint tiles from other tenants without rendering tenant labels', async () => {
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: true,
+      canEditActiveTenantData: true,
+      activeTenantUserGroupId: 'KREWE',
+      availableTenants: [
+        { userGroupId: 'GORJANA', label: 'Gorjana' },
+        { userGroupId: 'KREWE', label: 'Krewe' },
+      ],
+    }
+    listNsAuthConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      authConfigs: [
+        {
+          nsAuthConfigId: 'auth-gorjana',
+          description: 'Gorjana Auth',
+          companyUserGroupId: 'GORJANA',
+          authType: 'BASIC',
+          username: 'gorjana-user',
+          isActive: 'Y',
+          hasPassword: true,
+          hasApiToken: false,
+          hasPrivateKeyPem: false,
+        },
+        {
+          nsAuthConfigId: 'auth-krewe',
+          description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
+          authType: 'BASIC',
+          username: 'krewe-user',
+          isActive: 'Y',
+          hasPassword: true,
+          hasApiToken: false,
+          hasPrivateKeyPem: false,
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 10, totalCount: 2, pageCount: 1 },
+    })
+    listNsRestletConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      restletConfigs: [
+        {
+          nsRestletConfigId: 'endpoint-krewe',
+          description: 'Invoice Export',
+          companyUserGroupId: 'KREWE',
+          endpointUrl: 'https://netsuite.example.com/restlet',
+          httpMethod: 'POST',
+          nsAuthConfigId: 'auth-krewe',
+          authType: 'BASIC',
+          connectTimeoutSeconds: 30,
+          readTimeoutSeconds: 60,
+          isActive: 'Y',
+        },
+        {
+          nsRestletConfigId: 'endpoint-gorjana',
+          description: 'Gorjana Endpoint',
+          companyUserGroupId: 'GORJANA',
+          endpointUrl: 'https://gorjana.example.com/restlet',
+          httpMethod: 'POST',
+          nsAuthConfigId: 'auth-gorjana',
+          authType: 'BASIC',
+          connectTimeoutSeconds: 30,
+          readTimeoutSeconds: 60,
+          isActive: 'Y',
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 10, totalCount: 2, pageCount: 1 },
+    })
+
+    const wrapper = mount(NetSuiteSettingsPage)
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="netsuite-auth-tile"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="netsuite-auth-tile"]').text()).toBe('Primary Auth')
+    expect(wrapper.findAll('[data-testid="netsuite-endpoint-tile"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="netsuite-endpoint-tile"]').text()).toBe('Invoice Export')
+    expect(wrapper.text()).not.toContain('Gorjana Auth')
+    expect(wrapper.text()).not.toContain('Gorjana Endpoint')
+    expect(wrapper.text()).not.toContain('Krewe')
   })
 })

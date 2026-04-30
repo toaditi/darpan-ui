@@ -23,6 +23,7 @@
       @keydown.space.prevent="toggleMenu"
       @keydown.down.prevent="openMenuAndFocus('selected')"
       @keydown.up.prevent="openMenuAndFocus('last')"
+      @keydown.escape.prevent="closeMenu"
     >
       <span class="workflow-select-trigger-label">{{ selectedLabel || placeholder }}</span>
       <span class="workflow-select-trigger-icon" aria-hidden="true">
@@ -56,6 +57,7 @@
         @keydown.home.prevent="focusOption(0)"
         @keydown.end.prevent="focusOption(options.length - 1)"
         @keydown.enter.prevent="selectOptionAndSubmit(option.value)"
+        @keydown.escape.prevent="closeAndFocusTrigger"
       >
         {{ option.label }}
       </button>
@@ -64,13 +66,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, ref, type ComponentPublicInstance } from 'vue'
-import { DISMISS_INLINE_MENUS_EVENT, INLINE_MENU_OPEN_EVENT } from '../../lib/uiEvents'
+import { useInlineSelect, type InlineSelectOption } from '../../lib/useInlineSelect'
 
-export interface WorkflowSelectOption {
-  value: string
-  label: string
-}
+export type WorkflowSelectOption = InlineSelectOption
 
 const props = withDefaults(
   defineProps<{
@@ -90,91 +88,36 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-const root = ref<HTMLElement | null>(null)
-const trigger = ref<HTMLElement | null>(null)
-const optionRefs = ref<HTMLButtonElement[]>([])
-const isOpen = ref(false)
-const listboxId = `workflow-select-${Math.random().toString(36).slice(2, 10)}`
-
-const isEmpty = computed(() => props.modelValue.length === 0)
-const selectedLabel = computed(() => props.options.find((option) => option.value === props.modelValue)?.label ?? '')
-
-onBeforeUpdate(() => {
-  optionRefs.value = []
+const {
+  root,
+  trigger,
+  isOpen,
+  listboxId,
+  selectedLabel,
+  isEmpty,
+  hasSelection,
+  setOptionRef,
+  closeMenu,
+  toggleMenu,
+  focusOption,
+  focusRelative,
+  openMenuAndFocus,
+  selectOption,
+  selectOptionAndSubmit,
+  submitClosestForm,
+  closeAndFocusTrigger,
+} = useInlineSelect({
+  idPrefix: 'workflow-select',
+  options: () => props.options,
+  modelValue: () => props.modelValue,
+  disabled: () => props.disabled,
+  emitValue: (value) => emit('update:modelValue', value),
 })
-
-function setOptionRef(element: Element | ComponentPublicInstance | null): void {
-  if (element instanceof HTMLButtonElement) {
-    optionRefs.value.push(element)
-  }
-}
-
-function closeMenu(): void {
-  isOpen.value = false
-}
-
-function openMenu(): void {
-  if (isOpen.value) return
-  document.dispatchEvent(new CustomEvent<string>(INLINE_MENU_OPEN_EVENT, { detail: listboxId }))
-  isOpen.value = true
-}
-
-function toggleMenu(): void {
-  if (props.disabled || props.options.length === 0) return
-  if (isOpen.value) {
-    closeMenu()
-    return
-  }
-  openMenu()
-}
-
-function focusOption(index: number): void {
-  optionRefs.value[index]?.focus()
-}
-
-function focusRelative(currentIndex: number, delta: number): void {
-  const optionCount = props.options.length
-  if (optionCount === 0) return
-  const nextIndex = (currentIndex + delta + optionCount) % optionCount
-  focusOption(nextIndex)
-}
-
-async function openMenuAndFocus(target: 'selected' | 'last'): Promise<void> {
-  if (props.disabled || props.options.length === 0) return
-  openMenu()
-  await nextTick()
-
-  if (target === 'last') {
-    focusOption(props.options.length - 1)
-    return
-  }
-
-  const selectedIndex = props.options.findIndex((option) => option.value === props.modelValue)
-  focusOption(selectedIndex >= 0 ? selectedIndex : 0)
-}
-
-async function selectOption(value: string): Promise<void> {
-  emit('update:modelValue', value)
-  closeMenu()
-  await nextTick()
-  trigger.value?.focus()
-}
-
-async function selectOptionAndSubmit(value: string): Promise<void> {
-  emit('update:modelValue', value)
-  closeMenu()
-  await nextTick()
-
-  if (await submitClosestForm()) return
-
-  trigger.value?.focus()
-}
 
 async function handleTriggerEnter(): Promise<void> {
   if (props.disabled || props.options.length === 0) return
 
-  const hasSelection = props.options.some((option) => option.value === props.modelValue)
-  if (!hasSelection) {
+  if (!hasSelection.value) {
     await openMenuAndFocus('selected')
     return
   }
@@ -184,52 +127,10 @@ async function handleTriggerEnter(): Promise<void> {
     return
   }
 
-  if (await submitClosestForm()) return
+  if (submitClosestForm()) return
 
   trigger.value?.focus()
 }
-
-async function submitClosestForm(): Promise<boolean> {
-  const form = root.value?.closest('form')
-  if (form instanceof HTMLFormElement) {
-    if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-      return true
-    }
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    return true
-  }
-  return false
-}
-
-function handleDocumentPointerDown(event: MouseEvent): void {
-  const target = event.target
-  if (!(target instanceof Node)) return
-  if (root.value?.contains(target)) return
-  closeMenu()
-}
-
-function handlePeerOpen(event: Event): void {
-  const openEvent = event as CustomEvent<string>
-  if (openEvent.detail === listboxId) return
-  closeMenu()
-}
-
-function handleDismissInlineMenus(): void {
-  closeMenu()
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleDocumentPointerDown)
-  document.addEventListener(INLINE_MENU_OPEN_EVENT, handlePeerOpen)
-  document.addEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismissInlineMenus)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', handleDocumentPointerDown)
-  document.removeEventListener(INLINE_MENU_OPEN_EVENT, handlePeerOpen)
-  document.removeEventListener(DISMISS_INLINE_MENUS_EVENT, handleDismissInlineMenus)
-})
 </script>
 
 <style scoped>

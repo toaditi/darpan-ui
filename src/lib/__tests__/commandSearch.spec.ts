@@ -42,8 +42,8 @@ const actions: CommandAction[] = [
     label: 'Run Reconciliation',
     description: 'Compare two files or datasets and review the result.',
     group: 'Navigate',
-    to: '/reconciliation/pilot-diff',
-    aliases: ['compare files', 'compare data', 'match records', 'reconcile data', 'run comparison', 'execute', 'diff', 'pilot'],
+    to: '/reconciliation/diff',
+    aliases: ['compare files', 'compare data', 'match records', 'reconcile data', 'run comparison', 'execute', 'diff', 'customer'],
   },
 ]
 
@@ -83,6 +83,21 @@ describe('rankCommandActions', () => {
 
     expect(ranked[0]?.id).toBe('navigate-netsuite-settings')
     expect(ranked[1]?.id).toBe('navigate-ai-settings')
+  })
+
+  it('omits query-only data actions until the user types a query', () => {
+    const dataAction: CommandAction = {
+      id: 'data-sftp-server-warehouse',
+      label: 'Edit SFTP: Warehouse',
+      description: 'Open the SFTP server editor.',
+      group: 'Data',
+      to: '/settings/sftp/edit/warehouse',
+      aliases: ['warehouse', 'sftp server', 'edit sftp'],
+      requiresQuery: true,
+    }
+
+    expect(rankCommandActions([...actions, dataAction], '').map((action) => action.id)).not.toContain(dataAction.id)
+    expect(rankCommandActions([...actions, dataAction], 'edit warehouse sftp')[0]?.id).toBe(dataAction.id)
   })
 })
 

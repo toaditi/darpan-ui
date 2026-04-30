@@ -76,6 +76,7 @@ import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import type { LlmSettings } from '../../lib/api/types'
+import { useUiPermissions } from '../../lib/auth'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 type LlmProvider = 'OPENAI' | 'GEMINI'
@@ -87,10 +88,12 @@ interface ProviderProfile extends LlmSettings {
 }
 
 const route = useRoute()
+const permissions = useUiPermissions()
 const providers = ref<ProviderProfile[]>([])
 const primaryProviderId = ref<LlmProvider | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+const canManageGlobalSettings = computed(() => permissions.canManageGlobalSettings)
 
 const providerOrder: LlmProvider[] = ['OPENAI', 'GEMINI']
 const providerLabels: Record<LlmProvider, string> = {
@@ -171,6 +174,11 @@ function handleDragStart(llmProvider: string, event: DragEvent): void {
 }
 
 async function savePrimaryProvider(nextProvider: ProviderProfile, previousProviderId: LlmProvider | null): Promise<void> {
+  if (!canManageGlobalSettings.value) {
+    error.value = 'Only super admins can update AI settings.'
+    return
+  }
+
   updatePrimaryProvider(nextProvider.llmProvider)
 
   try {
@@ -189,6 +197,8 @@ async function savePrimaryProvider(nextProvider: ProviderProfile, previousProvid
 }
 
 async function handleDrop(event: DragEvent): Promise<void> {
+  if (!canManageGlobalSettings.value) return
+
   const droppedProviderId = normalizeProvider(event.dataTransfer?.getData('text/plain')?.replace('provider:', ''))
   if (!droppedProviderId || droppedProviderId === primaryProviderId.value) return
 
@@ -201,6 +211,13 @@ async function handleDrop(event: DragEvent): Promise<void> {
 }
 
 async function load(): Promise<void> {
+  if (!canManageGlobalSettings.value) {
+    providers.value = []
+    primaryProviderId.value = null
+    error.value = 'Only super admins can access AI settings.'
+    return
+  }
+
   loading.value = true
   error.value = null
   try {

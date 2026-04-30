@@ -23,10 +23,10 @@
       <tbody>
         <tr
           v-for="(row, index) in rows"
-          :key="rowKey ? String(row[rowKey]) : String(index)"
+          :key="resolveRowKey(row)"
           :data-testid="rowTestId"
         >
-          <td v-for="column in columns" :key="`${column.key}-${index}`" :class="column.cellClass">
+          <td v-for="column in columns" :key="column.key" :class="column.cellClass">
             <slot :name="`cell-${column.key}`" :row="row" :column="column" :index="index">
               {{ String(row[column.key] ?? '') }}
             </slot>
@@ -59,4 +59,23 @@ const props = defineProps<{
 }>()
 
 const showColGroup = computed(() => props.columns.some((column) => Boolean(column.colClass || column.colStyle)))
+const fallbackRowKeys = new WeakMap<Record<string, unknown>, string>()
+let nextFallbackRowKey = 0
+
+function resolveRowKey(row: Record<string, unknown>): string {
+  if (props.rowKey) {
+    const explicitKey = row[props.rowKey]
+    if (explicitKey !== null && explicitKey !== undefined && String(explicitKey).trim()) {
+      return String(explicitKey)
+    }
+  }
+
+  const existingKey = fallbackRowKeys.get(row)
+  if (existingKey) return existingKey
+
+  const nextKey = `app-table-row-${nextFallbackRowKey}`
+  nextFallbackRowKey += 1
+  fallbackRowKeys.set(row, nextKey)
+  return nextKey
+}
 </script>

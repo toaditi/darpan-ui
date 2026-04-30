@@ -15,6 +15,23 @@ describe('StaticPageFrame', () => {
     expect(wrapper.find('.static-page-hero').text()).toContain('Static Page Title')
     expect(wrapper.find('.static-page-board').text()).toContain('Board content')
   })
+
+  it('renders static page actions outside the main panel container', () => {
+    const wrapper = mount(StaticPageFrame, {
+      slots: {
+        default: '<div class="wireframe-body">Board content</div>',
+        actions: '<button type="button">Save</button><button type="button">Delete</button>',
+      },
+    })
+
+    const actions = wrapper.get('.static-page-actions')
+
+    expect(actions.text()).toContain('Save')
+    expect(actions.text()).toContain('Delete')
+    expect(actions.element.closest('.static-page-panel')).toBeNull()
+    expect(actions.element.closest('.static-page-board')).toBeNull()
+    expect(wrapper.find('.static-page-board .static-page-actions').exists()).toBe(false)
+  })
 })
 
 describe('StaticPageSection', () => {

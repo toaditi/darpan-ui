@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   WORKFLOW_ORIGIN_LABEL_KEY,
   WORKFLOW_ORIGIN_PATH_KEY,
+  WORKFLOW_ORIGIN_ROUTE_STATE_KEY,
   buildWorkflowOriginState,
   readWorkflowOriginState,
   resolveStaticPageLabel,
@@ -15,6 +16,20 @@ describe('workflowOrigin', () => {
     })
   })
 
+  it('builds a workflow origin payload with optional route state', () => {
+    expect(
+      buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager', {
+        reconciliationRuleSetDraft: { runName: 'JSON Order Compare' },
+      }),
+    ).toEqual({
+      [WORKFLOW_ORIGIN_LABEL_KEY]: 'Run Details',
+      [WORKFLOW_ORIGIN_PATH_KEY]: '/reconciliation/ruleset-manager',
+      [WORKFLOW_ORIGIN_ROUTE_STATE_KEY]: {
+        reconciliationRuleSetDraft: { runName: 'JSON Order Compare' },
+      },
+    })
+  })
+
   it('reads workflow origin state when both label and path are present', () => {
     expect(
       readWorkflowOriginState({
@@ -24,6 +39,24 @@ describe('workflowOrigin', () => {
     ).toEqual({
       label: 'Schema Library',
       path: '/schemas/library',
+    })
+  })
+
+  it('reads workflow origin route state when present', () => {
+    expect(
+      readWorkflowOriginState({
+        workflowOriginLabel: 'Run Details',
+        workflowOriginPath: '/reconciliation/ruleset-manager',
+        workflowOriginRouteState: {
+          reconciliationRuleSetDraft: { runName: 'JSON Order Compare' },
+        },
+      }),
+    ).toEqual({
+      label: 'Run Details',
+      path: '/reconciliation/ruleset-manager',
+      state: {
+        reconciliationRuleSetDraft: { runName: 'JSON Order Compare' },
+      },
     })
   })
 

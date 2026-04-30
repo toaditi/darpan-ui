@@ -12,6 +12,13 @@ const route = vi.hoisted(() => ({
   params: {} as Record<string, string>,
   fullPath: '/schemas/editor',
 }))
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'editor',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
 
 vi.mock('../../../lib/api/facade', () => ({
   jsonSchemaFacade: {
@@ -34,6 +41,20 @@ vi.mock('vue-router', () => ({
     props: ['to'],
     template: '<a v-bind="$attrs" :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
   },
+}))
+
+vi.mock('../../../lib/auth', () => ({
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
 }))
 
 import JsonSchemaEditorPage from '../JsonSchemaEditorPage.vue'
@@ -62,6 +83,11 @@ describe('JsonSchemaEditorPage', () => {
     saveRefined.mockReset()
     deleteSchema.mockReset()
     listEnumOptions.mockReset()
+    authState.sessionInfo = {
+      userId: 'editor',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
     listEnumOptions.mockResolvedValue({
       options: [
         { enumId: 'DarSysOms', label: 'OMS' },
@@ -128,6 +154,11 @@ describe('JsonSchemaEditorPage', () => {
     expect(wrapper.find('.static-page-frame').exists()).toBe(true)
     expect(wrapper.text()).toContain('Orders schema')
     expect(wrapper.find('.static-page-hero h1').text()).toBe('Orders schema')
+    const editableTitle = wrapper.get('[data-testid="schema-editor-title"]')
+    expect(editableTitle.element.tagName).toBe('H1')
+    expect(editableTitle.attributes('contenteditable')).toBe('plaintext-only')
+    expect(editableTitle.attributes('aria-label')).toBe('Schema name')
+    expect(editableTitle.classes()).toContain('static-page-inline-edit-title')
     expect(wrapper.find('.static-page-hero .static-page-section-description').exists()).toBe(false)
     expect(wrapper.findAll('.static-page-summary-card')).toHaveLength(3)
     expect(wrapper.findAll('.static-page-summary-label').map((item) => item.text())).toEqual(['Schema ID', 'System', 'Updated'])
@@ -164,10 +195,14 @@ describe('JsonSchemaEditorPage', () => {
     expect(tableColumns[3]?.attributes('style')).toContain('width: 4rem;')
     expect(wrapper.get('[data-testid="schema-editor-download"]').attributes('aria-label')).toBe('Download schema JSON')
     expect(wrapper.get('[data-testid="schema-editor-add-row"]').attributes('aria-label')).toBe('Add field row')
+    expect(wrapper.get('form').attributes('id')).toBe('schema-editor-refined-form')
     const saveRefinedButton = wrapper.get('[data-testid="save-refined-fields"]')
     expect(saveRefinedButton.attributes('aria-label')).toBe('Save refined fields')
+    expect(saveRefinedButton.attributes('form')).toBe('schema-editor-refined-form')
     expect(saveRefinedButton.classes()).toContain('app-icon-action--large')
     expect(saveRefinedButton.element.closest('.schema-editor-footer-row')).not.toBeNull()
+    expect(saveRefinedButton.element.closest('.static-page-actions')).not.toBeNull()
+    expect(saveRefinedButton.element.closest('.static-page-board')).toBeNull()
     const deleteButton = wrapper.get('[data-testid="delete-schema"]')
     expect(deleteButton.attributes('aria-label')).toBe('Delete schema')
     expect(deleteButton.classes()).toContain('app-icon-action')
@@ -177,6 +212,8 @@ describe('JsonSchemaEditorPage', () => {
     expect(deleteButton.classes()).not.toContain('app-table__icon-action')
     expect(deleteButton.classes()).not.toContain('app-table__icon-action--danger')
     expect(deleteButton.element.closest('.schema-editor-footer-row')).not.toBeNull()
+    expect(deleteButton.element.closest('.static-page-actions')).not.toBeNull()
+    expect(deleteButton.element.closest('.static-page-board')).toBeNull()
     const rowDeleteButton = wrapper.get('tbody button[aria-label="Remove field row"]')
     expect(rowDeleteButton.element.closest('.app-table__control-wrap--end')).not.toBeNull()
     expect(rowDeleteButton.classes()).toContain('app-table__icon-action')
@@ -212,6 +249,8 @@ describe('JsonSchemaEditorPage', () => {
     fieldPathInputs = wrapper.findAll('tbody input[type="text"]')
     expect(fieldPathInputs).toHaveLength(3)
     expect((fieldPathInputs[2]!.element as HTMLInputElement).value).toBe('')
+    editableTitle.element.textContent = 'Orders schema revised'
+    await editableTitle.trigger('input')
     await fieldPathInputs[0]!.setValue('$.orderNumber')
     await wrapper.find('form').trigger('submit')
     await flushPromises()
@@ -219,7 +258,7 @@ describe('JsonSchemaEditorPage', () => {
     expect(saveRefined).toHaveBeenCalledWith({
       jsonSchemaId: 'test-schema',
       schemaName: 'orders',
-      description: 'Orders schema',
+      description: 'Orders schema revised',
       systemEnumId: 'DarSysOms',
       fieldList: [
         { fieldPath: '$.orderNumber', type: 'string', required: true },

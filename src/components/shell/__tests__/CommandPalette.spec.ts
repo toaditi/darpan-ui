@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import CommandPalette from '../CommandPalette.vue'
@@ -25,7 +26,7 @@ const actions: CommandAction[] = [
     label: 'Run Reconciliation',
     description: 'Compare two files and review the result.',
     group: 'Navigate',
-    to: '/reconciliation/pilot-diff',
+    to: '/reconciliation/diff',
     aliases: ['compare files', 'reconcile'],
   },
 ]
@@ -143,5 +144,28 @@ describe('CommandPalette', () => {
     expect(wrapper.get('.command-panel').classes()).toContain('command-panel--keyboard')
     expect(updatedItems[1]!.classes()).toContain('command-item--active')
     expect(updatedItems[0]!.classes()).not.toContain('command-item--active')
+  })
+
+  it('uses the shared blurred popup backdrop for modal overlays', () => {
+    const wrapper = mount(CommandPalette, {
+      attachTo: document.body,
+      global: {
+        stubs: {
+          teleport: true,
+        },
+      },
+      props: {
+        open: true,
+        actions,
+      },
+    })
+    const styleSource = readFileSync('src/style.css', 'utf8')
+
+    expect(wrapper.get('.command-overlay').classes()).toContain('app-popup-backdrop')
+    expect(styleSource).toContain('--popup-background-blur: 3px;')
+    expect(styleSource).toContain('--popup-background-opacity: 0.5;')
+    expect(styleSource).toContain('.app-shell--popup-open {')
+    expect(styleSource).toContain('filter: blur(var(--popup-background-blur));')
+    expect(styleSource).toContain('opacity: var(--popup-background-opacity);')
   })
 })

@@ -5,36 +5,23 @@
     <WorkflowStepForm
       :question="currentQuestion"
       :primary-label="currentStep.id === 'name' ? 'Save' : 'OK'"
+      :primary-action-variant="currentStep.id === 'name' ? 'save' : 'default'"
       :submit-disabled="submitDisabled"
       :show-back="currentStepIndex > 0"
-      :show-primary-action="currentStep.id !== 'upload-intent'"
+      :show-primary-action="canEditTenantSettings && currentStep.id !== 'upload-intent'"
       :show-enter-hint="currentStep.id !== 'upload-intent'"
+      :allow-file-enter="currentStep.id === 'upload'"
       :primary-test-id="currentStep.id === 'name' ? 'save-schema' : 'wizard-next'"
       @submit="handlePrimarySubmit"
       @back="goBack"
     >
       <template v-if="currentStep.id === 'upload-intent'">
-        <div class="schema-kind-grid">
-          <button
-            v-for="option in uploadIntentOptions"
-            :key="option.value"
-            :class="[
-              'schema-kind-card',
-              {
-                'schema-kind-card--active': selectedUploadIntent === option.value,
-              },
-            ]"
-            :data-testid="`upload-intent-${option.value}`"
-            :aria-keyshortcuts="option.shortcutKey.toLowerCase()"
-            type="button"
-            @click="advanceFromUploadIntent(option.value)"
-          >
-            <div class="schema-kind-card__header">
-              <span class="schema-kind-card__key">{{ option.shortcutKey }}</span>
-              <span class="schema-kind-card__label">{{ option.label }}</span>
-            </div>
-          </button>
-        </div>
+        <WorkflowShortcutChoiceCards
+          :options="uploadIntentOptions"
+          :selected-value="selectedUploadIntent"
+          test-id-prefix="upload-intent"
+          @choose="handleUploadIntentChoice"
+        />
       </template>
 
       <template v-else-if="currentStep.id === 'upload'">
@@ -95,6 +82,7 @@
               :options="systemOptions"
               placeholder="Select system"
               test-id="schema-wizard-system"
+              submit-on-enter
             />
           </label>
         </div>
@@ -122,6 +110,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
+import WorkflowShortcutChoiceCards, {
+  type WorkflowShortcutChoiceOption,
+} from '../../components/workflow/WorkflowShortcutChoiceCards.vue'
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
 import AppTableFrame from '../../components/ui/AppTableFrame.vue'
 import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.vue'
@@ -131,6 +122,7 @@ import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
 import { invokePrimaryActionOnEnter } from '../../lib/keyboard'
 import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
+import { useUiPermissions } from '../../lib/auth'
 
 type SchemaWorkflowStep = 'upload-intent' | 'upload' | 'verify' | 'system' | 'name'
 type SchemaUploadIntent = 'schema' | 'sample'
@@ -140,10 +132,8 @@ interface WorkflowStep {
   title: string
 }
 
-interface UploadIntentOption {
+interface UploadIntentOption extends WorkflowShortcutChoiceOption {
   value: SchemaUploadIntent
-  label: string
-  shortcutKey: string
 }
 
 const uploadIntentOptions: UploadIntentOption[] = [
@@ -166,6 +156,7 @@ const fieldColumns = [
 ]
 
 const router = useRouter()
+const permissions = useUiPermissions()
 
 const currentStepIndex = ref(0)
 const selectedUploadIntent = ref<SchemaUploadIntent | ''>('')
@@ -179,6 +170,7 @@ const loading = ref(false)
 const saving = ref(false)
 const pageError = ref<string | null>(null)
 const systemOptions = ref<AppSelectOption[]>([])
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 
 function buildWorkflowSteps(uploadIntent: SchemaUploadIntent | ''): WorkflowStep[] {
   const steps: WorkflowStep[] = [
@@ -220,6 +212,7 @@ const uploadPlaceholder = computed(() => {
   return 'Choose a file to upload...'
 })
 const submitDisabled = computed(() => {
+  if (!canEditTenantSettings.value) return true
   switch (currentStep.value.id) {
     case 'upload-intent':
       return !selectedUploadIntent.value
@@ -384,6 +377,13 @@ function advanceFromUploadIntent(uploadIntent: SchemaUploadIntent): void {
   currentStepIndex.value = Math.min(currentStepIndex.value + 1, workflowSteps.value.length - 1)
 }
 
+function handleUploadIntentChoice(value: string): void {
+  const matchedOption = uploadIntentOptions.find((option) => option.value === value)
+  if (!matchedOption) return
+
+  advanceFromUploadIntent(matchedOption.value)
+}
+
 function onFileChange(event: Event): void {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0] ?? null
@@ -444,6 +444,10 @@ async function inferSchemaFromSampleUpload(): Promise<boolean> {
 }
 
 async function saveSchema(): Promise<void> {
+  if (!canEditTenantSettings.value) {
+    pageError.value = 'You do not have permission to save schemas for the active tenant.'
+    return
+  }
   if (!schemaName.value.trim() || !systemEnumId.value || !schemaTextToSave.value.trim()) return
 
   saving.value = true
@@ -539,57 +543,4 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-</style>
-
-<style scoped>
-.schema-kind-grid {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.85rem;
-  max-width: 34rem;
-}
-
-.schema-kind-card {
-  width: 100%;
-  display: grid;
-  gap: 0.45rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--surface-2);
-  color: var(--text);
-  text-align: left;
-}
-
-.schema-kind-card--active {
-  border-color: var(--text);
-  background: color-mix(in oklab, var(--surface-2) 72%, var(--surface));
-}
-
-.schema-kind-card__header {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.schema-kind-card__key {
-  min-width: 1.75rem;
-  min-height: 1.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in oklab, var(--text) 20%, transparent);
-  border-radius: 0.45rem;
-  color: color-mix(in oklab, var(--text) 72%, transparent);
-  font-size: 0.82rem;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.schema-kind-card__label {
-  font-size: 1rem;
-  font-weight: 400;
-}
-
 </style>

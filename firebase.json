@@ -20,7 +20,7 @@
         "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self';font-src 'self' data: *;script-src 'self' 'unsafe-inline' 'unsafe-eval' fonts.googleapis.com https://www.gstatic.com *.firebaseapp.com;img-src 'self' 'unsafe-inline' *.gorjana.com *.shopify.com javascript: ;style-src 'self' 'unsafe-inline' *;connect-src 'self' *; frame-ancestors https://admin.shopify.com https://*.myshopify.com;"
+          "value": "default-src 'self';base-uri 'self';object-src 'none';font-src 'self' data: https://fonts.gstatic.com;script-src 'self' https://www.gstatic.com https://*.firebaseapp.com;img-src 'self' data: https:;style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;connect-src 'self' https://*.hotwax.io;frame-src https://linear.app;frame-ancestors https://admin.shopify.com https://*.myshopify.com;form-action 'self';"
         },
         {
           "key": "strict-transport-security",

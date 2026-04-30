@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import InlineValidation from '../components/ui/InlineValidation.vue'
 import { loginWithCredentials, useAuthState } from '../lib/auth'
@@ -49,6 +49,22 @@ const errorText = computed(() => {
   if (authState.status === 'unauthenticated' && authState.error === INITIAL_UNAUTHENTICATED_MESSAGE) return null
   return authState.error
 })
+
+function hasRedirectQuery(): boolean {
+  return Object.prototype.hasOwnProperty.call(route.query, 'redirect')
+}
+
+function cleanupLoginSelfRedirect(): void {
+  if (!hasRedirectQuery()) return
+
+  const redirectTarget = resolveInternalRedirectTarget(route.query.redirect)
+  if (redirectTarget !== '/') return
+
+  void router.replace({ name: 'login' })
+}
+
+onMounted(cleanupLoginSelfRedirect)
+watch(() => route.query.redirect, cleanupLoginSelfRedirect)
 
 async function submit(): Promise<void> {
   loading.value = true

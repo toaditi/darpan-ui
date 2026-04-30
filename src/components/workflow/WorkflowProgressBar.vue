@@ -1,5 +1,12 @@
 <template>
-  <div class="wizard-progress" :aria-label="ariaLabel">
+  <div
+    class="wizard-progress"
+    :aria-label="ariaLabel"
+    role="progressbar"
+    aria-valuemin="0"
+    aria-valuemax="100"
+    :aria-valuenow="progressValue"
+  >
     <span class="wizard-progress-track">
       <span class="wizard-progress-fill" :style="{ width: normalizedWidth }"></span>
     </span>
@@ -19,10 +26,19 @@ const props = withDefaults(
   },
 )
 
-const normalizedWidth = computed(() => {
+const normalizedProgress = computed(() => {
   const rawValue = typeof props.progressPercent === 'number' ? props.progressPercent.toString() : props.progressPercent.trim()
-  return rawValue.endsWith('%') ? rawValue : `${rawValue}%`
+  return normalizeProgressValue(rawValue)
 })
+
+const normalizedWidth = computed(() => `${normalizedProgress.value}%`)
+const progressValue = computed(() => normalizedProgress.value)
+
+function normalizeProgressValue(rawValue: string): number {
+  const numericValue = Number(rawValue.replace(/%$/, ''))
+  if (!Number.isFinite(numericValue)) return 0
+  return Math.min(Math.max(numericValue, 0), 100)
+}
 </script>
 
 <style scoped>

@@ -1,5 +1,5 @@
 <template>
-  <WorkflowPage :progress-percent="progressPercent" aria-label="NetSuite auth setup progress" center-stage>
+  <WorkflowPage :progress-percent="progressPercent" aria-label="NetSuite auth setup progress" center-stage :edit-surface="isEditing">
     <InlineValidation v-if="error" tone="error" :message="error" />
     <p v-if="success" class="success-copy">{{ success }}</p>
 
@@ -12,6 +12,7 @@
       ]"
       :question="currentQuestion"
       :primary-label="primaryLabel"
+      :primary-action-variant="primaryActionVariant"
       :show-enter-hint="!isEditing"
       :show-back="showBack"
       :show-cancel-action="isEditing"
@@ -19,6 +20,7 @@
       cancel-test-id="cancel-netsuite-auth"
       :allow-select-enter="isCreateSelectStep"
       :submit-disabled="submitDisabled"
+      :show-primary-action="canEditTenantSettings"
       :primary-test-id="primaryTestId"
       @submit="handlePrimarySubmit"
       @back="goBack"
@@ -359,7 +361,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect from '../../components/workflow/WorkflowSelect.vue'
@@ -368,8 +370,10 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
+import { useAuthState, useUiPermissions } from '../../lib/auth'
 import type { NsAuthConfigRecord } from '../../lib/api/types'
 import { CONFIG_ID_MAX_LENGTH, exceedsConfigIdMaxLength } from './configId'
+import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 
 type AuthType = 'NONE' | 'BASIC' | 'BEARER' | 'OAUTH2_M2M_JWT'
 type AuthCreateStepId =
@@ -414,21 +418,27 @@ interface NsAuthForm {
 
 const route = useRoute()
 const router = useRouter()
+const authState = useAuthState()
+const permissions = useUiPermissions()
 
-const form = reactive<NsAuthForm>({
-  nsAuthConfigId: '',
-  description: '',
-  authType: 'NONE',
-  username: '',
-  password: '',
-  apiToken: '',
-  tokenUrl: '',
-  clientId: '',
-  certId: '',
-  scope: 'restlets rest_webservices',
-  privateKeyPem: '',
-  isActive: 'Y',
-})
+function createDefaultNsAuthForm(): NsAuthForm {
+  return {
+    nsAuthConfigId: '',
+    description: '',
+    authType: 'NONE',
+    username: '',
+    password: '',
+    apiToken: '',
+    tokenUrl: '',
+    clientId: '',
+    certId: '',
+    scope: 'restlets rest_webservices',
+    privateKeyPem: '',
+    isActive: 'Y',
+  }
+}
+
+const form = reactive<NsAuthForm>(createDefaultNsAuthForm())
 
 const authTypeOptions: AppSelectOption[] = [
   { value: 'NONE', label: 'None' },
@@ -454,6 +464,7 @@ const selectedScopeValues = ref<string[]>(parseScopeValue(defaultScopeValue))
 const showClientId = ref(false)
 
 const activeAuthConfigId = computed(() => String(route.params.nsAuthConfigId ?? '').trim())
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 const isEditing = computed(() => activeAuthConfigId.value.length > 0)
 const isBasicAuth = computed(() => form.authType === 'BASIC')
 const isBearerAuth = computed(() => form.authType === 'BEARER')
@@ -527,9 +538,15 @@ const primaryTestId = computed(() => (
     ? 'save-netsuite-auth'
     : 'wizard-next'
 ))
+const primaryActionVariant = computed<'default' | 'save'>(() => (
+  isEditing.value || currentCreateStep.value.id === 'nsAuthConfigId'
+    ? 'save'
+    : 'default'
+))
 const showBack = computed(() => !isEditing.value && currentStepIndex.value > 0)
 const isCreateSelectStep = computed(() => !isEditing.value && currentCreateStep.value.kind === 'select')
 const submitDisabled = computed(() => {
+  if (!canEditTenantSettings.value) return true
   if (loading.value) return true
   if (isEditing.value) return false
 
@@ -626,6 +643,16 @@ function applyRecord(record: NsAuthConfigRecord): void {
   form.isActive = record.isActive ?? 'Y'
 }
 
+function resetCreateForm(): void {
+  Object.assign(form, createDefaultNsAuthForm())
+  selectedScopeValues.value = parseScopeValue(defaultScopeValue)
+  form.scope = defaultScopeValue
+  showClientId.value = false
+  currentStepIndex.value = 0
+  error.value = null
+  success.value = null
+}
+
 function buildPayloadForAuthType(): Record<string, unknown> {
   const basePayload = {
     nsAuthConfigId: form.nsAuthConfigId.trim(),
@@ -714,7 +741,10 @@ async function loadAuthConfig(): Promise<void> {
   error.value = null
   try {
     const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 })
-    const matchingConfig = (response.authConfigs ?? []).find((config) => config.nsAuthConfigId === activeAuthConfigId.value)
+    const matchingConfig = filterRecordsForActiveTenant(
+      response.authConfigs ?? [],
+      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    ).find((config) => config.nsAuthConfigId === activeAuthConfigId.value)
     if (!matchingConfig) {
       error.value = `Unable to find NetSuite auth config "${activeAuthConfigId.value}".`
       return
@@ -727,7 +757,22 @@ async function loadAuthConfig(): Promise<void> {
   }
 }
 
+async function initializeForRoute(): Promise<void> {
+  if (!isEditing.value) {
+    resetCreateForm()
+    loading.value = false
+    return
+  }
+
+  await loadAuthConfig()
+}
+
 async function save(): Promise<void> {
+  if (!canEditTenantSettings.value) {
+    error.value = 'You do not have permission to save NetSuite auth settings for the active tenant.'
+    return
+  }
+
   loading.value = true
   error.value = null
   success.value = null
@@ -773,9 +818,9 @@ watch(
   },
 )
 
-onMounted(() => {
-  void loadAuthConfig()
-})
+watch(() => route.fullPath, () => {
+  void initializeForRoute()
+}, { immediate: true })
 </script>
 
 <style scoped>

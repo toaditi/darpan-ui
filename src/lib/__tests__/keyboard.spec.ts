@@ -22,6 +22,15 @@ describe('keyboard submit helpers', () => {
     expect(requestSubmit).toHaveBeenCalledTimes(1)
   })
 
+  it('does not treat ordinary key presses as primary Enter actions', () => {
+    const input = document.createElement('input')
+    input.type = 'text'
+    const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: input })
+
+    expect(shouldTriggerPrimaryEnterAction(event)).toBe(false)
+  })
+
   it('does not request form submit from textarea Enter events', () => {
     const form = document.createElement('form')
     const textarea = document.createElement('textarea')
@@ -63,6 +72,21 @@ describe('keyboard submit helpers', () => {
     Object.defineProperty(fileAllowedEvent, 'target', { value: fileInput })
 
     expect(shouldTriggerPrimaryEnterAction(fileAllowedEvent, { allowFile: true })).toBe(true)
+  })
+
+  it('keeps checkbox Enter blocked by default but allows it when requested', () => {
+    const checkboxInput = document.createElement('input')
+    checkboxInput.type = 'checkbox'
+
+    const defaultEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    Object.defineProperty(defaultEvent, 'target', { value: checkboxInput })
+
+    expect(shouldTriggerPrimaryEnterAction(defaultEvent)).toBe(false)
+
+    const checkboxAllowedEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    Object.defineProperty(checkboxAllowedEvent, 'target', { value: checkboxInput })
+
+    expect(shouldTriggerPrimaryEnterAction(checkboxAllowedEvent, { allowCheckbox: true })).toBe(true)
   })
 
   it('allows plain Escape to abort an active workflow', () => {

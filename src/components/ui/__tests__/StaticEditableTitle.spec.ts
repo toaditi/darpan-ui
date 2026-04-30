@@ -1,0 +1,92 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { mount } from '@vue/test-utils'
+import StaticEditableTitle from '../StaticEditableTitle.vue'
+
+describe('StaticEditableTitle', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('renders an editable static heading without adding input chrome', async () => {
+    const wrapper = mount(StaticEditableTitle, {
+      props: {
+        modelValue: 'Orders schema',
+        ariaLabel: 'Schema name',
+        testId: 'editable-title',
+      },
+    })
+
+    const title = wrapper.get('[data-testid="editable-title"]')
+    expect(title.element.tagName).toBe('H1')
+    expect(title.text()).toBe('Orders schema')
+    expect(title.attributes('contenteditable')).toBe('plaintext-only')
+    expect(title.attributes('aria-label')).toBe('Schema name')
+    expect(wrapper.find('input').exists()).toBe(false)
+
+    title.element.textContent = 'Orders schema revised'
+    await title.trigger('input')
+    await title.trigger('blur')
+
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['Orders schema revised'])
+    expect(wrapper.emitted('commit')?.[0]).toEqual(['Orders schema revised'])
+  })
+
+  it('can render as read-only when the page cannot edit the title', () => {
+    const wrapper = mount(StaticEditableTitle, {
+      props: {
+        modelValue: 'Selected Run',
+        editable: false,
+        testId: 'readonly-title',
+      },
+    })
+
+    const title = wrapper.get('[data-testid="readonly-title"]')
+    expect(title.attributes('contenteditable')).toBe('false')
+    expect(title.attributes('aria-label')).toBeUndefined()
+  })
+
+  it('commits once when Enter blurs the editable heading', async () => {
+    const wrapper = mount(StaticEditableTitle, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'Orders schema',
+        testId: 'editable-title',
+      },
+    })
+
+    const title = wrapper.get('[data-testid="editable-title"]')
+    const titleElement = title.element as HTMLElement
+    titleElement.focus()
+    titleElement.textContent = 'Orders schema revised'
+
+    await title.trigger('keydown.enter')
+
+    expect(wrapper.emitted('commit')).toEqual([['Orders schema revised']])
+    expect(document.activeElement).not.toBe(titleElement)
+    wrapper.unmount()
+  })
+
+  it('does not overwrite active content while the parent model updates', async () => {
+    const wrapper = mount(StaticEditableTitle, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'Shopify',
+        testId: 'editable-title',
+      },
+    })
+
+    const title = wrapper.get('[data-testid="editable-title"]')
+    const titleElement = title.element as HTMLElement
+    titleElement.focus()
+    expect(document.activeElement).toBe(titleElement)
+
+    titleElement.textContent = 'Shopify orders'
+    await title.trigger('input')
+    await wrapper.setProps({ modelValue: 'Shopify order' })
+
+    expect(titleElement.textContent).toBe('Shopify orders')
+
+    await title.trigger('blur')
+    wrapper.unmount()
+  })
+})

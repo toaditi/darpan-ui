@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AppTableFrame from '../AppTableFrame.vue'
 
@@ -51,5 +51,29 @@ describe('AppTableFrame', () => {
     expect(statusCells[1]?.text()).toBe('1-Pending')
     expect(wrapper.get('.append-row td').attributes('colspan')).toBe('2')
     expect(wrapper.get('.append-row').text()).toBe('Append action')
+  })
+
+  it('falls back to stable generated row keys when the configured row key is missing', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      const wrapper = mount(AppTableFrame, {
+        props: {
+          columns: [{ key: 'name', label: 'Name' }],
+          rows: [
+            { name: 'Missing key one' },
+            { name: 'Missing key two' },
+          ],
+          rowKey: 'id',
+        },
+      })
+
+      expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+      expect(wrapper.text()).toContain('Missing key one')
+      expect(wrapper.text()).toContain('Missing key two')
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Duplicate keys'))
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

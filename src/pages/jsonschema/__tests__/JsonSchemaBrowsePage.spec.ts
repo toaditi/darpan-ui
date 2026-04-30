@@ -9,7 +9,8 @@ const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'john.doe',
     isSuperAdmin: false,
-    availableCompanies: [] as Array<{ userGroupId: string; label?: string }>,
+    canEditActiveTenantData: true,
+    availableTenants: [] as Array<{ userGroupId: string; label?: string }>,
   },
 }))
 
@@ -29,6 +30,17 @@ vi.mock('../../../lib/api/facade', () => ({
 
 vi.mock('../../../lib/auth', () => ({
   useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
 }))
 
 import JsonSchemaBrowsePage from '../JsonSchemaBrowsePage.vue'
@@ -40,7 +52,8 @@ describe('JsonSchemaBrowsePage', () => {
     authState.sessionInfo = {
       userId: 'john.doe',
       isSuperAdmin: false,
-      availableCompanies: [],
+      canEditActiveTenantData: true,
+      availableTenants: [],
     }
     list.mockResolvedValue({
       schemas: Array.from({ length: 7 }, (_, index) => ({
@@ -141,7 +154,8 @@ describe('JsonSchemaBrowsePage', () => {
     authState.sessionInfo = {
       userId: 'john.doe',
       isSuperAdmin: true,
-      availableCompanies: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+      canEditActiveTenantData: true,
+      availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
     }
     list.mockResolvedValueOnce({
       schemas: [
@@ -164,5 +178,21 @@ describe('JsonSchemaBrowsePage', () => {
 
     expect(wrapper.get('[data-testid="schema-library-tile"]').text()).toContain('Description 1')
     expect(wrapper.get('[data-testid="schema-library-tile"]').text()).not.toContain('Krewe')
+  })
+
+  it('keeps saved schemas visible but hides create affordances for view-only tenants', async () => {
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      isSuperAdmin: false,
+      canEditActiveTenantData: false,
+      availableTenants: [],
+    }
+
+    const wrapper = mount(JsonSchemaBrowsePage)
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="schema-library-tile"]')).toHaveLength(5)
+    expect(wrapper.find('[data-testid="schema-library-create"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="schema-library-empty-create"]').exists()).toBe(false)
   })
 })

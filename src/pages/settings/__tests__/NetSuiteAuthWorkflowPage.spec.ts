@@ -10,6 +10,14 @@ const route = vi.hoisted(() => ({
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listNsAuthConfigs = vi.hoisted(() => vi.fn())
 const saveNsAuthConfig = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'john.doe',
+    activeTenantUserGroupId: 'KREWE',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
@@ -25,6 +33,21 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
+}))
+
 import NetSuiteAuthWorkflowPage from '../NetSuiteAuthWorkflowPage.vue'
 
 describe('NetSuiteAuthWorkflowPage', () => {
@@ -35,6 +58,12 @@ describe('NetSuiteAuthWorkflowPage', () => {
     push.mockReset()
     listNsAuthConfigs.mockReset()
     saveNsAuthConfig.mockReset()
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      activeTenantUserGroupId: 'KREWE',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
   })
 
   it('saves a new NetSuite auth config and returns to the combined dashboard', async () => {
@@ -114,6 +143,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'NONE',
           isActive: 'Y',
           hasPassword: false,
@@ -205,6 +235,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'OAUTH2_M2M_JWT',
           tokenUrl: 'https://netsuite.example.com/token',
           clientId: 'client-id',
@@ -246,6 +277,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'OAUTH2_M2M_JWT',
           tokenUrl: 'https://netsuite.example.com/token',
           clientId: 'client-id',
@@ -293,6 +325,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'OAUTH2_M2M_JWT',
           tokenUrl: 'https://netsuite.example.com/token',
           clientId: 'client-id',
@@ -334,6 +367,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'OAUTH2_M2M_JWT',
           tokenUrl: 'https://netsuite.example.com/token',
           clientId: 'client-id',
@@ -384,6 +418,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'OAUTH2_M2M_JWT',
           tokenUrl: 'https://netsuite.example.com/token',
           clientId: 'client-id',
@@ -422,7 +457,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
     expect(source).toContain('border: 1px solid var(--border-soft);')
     expect(source).toContain('background: color-mix(in oklab, var(--surface-2) 95%, white);')
     expect(source).toContain('transform: translateY(-1px);')
-    expect(runResultSource).toContain('.pilot-diff-bucket {')
+    expect(runResultSource).toContain('.reconciliation-diff-bucket {')
     expect(runResultSource).toContain('border: 1px solid var(--border-soft);')
     expect(runResultSource).toContain('background: color-mix(in oklab, var(--surface-2) 95%, white);')
   })
@@ -439,6 +474,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'OAUTH2_M2M_JWT',
           tokenUrl: 'https://netsuite.example.com/token',
           clientId: 'client-id',
@@ -479,6 +515,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
         {
           nsAuthConfigId: 'auth-primary',
           description: 'Primary Auth',
+          companyUserGroupId: 'KREWE',
           authType: 'OAUTH2_M2M_JWT',
           tokenUrl: 'https://netsuite.example.com/token',
           clientId: 'client-id',

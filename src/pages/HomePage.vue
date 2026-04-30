@@ -17,7 +17,6 @@
             @dragstart="handleDragStart(flow.id, $event)"
           >
             <span class="static-page-tile-title">{{ flow.title }}</span>
-            <span v-if="flow.statusLabel" class="static-page-tile-status">{{ flow.statusLabel }}</span>
           </RouterLink>
         </div>
         <div v-else class="static-page-drop-hint" data-testid="pinned-empty-state">drag and drop runs to pin</div>
@@ -42,7 +41,6 @@
             @dragstart="handleDragStart(flow.id, $event)"
           >
             <span class="static-page-tile-title">{{ flow.title }}</span>
-            <span v-if="flow.statusLabel" class="static-page-tile-status">{{ flow.statusLabel }}</span>
           </RouterLink>
           <button
             v-if="hasMoreOtherRuns"
@@ -78,27 +76,58 @@ import StaticPageFrame from '../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../components/ui/StaticPageSection.vue'
 import { buildAuthRedirect, ensureAuthenticated } from '../lib/auth'
 import { reconciliationFacade } from '../lib/api/facade'
-import type { PilotMappingSummary } from '../lib/api/types'
+import type { SavedRunSummary } from '../lib/api/types'
+import { buildReconciliationDiffRoute } from '../lib/reconciliationRoutes'
 import { buildWorkflowOriginState } from '../lib/workflowOrigin'
 
 interface DashboardFlowCard {
   id: string
-  mappingId: string
+  savedRunId: string
   title: string
-  statusLabel?: string
   to: RouteLocationRaw
 }
 
-function resolveSystemLabel(mapping: PilotMappingSummary, enumId?: string): string {
+const savedRunTitleOverrides: Record<string, string> = {
+  API: 'API',
+  CSV: 'CSV',
+  GL: 'GL',
+  ID: 'ID',
+  JSON: 'JSON',
+  LLM: 'LLM',
+  NETSUITE: 'NetSuite',
+  OMS: 'OMS',
+  PWA: 'PWA',
+  SAPI: 'SAPI',
+  SFTP: 'SFTP',
+  SKU: 'SKU',
+  SQL: 'SQL',
+  UI: 'UI',
+  URL: 'URL',
+}
+
+function titleizeSavedRunToken(token: string): string {
+  const override = savedRunTitleOverrides[token]
+  if (override) return override
+  return token.charAt(0) + token.slice(1).toLowerCase()
+}
+
+function resolveSavedRunTitle(runName: string): string {
+  const trimmed = runName.trim().replace(/\s+/g, ' ')
+  if (!trimmed || /[a-z]/.test(trimmed)) return trimmed
+  if (!/[A-Z]/.test(trimmed)) return trimmed
+  return trimmed.split(' ').map(titleizeSavedRunToken).join(' ')
+}
+
+function resolveSystemLabel(savedRun: SavedRunSummary, enumId?: string): string {
   if (!enumId) return ''
-  const option = mapping.systemOptions.find((systemOption) => systemOption.enumId === enumId)
+  const option = savedRun.systemOptions.find((systemOption) => systemOption.enumId === enumId)
   return option?.label || option?.enumCode || option?.enumId || ''
 }
 
 const route = useRoute()
 const router = useRouter()
-const mappings = ref<PilotMappingSummary[]>([])
-const pinnedMappingIds = ref<string[]>([])
+const savedRuns = ref<SavedRunSummary[]>([])
+const pinnedSavedRunIds = ref<string[]>([])
 const showAllOtherRuns = ref(false)
 const dashboardWorkflowOriginState = buildWorkflowOriginState('Dashboard', '/')
 const createFlowRoute: RouteLocationRaw = {
@@ -106,36 +135,38 @@ const createFlowRoute: RouteLocationRaw = {
   state: dashboardWorkflowOriginState,
 }
 
-const mappingCards = computed<DashboardFlowCard[]>(() =>
-  mappings.value.map((mapping) => ({
-    id: `mapping:${mapping.reconciliationMappingId}`,
-    mappingId: mapping.reconciliationMappingId,
-    title: mapping.mappingName,
-    to: {
-      name: 'reconciliation-pilot-diff',
-      query: {
-        mappingId: mapping.reconciliationMappingId,
-        runName: mapping.mappingName,
-        file1SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile1SystemEnumId),
-        file2SystemLabel: resolveSystemLabel(mapping, mapping.defaultFile2SystemEnumId),
-      },
-      state: dashboardWorkflowOriginState,
-    },
-  })),
+const savedRunCards = computed<DashboardFlowCard[]>(() =>
+  savedRuns.value.map((savedRun) => {
+    const title = resolveSavedRunTitle(savedRun.runName)
+    return {
+      id: `saved-run:${savedRun.savedRunId}`,
+      savedRunId: savedRun.savedRunId,
+      title,
+      to: buildReconciliationDiffRoute(
+        {
+          savedRunId: savedRun.savedRunId,
+          runName: title,
+          file1SystemLabel: resolveSystemLabel(savedRun, savedRun.defaultFile1SystemEnumId),
+          file2SystemLabel: resolveSystemLabel(savedRun, savedRun.defaultFile2SystemEnumId),
+        },
+        dashboardWorkflowOriginState,
+      ),
+    }
+  }),
 )
 
-const flowCards = computed<DashboardFlowCard[]>(() => mappingCards.value)
+const flowCards = computed<DashboardFlowCard[]>(() => savedRunCards.value)
 
 const pinnedFlowCards = computed<DashboardFlowCard[]>(() => {
-  const flowCardMap = new Map(flowCards.value.map((card) => [card.mappingId, card]))
-  return pinnedMappingIds.value
-    .map((mappingId) => flowCardMap.get(mappingId) ?? null)
+  const flowCardMap = new Map(flowCards.value.map((card) => [card.savedRunId, card]))
+  return pinnedSavedRunIds.value
+    .map((savedRunId) => flowCardMap.get(savedRunId) ?? null)
     .filter((card): card is DashboardFlowCard => card !== null)
 })
 
 const otherFlowCards = computed<DashboardFlowCard[]>(() => {
-  const pinnedSet = new Set(pinnedMappingIds.value)
-  return flowCards.value.filter((card) => !pinnedSet.has(card.mappingId))
+  const pinnedSet = new Set(pinnedSavedRunIds.value)
+  return flowCards.value.filter((card) => !pinnedSet.has(card.savedRunId))
 })
 
 const visibleOtherFlowCards = computed<DashboardFlowCard[]>(() => {
@@ -154,16 +185,16 @@ function handleDragStart(flowId: string, event: DragEvent): void {
   event.dataTransfer.setData('text/plain', flowId)
 }
 
-async function savePinnedMappings(nextPinnedMappingIds: string[], previousPinnedMappingIds: string[]): Promise<void> {
-  pinnedMappingIds.value = nextPinnedMappingIds
+async function savePinnedRuns(nextPinnedSavedRunIds: string[], previousPinnedSavedRunIds: string[]): Promise<void> {
+  pinnedSavedRunIds.value = nextPinnedSavedRunIds
 
   try {
-    const response = await reconciliationFacade.saveDashboardPinnedMappings({
-      pinnedReconciliationMappingIds: nextPinnedMappingIds,
+    const response = await reconciliationFacade.saveDashboardPinnedSavedRuns({
+      pinnedSavedRunIds: nextPinnedSavedRunIds,
     })
-    pinnedMappingIds.value = response.pinnedReconciliationMappingIds ?? nextPinnedMappingIds
+    pinnedSavedRunIds.value = response.pinnedSavedRunIds ?? nextPinnedSavedRunIds
   } catch {
-    pinnedMappingIds.value = previousPinnedMappingIds
+    pinnedSavedRunIds.value = previousPinnedSavedRunIds
   }
 }
 
@@ -173,13 +204,13 @@ async function handleDrop(target: 'pinned' | 'other', event: DragEvent): Promise
   const droppedCard = flowCards.value.find((card) => card.id === droppedFlowId)
   if (!droppedCard) return
 
-  const previousPinnedMappingIds = [...pinnedMappingIds.value]
-  const nextPinnedMappingIds =
+  const previousPinnedSavedRunIds = [...pinnedSavedRunIds.value]
+  const nextPinnedSavedRunIds =
     target === 'pinned'
-      ? [...pinnedMappingIds.value.filter((mappingId) => mappingId !== droppedCard.mappingId), droppedCard.mappingId]
-      : pinnedMappingIds.value.filter((mappingId) => mappingId !== droppedCard.mappingId)
+      ? [...pinnedSavedRunIds.value.filter((savedRunId) => savedRunId !== droppedCard.savedRunId), droppedCard.savedRunId]
+      : pinnedSavedRunIds.value.filter((savedRunId) => savedRunId !== droppedCard.savedRunId)
 
-  await savePinnedMappings(nextPinnedMappingIds, previousPinnedMappingIds)
+  await savePinnedRuns(nextPinnedSavedRunIds, previousPinnedSavedRunIds)
 }
 
 async function loadDashboard(): Promise<void> {
@@ -190,20 +221,20 @@ async function loadDashboard(): Promise<void> {
   }
 
   showAllOtherRuns.value = false
-  pinnedMappingIds.value = []
-  mappings.value = []
+  pinnedSavedRunIds.value = []
+  savedRuns.value = []
 
   try {
-    const response = await reconciliationFacade.listPilotMappings({
+    const response = await reconciliationFacade.listSavedRuns({
       pageIndex: 0,
       pageSize: 12,
       query: '',
     })
-    pinnedMappingIds.value = response.pinnedReconciliationMappingIds ?? []
-    mappings.value = response.mappings ?? []
+    pinnedSavedRunIds.value = response.pinnedSavedRunIds ?? []
+    savedRuns.value = response.savedRuns ?? []
   } catch {
-    pinnedMappingIds.value = []
-    mappings.value = []
+    pinnedSavedRunIds.value = []
+    savedRuns.value = []
   }
 }
 

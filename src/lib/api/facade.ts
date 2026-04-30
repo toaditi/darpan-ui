@@ -1,30 +1,37 @@
 import { callService } from './client'
 import type {
-  CreatePilotMappingResponse,
+  CreateRuleSetRunResponse,
+  CreateCsvRunResponse,
+  CreateMappingResponse,
   DeleteJsonSchemaResponse,
-  DeletePilotGeneratedOutputResponse,
+  DeleteGeneratedOutputResponse,
+  DeleteSavedRunResponse,
   FlattenJsonSchemaResponse,
-  GetPilotMappingResponse,
-  GetPilotGeneratedOutputResponse,
+  GetMappingResponse,
+  GetGeneratedOutputResponse,
   GetJsonSchemaResponse,
   InferJsonSchemaResponse,
   ListEnumOptionsResponse,
   ListJsonSchemasResponse,
   ListNsAuthConfigsResponse,
   ListNsRestletConfigsResponse,
-  ListPilotGeneratedOutputsResponse,
-  ListPilotMappingsResponse,
+  ListGeneratedOutputsResponse,
+  ListMappingsResponse,
+  ListSavedRunsResponse,
   ListSftpServersResponse,
   LoginSessionResponse,
   LlmSettingsResponse,
   LogoutSessionResponse,
-  RunPilotGenericDiffResponse,
+  RunSavedRunDiffResponse,
   SaveJsonSchemaTextResponse,
   SaveLlmSettingsResponse,
   SaveNsAuthConfigResponse,
   SaveDashboardPinnedMappingsResponse,
-  SaveActiveCompanyResponse,
-  SavePilotMappingResponse,
+  SaveDashboardPinnedSavedRunsResponse,
+  SaveRuleSetRunResponse,
+  SaveSavedRunNameResponse,
+  SaveActiveTenantResponse,
+  SaveMappingResponse,
   SaveNsRestletConfigResponse,
   SaveRefinedSchemaResponse,
   SaveSftpServerResponse,
@@ -35,7 +42,7 @@ import type {
 const AUTH = {
   loginSession: 'facade.AuthFacadeServices.login#Session',
   getSessionInfo: 'facade.AuthFacadeServices.get#SessionInfo',
-  saveActiveCompany: 'facade.AuthFacadeServices.save#ActiveCompany',
+  saveActiveTenant: 'facade.AuthFacadeServices.save#ActiveTenant',
   logoutSession: 'facade.AuthFacadeServices.logout#Session',
 }
 
@@ -63,15 +70,22 @@ const JSON_SCHEMA = {
 }
 
 const RECONCILIATION = {
-  createPilotMapping: 'facade.ReconciliationFacadeServices.create#PilotMapping',
-  listPilotMappings: 'facade.ReconciliationFacadeServices.list#PilotMappings',
-  getPilotMapping: 'facade.ReconciliationFacadeServices.get#PilotMapping',
-  savePilotMapping: 'facade.ReconciliationFacadeServices.save#PilotMapping',
+  createRuleSetRun: 'facade.ReconciliationFacadeServices.create#RuleSetRun',
+  saveRuleSetRun: 'facade.ReconciliationFacadeServices.save#RuleSetRun',
+  createCsvRun: 'facade.ReconciliationFacadeServices.create#CsvRun',
+  listSavedRuns: 'facade.ReconciliationFacadeServices.list#SavedRuns',
+  createMapping: 'facade.ReconciliationFacadeServices.create#Mapping',
+  listMappings: 'facade.ReconciliationFacadeServices.list#Mappings',
+  getMapping: 'facade.ReconciliationFacadeServices.get#Mapping',
+  saveMapping: 'facade.ReconciliationFacadeServices.save#Mapping',
   saveDashboardPinnedMappings: 'facade.ReconciliationFacadeServices.save#DashboardPinnedMappings',
-  runPilotGenericDiff: 'facade.ReconciliationFacadeServices.run#PilotGenericDiff',
-  listPilotGeneratedOutputs: 'facade.ReconciliationFacadeServices.list#PilotGeneratedOutputs',
-  getPilotGeneratedOutput: 'facade.ReconciliationFacadeServices.get#PilotGeneratedOutput',
-  deletePilotGeneratedOutput: 'facade.ReconciliationFacadeServices.delete#PilotGeneratedOutput',
+  saveDashboardPinnedSavedRuns: 'facade.ReconciliationFacadeServices.save#DashboardPinnedSavedRuns',
+  saveSavedRunName: 'facade.ReconciliationFacadeServices.save#SavedRunName',
+  deleteSavedRun: 'facade.ReconciliationFacadeServices.delete#SavedRun',
+  runSavedRunDiff: 'facade.ReconciliationFacadeServices.run#SavedRunDiff',
+  listGeneratedOutputs: 'facade.ReconciliationFacadeServices.list#GeneratedOutputs',
+  getGeneratedOutput: 'facade.ReconciliationFacadeServices.get#GeneratedOutput',
+  deleteGeneratedOutput: 'facade.ReconciliationFacadeServices.delete#GeneratedOutput',
 }
 
 export const authFacade = {
@@ -81,8 +95,8 @@ export const authFacade = {
   getSessionInfo(): Promise<SessionInfoResponse> {
     return callService<SessionInfoResponse>(AUTH.getSessionInfo)
   },
-  saveActiveCompany(activeCompanyUserGroupId: string): Promise<SaveActiveCompanyResponse> {
-    return callService<SaveActiveCompanyResponse>(AUTH.saveActiveCompany, { activeCompanyUserGroupId })
+  saveActiveTenant(activeTenantUserGroupId: string): Promise<SaveActiveTenantResponse> {
+    return callService<SaveActiveTenantResponse>(AUTH.saveActiveTenant, { activeTenantUserGroupId })
   },
   logoutSession(): Promise<LogoutSessionResponse> {
     return callService<LogoutSessionResponse>(AUTH.logoutSession)
@@ -147,31 +161,52 @@ export const jsonSchemaFacade = {
 }
 
 export const reconciliationFacade = {
-  createPilotMapping(payload: Record<string, unknown>): Promise<CreatePilotMappingResponse> {
-    return callService<CreatePilotMappingResponse>(RECONCILIATION.createPilotMapping, payload)
+  createRuleSetRun(payload: Record<string, unknown>): Promise<CreateRuleSetRunResponse> {
+    return callService<CreateRuleSetRunResponse>(RECONCILIATION.createRuleSetRun, payload)
   },
-  listPilotMappings(payload: Record<string, unknown>): Promise<ListPilotMappingsResponse> {
-    return callService<ListPilotMappingsResponse>(RECONCILIATION.listPilotMappings, payload)
+  saveRuleSetRun(payload: Record<string, unknown>): Promise<SaveRuleSetRunResponse> {
+    return callService<SaveRuleSetRunResponse>(RECONCILIATION.saveRuleSetRun, payload)
   },
-  getPilotMapping(payload: Record<string, unknown>): Promise<GetPilotMappingResponse> {
-    return callService<GetPilotMappingResponse>(RECONCILIATION.getPilotMapping, payload)
+  createCsvRun(payload: Record<string, unknown>): Promise<CreateCsvRunResponse> {
+    return callService<CreateCsvRunResponse>(RECONCILIATION.createCsvRun, payload)
   },
-  savePilotMapping(payload: Record<string, unknown>): Promise<SavePilotMappingResponse> {
-    return callService<SavePilotMappingResponse>(RECONCILIATION.savePilotMapping, payload)
+  listSavedRuns(payload: Record<string, unknown>): Promise<ListSavedRunsResponse> {
+    return callService<ListSavedRunsResponse>(RECONCILIATION.listSavedRuns, payload)
+  },
+  createMapping(payload: Record<string, unknown>): Promise<CreateMappingResponse> {
+    return callService<CreateMappingResponse>(RECONCILIATION.createMapping, payload)
+  },
+  listMappings(payload: Record<string, unknown>): Promise<ListMappingsResponse> {
+    return callService<ListMappingsResponse>(RECONCILIATION.listMappings, payload)
+  },
+  getMapping(payload: Record<string, unknown>): Promise<GetMappingResponse> {
+    return callService<GetMappingResponse>(RECONCILIATION.getMapping, payload)
+  },
+  saveMapping(payload: Record<string, unknown>): Promise<SaveMappingResponse> {
+    return callService<SaveMappingResponse>(RECONCILIATION.saveMapping, payload)
   },
   saveDashboardPinnedMappings(payload: Record<string, unknown>): Promise<SaveDashboardPinnedMappingsResponse> {
     return callService<SaveDashboardPinnedMappingsResponse>(RECONCILIATION.saveDashboardPinnedMappings, payload)
   },
-  runPilotGenericDiff(payload: Record<string, unknown>): Promise<RunPilotGenericDiffResponse> {
-    return callService<RunPilotGenericDiffResponse>(RECONCILIATION.runPilotGenericDiff, payload)
+  saveDashboardPinnedSavedRuns(payload: Record<string, unknown>): Promise<SaveDashboardPinnedSavedRunsResponse> {
+    return callService<SaveDashboardPinnedSavedRunsResponse>(RECONCILIATION.saveDashboardPinnedSavedRuns, payload)
   },
-  listPilotGeneratedOutputs(payload: Record<string, unknown>): Promise<ListPilotGeneratedOutputsResponse> {
-    return callService<ListPilotGeneratedOutputsResponse>(RECONCILIATION.listPilotGeneratedOutputs, payload)
+  saveSavedRunName(payload: Record<string, unknown>): Promise<SaveSavedRunNameResponse> {
+    return callService<SaveSavedRunNameResponse>(RECONCILIATION.saveSavedRunName, payload)
   },
-  getPilotGeneratedOutput(payload: Record<string, unknown>): Promise<GetPilotGeneratedOutputResponse> {
-    return callService<GetPilotGeneratedOutputResponse>(RECONCILIATION.getPilotGeneratedOutput, payload)
+  deleteSavedRun(payload: Record<string, unknown>): Promise<DeleteSavedRunResponse> {
+    return callService<DeleteSavedRunResponse>(RECONCILIATION.deleteSavedRun, payload)
   },
-  deletePilotGeneratedOutput(payload: Record<string, unknown>): Promise<DeletePilotGeneratedOutputResponse> {
-    return callService<DeletePilotGeneratedOutputResponse>(RECONCILIATION.deletePilotGeneratedOutput, payload)
+  runSavedRunDiff(payload: Record<string, unknown>): Promise<RunSavedRunDiffResponse> {
+    return callService<RunSavedRunDiffResponse>(RECONCILIATION.runSavedRunDiff, payload)
+  },
+  listGeneratedOutputs(payload: Record<string, unknown>): Promise<ListGeneratedOutputsResponse> {
+    return callService<ListGeneratedOutputsResponse>(RECONCILIATION.listGeneratedOutputs, payload)
+  },
+  getGeneratedOutput(payload: Record<string, unknown>): Promise<GetGeneratedOutputResponse> {
+    return callService<GetGeneratedOutputResponse>(RECONCILIATION.getGeneratedOutput, payload)
+  },
+  deleteGeneratedOutput(payload: Record<string, unknown>): Promise<DeleteGeneratedOutputResponse> {
+    return callService<DeleteGeneratedOutputResponse>(RECONCILIATION.deleteGeneratedOutput, payload)
   },
 }

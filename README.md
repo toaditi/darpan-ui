@@ -1,6 +1,6 @@
 # darpan-ui
 
-Command-first frontend facade for the Darpan browser pilot.
+Command-first frontend application for Darpan.
 
 ## Purpose
 
@@ -34,7 +34,6 @@ Set environment variables in `.env` for local development:
 # VITE_DARPAN_LINEAR_REQUEST_URL=https://linear.app/your-request-form
 # Optional. Set false when the Linear target should open only in a new tab.
 # VITE_DARPAN_LINEAR_EMBED_ENABLED=true
-VITE_DARPAN_UI_MODE=pilot
 VITE_DARPAN_AUTH_BYPASS=false
 ```
 
@@ -62,17 +61,17 @@ The current public Pages URL is:
 For release-week auth and cookie validation, the Pages build must be pointed at a real backend target through GitHub Actions repository or environment variables:
 
 ```bash
-VITE_DARPAN_API_BASE_URL=https://your-pilot-host.example.com
+VITE_DARPAN_API_BASE_URL=https://your-darpan-host.example.com
 # or, when the RPC route is different from the API origin:
-VITE_DARPAN_RPC_URL=https://your-pilot-host.example.com/rpc/json
+VITE_DARPAN_RPC_URL=https://your-darpan-host.example.com/rpc/json
 ```
 
 Notes:
 
 - `VITE_DARPAN_RPC_URL` wins when both are set.
 - If neither backend variable is set, the deployed Pages app falls back to same-origin `/rpc/json`.
-- On GitHub Pages, that fallback is not a valid pilot backend target by itself, so the Pages URL alone is not enough for Friday release-week auth or cookie validation.
-- Prefer the final pilot smoke to run against the same-site or reverse-proxied host that will actually serve invite-only users.
+- On GitHub Pages, that fallback is not a valid backend target by itself, so the Pages URL alone is not enough for release auth or cookie validation.
+- Prefer the final smoke test to run against the same-site or reverse-proxied host that will actually serve invite-only users.
 
 For local UI-only prototyping without backend login, set:
 
@@ -111,26 +110,38 @@ DARPAN_BACKEND_COMMAND="./gradlew --no-daemon runProduction" npm run dev:stack
 DARPAN_BACKEND_PORT=8081 DARPAN_FRONTEND_PORT=5174 npm run dev:stack
 ```
 
-## Wave 1 Routes
+## Routes
 
 - `/login` (initial screen)
 - `/` (module hub)
-- `/connections/llm`
+- `/settings/ai`
+- `/settings/ai/create`
+- `/settings/ai/edit/:llmProvider`
 - `/settings/sftp`
+- `/settings/sftp/create`
+- `/settings/sftp/edit/:sftpServerId`
 - `/settings/netsuite`
 - `/settings/netsuite/auth/create`
 - `/settings/netsuite/auth/edit/:nsAuthConfigId`
 - `/settings/netsuite/endpoints/create`
 - `/settings/netsuite/endpoints/edit/:nsRestletConfigId`
+- `/settings/runs`
+- `/settings/runs/edit/:reconciliationMappingId`
 - `/schemas/library`
-- `/schemas/infer`
+- `/schemas/create`
 - `/schemas/editor/:jsonSchemaId`
+- `/reconciliation/create`
+- `/reconciliation/diff`
+- `/reconciliation/ruleset-manager`
+- `/reconciliation/ruleset-manager/rules`
+- `/reconciliation/run-result/:savedRunId/:outputFileName`
+- `/reconciliation/run-history/:savedRunId`
 - `/roadmap/reconciliation` (customer roadmap and request access, backed by configurable Linear URLs)
 
-## Legacy Redirect Support
+## Redirect Support
 
-- During phased cutover, pass `?legacy=1` when opening migrated routes from backend links to display migration banner context.
-- Keep backend and darpan-ui routes in parallel until parity sign-off, then retire legacy backend screens in the following release.
+- `/connections/**` routes redirect into the current settings dashboards and workflows.
+- `/schemas/infer` and `/schemas/edit/:jsonSchemaId` redirect into the current schema create/editor routes.
 
 ## Notes
 

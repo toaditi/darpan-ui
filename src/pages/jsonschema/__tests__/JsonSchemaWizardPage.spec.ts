@@ -13,6 +13,13 @@ const inferredSchemaText = JSON.stringify({
   },
   required: ['orderId'],
 })
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'editor',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -28,6 +35,20 @@ vi.mock('../../../lib/api/facade', () => ({
   settingsFacade: {
     listEnumOptions,
   },
+}))
+
+vi.mock('../../../lib/auth', () => ({
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
 }))
 
 import JsonSchemaWizardPage from '../JsonSchemaWizardPage.vue'
@@ -62,6 +83,11 @@ describe('JsonSchemaWizardPage', () => {
     inferFromText.mockReset()
     saveText.mockReset()
     listEnumOptions.mockReset()
+    authState.sessionInfo = {
+      userId: 'editor',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
 
     stubFileReader()
     listEnumOptions.mockResolvedValue({
@@ -213,6 +239,33 @@ describe('JsonSchemaWizardPage', () => {
     wrapper.unmount()
   })
 
+  it('advances from the upload step when Enter is pressed after selecting a file', async () => {
+    const wrapper = mount(JsonSchemaWizardPage, {
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="upload-intent-sample"]').trigger('click')
+    await flushPromises()
+
+    const fileInput = wrapper.get('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['{"orderId":"1001"}'], 'orders.json', { type: 'application/json' })],
+      configurable: true,
+    })
+
+    await fileInput.trigger('change')
+    await fileInput.trigger('keydown.enter')
+    await flushPromises()
+
+    expect(inferFromText).toHaveBeenCalledWith({
+      jsonText: '{"orderId":"1001"}',
+    })
+    expect(wrapper.text()).toContain('Verify the schema')
+
+    wrapper.unmount()
+  })
+
   it('keeps the workflow blocked on the system step until a system is selected', async () => {
     const wrapper = mount(JsonSchemaWizardPage)
     await flushPromises()
@@ -240,5 +293,65 @@ describe('JsonSchemaWizardPage', () => {
 
     expect(wrapper.text()).toContain('Name the schema')
     expect(wrapper.get('[data-testid="save-schema"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('advances from the system step when Enter selects a highlighted system option', async () => {
+    const wrapper = mount(JsonSchemaWizardPage)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="upload-intent-sample"]').trigger('click')
+    await flushPromises()
+
+    const fileInput = wrapper.get('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['{"orderId":"1001"}'], 'orders.json', { type: 'application/json' })],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Assign the system')
+
+    await wrapper.get('[data-testid="schema-wizard-system"]').trigger('click')
+    await wrapper
+      .get('[data-testid="app-select-option"][data-option-value="DarSysShopify"]')
+      .trigger('keydown.enter')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Name the schema')
+    expect(wrapper.get('[data-testid="save-schema"]').attributes('disabled')).toBeUndefined()
+
+    wrapper.unmount()
+  })
+
+  it('advances from the verify step when Enter is pressed from a required-field checkbox', async () => {
+    const wrapper = mount(JsonSchemaWizardPage, {
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="upload-intent-sample"]').trigger('click')
+    await flushPromises()
+
+    const fileInput = wrapper.get('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['{"orderId":"1001"}'], 'orders.json', { type: 'application/json' })],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Verify the schema')
+
+    await wrapper.get('[data-testid="schema-verify-required-0"]').trigger('keydown.enter')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Assign the system')
+
+    wrapper.unmount()
   })
 })

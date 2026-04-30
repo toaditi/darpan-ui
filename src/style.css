@@ -76,6 +76,8 @@
   --floating-actions-gap: calc(var(--space-4) / 2);
   --floating-fab-size: 2.65rem;
   --floating-command-bubble-height: 3rem;
+  --popup-background-blur: 3px;
+  --popup-background-opacity: 0.5;
 }
 
 :root[data-theme='light'] {
@@ -146,6 +148,11 @@ b {
 
 #app {
   min-height: 100vh;
+}
+
+.app-shell--popup-open {
+  filter: blur(var(--popup-background-blur));
+  opacity: var(--popup-background-opacity);
 }
 
 .skip-link {
@@ -426,32 +433,6 @@ button:disabled {
   font-size: 0.88rem;
 }
 
-.shell-nav {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-3);
-  border-bottom: 1px solid var(--border-soft);
-  padding-bottom: var(--space-2);
-}
-
-.top-nav-link {
-  text-decoration: none;
-  padding: 0.4rem 0.72rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  color: var(--text-soft);
-  font-size: 0.89rem;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
-}
-
-.top-nav-link:hover,
-.top-nav-link.router-link-active {
-  color: var(--text);
-  border-color: var(--border);
-  background: var(--surface-2);
-}
-
 .content-shell {
   display: grid;
   gap: var(--space-5);
@@ -472,7 +453,6 @@ button:disabled {
   gap: var(--space-5);
 }
 
-.module-intro,
 .form-section,
 .static-page-hero,
 .static-page-board {
@@ -482,13 +462,11 @@ button:disabled {
   padding: var(--surface-shell-padding, var(--space-4));
 }
 
-.module-intro,
 .static-page-hero {
   display: grid;
   gap: var(--surface-intro-gap, var(--space-2));
 }
 
-.module-intro h1,
 .static-page-hero h1 {
   margin: 0;
   font-size: var(--surface-intro-title-size, clamp(1.7rem, 1vw + 1rem, 2.2rem));
@@ -514,6 +492,13 @@ button:disabled {
   display: grid;
   gap: var(--space-5);
   padding: var(--static-shell-padding-y) 0;
+}
+
+.static-page-actions {
+  width: min(var(--static-frame-width), 100%);
+  display: flex;
+  justify-content: center;
+  padding: 0 0 var(--static-shell-padding-y);
 }
 
 .static-page-hero,
@@ -631,12 +616,6 @@ button:disabled {
 
 .static-page-tile-title {
   max-width: 100%;
-}
-
-.static-page-tile-status {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  text-align: center;
 }
 
 .static-page-action-tile {
@@ -772,37 +751,6 @@ button:disabled {
   text-wrap: balance;
 }
 
-.module-intro {
-  --surface-intro-title-size: clamp(1.7rem, 1vw + 1rem, 2.2rem);
-}
-
-.module-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-
-.module-link {
-  text-decoration: none;
-  border: 1px solid var(--border-soft);
-  border-radius: 999px;
-  padding: 0.34rem 0.74rem;
-  color: var(--text-muted);
-  font-size: 0.86rem;
-  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
-}
-
-.module-link:hover,
-.module-link.router-link-active {
-  border-color: color-mix(in oklab, var(--border) 68%, var(--accent));
-  background: var(--surface-2);
-  color: var(--text);
-}
-
 .form-section {
   --surface-section-head-gap: var(--space-1);
   --surface-section-head-margin: var(--space-4);
@@ -842,6 +790,7 @@ button:disabled {
 }
 
 .workflow-shell {
+  grid-row: 2;
   width: min(var(--workflow-shell-width), 100%);
   display: grid;
   justify-items: center;
@@ -851,6 +800,10 @@ button:disabled {
 .workflow-shell--center-stage {
   min-height: 100%;
   align-content: center;
+}
+
+.workflow-page--edit .workflow-shell {
+  padding-top: var(--workflow-form-top-offset);
 }
 
 .workflow-step-wrapper {
@@ -878,47 +831,11 @@ button:disabled {
   gap: var(--space-3);
 }
 
-.workflow-panel--feature {
-  border-color: color-mix(in oklab, var(--accent) 48%, var(--border));
-  background:
-    linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 90%, var(--accent)) 0%, var(--surface) 100%);
-}
-
 .workflow-panel-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-}
-
-.workflow-card-grid {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.workflow-card-grid--three {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.workflow-data-card {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--surface-2) 94%, white);
-}
-
-.workflow-data-card span {
-  font-size: 0.76rem;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.workflow-data-card strong {
-  font-size: 0.95rem;
-  line-height: 1.4;
 }
 
 .workflow-action-row {
@@ -950,7 +867,6 @@ button:disabled {
 }
 
 .workflow-form--edit-single-page {
-  padding-top: var(--workflow-form-top-offset);
   --workflow-form-question-size: clamp(1.24rem, 1.5vw, 1.61rem);
   --workflow-form-question-mobile-size: clamp(1.01rem, 4.5vw, 1.31rem);
   --workflow-form-answer-size: clamp(0.89rem, 1.05vw, 1.09rem);
@@ -1181,39 +1097,6 @@ label > span {
 
 .hub-grid {
   align-items: stretch;
-}
-
-.hub-card {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.hub-card.roadmap {
-  border-style: dashed;
-}
-
-.action-track {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: var(--space-2);
-}
-
-.action-track-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  background: var(--surface);
-}
-
-.action-track-title {
-  margin: 0;
-  font-size: 0.92rem;
 }
 
 .empty-state {
@@ -1450,8 +1333,6 @@ label > span {
   pointer-events: none;
 }
 
-.app-icon-action--primary {}
-
 .app-icon-action--danger,
 .app-table__icon-action--danger {
   color: color-mix(in oklab, var(--danger) 82%, var(--text));
@@ -1576,10 +1457,13 @@ label > span {
   color: var(--text-soft);
 }
 
+.app-popup-backdrop {
+  background: transparent;
+}
+
 .command-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
   display: grid;
   place-items: flex-start center;
   padding: min(16vh, 8rem) var(--space-3) var(--space-3);
@@ -1665,9 +1549,16 @@ label > span {
   font-size: 1.02rem;
 }
 
-.user-menu-company {
+.user-menu-tenant {
   display: grid;
+  gap: 0.45rem;
   width: 100%;
+}
+
+.user-menu-tenant-active {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.78rem;
 }
 
 .user-menu-row {
@@ -1866,11 +1757,6 @@ label > span {
     width: min(19rem, 88vw);
   }
 
-  .shell-nav {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .static-page-tile-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1905,7 +1791,6 @@ label > span {
 
   .row-between,
   .static-page-list-toolbar,
-  .action-track-item,
   .command-head {
     flex-direction: column;
     align-items: flex-start;
@@ -1959,10 +1844,6 @@ label > span {
   .workflow-shell,
   .workflow-step-wrapper {
     width: 100%;
-  }
-
-  .workflow-card-grid--three {
-    grid-template-columns: 1fr;
   }
 
   .workflow-form-grid--two,

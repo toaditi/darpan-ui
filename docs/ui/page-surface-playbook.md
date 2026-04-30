@@ -13,6 +13,7 @@ Use this file as the shared contract reference before migrating or creating sett
 - Use `static-page-summary-grid`, `static-page-summary-card`, and `static-page-summary-label` for read-only metadata cards.
 - Use `static-page-list-toolbar` and `static-page-pager` for saved-list chrome instead of page-local toolbar classes.
 - Use `static-page-action-tile` and `static-page-create-action` for primary create/open-workflow actions.
+- Use `StaticEditableTitle` for editable item names on static detail pages. Keep the heading visually unchanged; the editable affordance is the text cursor, not input chrome.
 
 ## Workflow surfaces
 
@@ -20,6 +21,8 @@ Use this file as the shared contract reference before migrating or creating sett
 - Build steps with `WorkflowStepForm`.
 - Default create-entry workflows to one question per step instead of full-form create screens.
 - Keep the record name or identifier on the final create step unless the user explicitly asks for another order.
+- Use `WorkflowShortcutChoiceCards` for stepped multiple-choice prompts that should present keyed `A / B / C` choices and advance immediately on click or shortcut-key selection.
+- Do not invent page-local multiple-choice card variants when this keyed-choice workflow pattern fits the prompt.
 - Use `workflow-form--compact` for dense settings flows.
 - Add `workflow-form--edit-single-page` for edit screens that stay on one surface instead of stepping.
 - Use `workflow-form-grid`, `workflow-form-grid--two`, and `workflow-form-grid--compact` before inventing page-local layout CSS.
@@ -30,6 +33,7 @@ Use this file as the shared contract reference before migrating or creating sett
 ## Shared controls
 
 - Use `AppSelect` or `WorkflowSelect` for controlled select menus; do not fall back to native `<select>` on editable surfaces.
+- Use `StaticEditableTitle` for inline title editing instead of page-local `contenteditable` handlers or bordered title inputs.
 - Use `AppTableFrame` for editable table patterns and prefer shared table cell classes over scoped alignment fixes.
 - Use `resolveRecordLabel()` for saved-record titles so pages stay resilient when descriptions are missing.
 

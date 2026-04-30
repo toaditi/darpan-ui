@@ -1,23 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-function installLocalStorageStub(): void {
-  const store = new Map<string, string>()
-  Object.defineProperty(window, 'localStorage', {
-    configurable: true,
-    value: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, String(value))
-      },
-      removeItem: (key: string) => {
-        store.delete(key)
-      },
-      clear: () => {
-        store.clear()
-      },
-    },
-  })
-}
+import { installLocalStorageStub } from '../../../test/localStorage'
 
 describe('callService', () => {
   beforeEach(() => {
@@ -156,8 +138,8 @@ describe('callService', () => {
   })
 
   it('returns a friendly unreachable message for a configured rpc endpoint', async () => {
-    vi.stubEnv('VITE_DARPAN_API_BASE_URL', 'https://pilot.example.com')
-    vi.stubEnv('VITE_DARPAN_RPC_URL', 'https://pilot.example.com/rpc/json')
+    vi.stubEnv('VITE_DARPAN_API_BASE_URL', 'https://customer.example.com')
+    vi.stubEnv('VITE_DARPAN_RPC_URL', 'https://customer.example.com/rpc/json')
 
     const fetchMock = vi.fn().mockRejectedValue(new Error('connect ECONNREFUSED'))
     vi.stubGlobal('fetch', fetchMock)
@@ -170,7 +152,7 @@ describe('callService', () => {
       status: 503,
     })
     expect(fetchMock).toHaveBeenCalled()
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://pilot.example.com/rpc/json')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://customer.example.com/rpc/json')
   })
 
   it('prefers the same-origin Vite proxy for configured loopback rpc targets in local dev', async () => {
@@ -201,8 +183,8 @@ describe('callService', () => {
   })
 
   it('does not probe unrelated remote rpc urls when VITE_DARPAN_RPC_URL is explicitly configured', async () => {
-    vi.stubEnv('VITE_DARPAN_API_BASE_URL', 'https://pilot.example.com')
-    vi.stubEnv('VITE_DARPAN_RPC_URL', 'https://pilot.example.com/rpc/json')
+    vi.stubEnv('VITE_DARPAN_API_BASE_URL', 'https://customer.example.com')
+    vi.stubEnv('VITE_DARPAN_RPC_URL', 'https://customer.example.com/rpc/json')
 
     const fetchMock = vi.fn().mockRejectedValue(new Error('connect ECONNREFUSED'))
     vi.stubGlobal('fetch', fetchMock)
@@ -225,7 +207,7 @@ describe('callService', () => {
       method: 'facade.AuthFacadeServices.get#SessionInfo',
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://pilot.example.com/rpc/json')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://customer.example.com/rpc/json')
   })
 
   it('does not dispatch the global auth-required event for get#SessionInfo failures', async () => {
