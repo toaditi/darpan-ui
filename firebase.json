@@ -33,6 +33,40 @@
           "value": "NoSniff"
         } ]
       }]
+    },
+    {
+      "target": "prod",
+      "public": "dist",
+      "predeploy": [
+        "npm run build"
+      ],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [ {
+        "source": "**",
+        "destination": "/index.html"
+      } ],
+      "headers": [ {
+        "source": "**",
+        "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self';base-uri 'self';object-src 'none';font-src 'self' data: https://fonts.gstatic.com;script-src 'self' https://www.gstatic.com https://*.firebaseapp.com;img-src 'self' data: https:;style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;connect-src 'self' https://*.hotwax.io;frame-src https://linear.app;frame-ancestors https://admin.shopify.com https://*.myshopify.com;form-action 'self';"
+        },
+        {
+          "key": "strict-transport-security",
+          "value": "max-age=31536000; includeSubDomains; preload"
+        },{
+          "key": "Permissions-Policy",
+          "value": "camera=self"
+        },{
+          "key": "X-Content-Type-Options",
+          "value": "NoSniff"
+        } ]
+      }]
     }
   ]
 }
