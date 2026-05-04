@@ -41,7 +41,7 @@ VITE_DARPAN_AUTH_BYPASS=false
 
 Firebase uses the `darpan` project alias for project `darpan-fa2aa`.
 
-UAT deploys use target `hosting:uat`, site `hc-darpan-uat`, and the checked-in `.env.firebase` backend mapping:
+UAT deploys use target `hosting:uat`, site `hc-darpan-uat`, custom domain `darpan-app-uat.hotwax.io`, and the checked-in `.env.firebase` backend mapping:
 
 ```bash
 firebase use darpan
@@ -55,7 +55,7 @@ VITE_DARPAN_API_BASE_URL=https://darpan-uat.hotwax.io
 VITE_DARPAN_RPC_URL=https://darpan-uat.hotwax.io/rpc/json
 ```
 
-Production deploys use target `hosting:prod`, site `hc-darpan`, and an ignored `.env.production` file copied from `.env.example`:
+Production deploys use target `hosting:prod`, site `hc-darpan`, custom domain `darpan-app.hotwax.io`, and an ignored `.env.production` file copied from `.env.example`:
 
 ```bash
 cp .env.example .env.production
