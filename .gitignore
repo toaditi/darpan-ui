@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .firebase/
+.env.production
 .vscode/
 .DS_Store
 *.log
