@@ -19,6 +19,15 @@ const createRuleSetRun = vi.hoisted(() => vi.fn())
 const listAutomationSourceOptions = vi.hoisted(() => vi.fn())
 const RULESET_MANAGER_HELPER_COPY =
   'Open the Ruleset Manager to pair fields and start with the sketched operator set: =, >, and <. Normalizers stay separate for now.'
+const SYSTEM_OPTIONS = [
+  { enumId: 'OMS', label: 'OMS' },
+  { enumId: 'SHOPIFY', label: 'SHOPIFY' },
+  { enumId: 'NETSUITE', label: 'NetSuite' },
+]
+const FILE_TYPE_OPTIONS = [
+  { enumId: 'DftCsv', label: 'CSV' },
+  { enumId: 'DftJson', label: 'JSON' },
+]
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
@@ -233,8 +242,8 @@ describe('ReconciliationCreateFlowPage', () => {
       inputModes: [],
       sourceTypes: [],
       relativeWindows: [],
-      fileTypes: [],
-      systems: [],
+      fileTypes: FILE_TYPE_OPTIONS,
+      systems: SYSTEM_OPTIONS,
       savedRuns: [],
       sftpServers: [],
       sourceConfigs: [
@@ -331,8 +340,7 @@ describe('ReconciliationCreateFlowPage', () => {
     await wrapper.get('[data-testid="create-run"]').trigger('click')
     await flushPromises()
 
-    expect(listEnumOptions).toHaveBeenCalledWith('DarpanSystemSource')
-    expect(listEnumOptions).toHaveBeenCalledWith('DarpanFileType')
+    expect(listEnumOptions).not.toHaveBeenCalled()
     expect(listJsonSchemas).toHaveBeenCalledWith({
       pageIndex: 0,
       pageSize: 200,
@@ -351,6 +359,19 @@ describe('ReconciliationCreateFlowPage', () => {
       file2PrimaryIdExpression: '$.data.orders.edges[0].node.id',
     })
     expect(push).toHaveBeenCalledWith({ name: 'hub' })
+  })
+
+  it('loads create-run setup choices from the reconciliation source-options contract', async () => {
+    listEnumOptions.mockRejectedValue(new Error('Settings are restricted to super-admin users.'))
+
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    expect(listAutomationSourceOptions).toHaveBeenCalledTimes(1)
+    expect(listEnumOptions).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('What should this run be called?')
+    expect(wrapper.text()).not.toContain('Settings are restricted to super-admin users.')
+    expect(wrapper.text()).not.toContain('Unable to load reconciliation setup options.')
   })
 
   it('creates a run with an API source on one side and a file upload source on the other', async () => {
@@ -445,8 +466,8 @@ describe('ReconciliationCreateFlowPage', () => {
       inputModes: [],
       sourceTypes: [],
       relativeWindows: [],
-      fileTypes: [],
-      systems: [],
+      fileTypes: FILE_TYPE_OPTIONS,
+      systems: SYSTEM_OPTIONS,
       savedRuns: [],
       sftpServers: [],
       sourceConfigs: [

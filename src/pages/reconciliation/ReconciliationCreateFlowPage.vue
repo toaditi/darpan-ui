@@ -76,7 +76,7 @@ import WorkflowSelect, { type WorkflowSelectOption } from '../../components/work
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { jsonSchemaFacade, reconciliationFacade, settingsFacade } from '../../lib/api/facade'
+import { jsonSchemaFacade, reconciliationFacade } from '../../lib/api/facade'
 import type {
   AutomationNsRestletOption,
   AutomationPrimaryIdOption,
@@ -1147,9 +1147,7 @@ async function loadOptions(): Promise<void> {
   pageError.value = null
 
   try {
-    const [systemsResponse, fileTypesResponse, schemasResponse, automationSourceOptionsResponse] = await Promise.all([
-      settingsFacade.listEnumOptions('DarpanSystemSource'),
-      settingsFacade.listEnumOptions('DarpanFileType'),
+    const [schemasResponse, automationSourceOptionsResponse] = await Promise.all([
       jsonSchemaFacade.list({
         pageIndex: 0,
         pageSize: 200,
@@ -1158,11 +1156,11 @@ async function loadOptions(): Promise<void> {
       reconciliationFacade.listAutomationSourceOptions(),
     ])
 
-    systemOptions.value = (systemsResponse.options ?? []).map((option) => ({
+    systemOptions.value = (automationSourceOptionsResponse.systems ?? []).map((option) => ({
       value: option.enumId,
       label: option.label || option.enumId,
     }))
-    fileTypeOptions.value = (fileTypesResponse.options ?? []).map((option) => ({
+    fileTypeOptions.value = (automationSourceOptionsResponse.fileTypes ?? []).map((option) => ({
       value: option.enumId,
       label: option.label || option.enumCode || option.enumId,
     }))
