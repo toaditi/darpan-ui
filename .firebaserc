@@ -1,20 +1,15 @@
 {
   "projects": {
-    "dev": "hotwax-digital-commerce-uat",
-    "production": "digital-commerce-71eb8"
+    "darpan": "darpan-fa2aa"
   },
   "targets": {
-    "hotwax-digital-commerce-uat": {
+    "darpan-fa2aa": {
       "hosting": {
-        "dev": [
-          "hotwax-darpan-dev"
-        ]
-      }
-    },
-    "digital-commerce-71eb8": {
-      "hosting": {
+        "uat": [
+          "hc-darpan-uat"
+        ],
         "prod": [
-          "hotwax-darpan"
+          "hc-darpan"
         ]
       }
     }
