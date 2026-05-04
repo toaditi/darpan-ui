@@ -2,19 +2,32 @@ import { callService } from './client'
 import type {
   CreateRuleSetRunResponse,
   CreateCsvRunResponse,
+  ChangeOwnPasswordResponse,
   CreateMappingResponse,
   DeleteJsonSchemaResponse,
+  DeleteAutomationResponse,
   DeleteGeneratedOutputResponse,
+  DeleteOmsRestSourceConfigResponse,
   DeleteSavedRunResponse,
+  DeleteShopifyAuthConfigResponse,
   FlattenJsonSchemaResponse,
+  GetAutomationResponse,
   GetMappingResponse,
   GetGeneratedOutputResponse,
+  GetShopifyAuthConfigResponse,
+  GetTenantSettingsResponse,
+  GetTenantNotificationSettingsResponse,
   GetJsonSchemaResponse,
   InferJsonSchemaResponse,
+  ListAutomationExecutionsResponse,
+  ListAutomationsResponse,
+  ListAutomationSourceOptionsResponse,
   ListEnumOptionsResponse,
   ListJsonSchemasResponse,
   ListNsAuthConfigsResponse,
+  ListOmsRestSourceConfigsResponse,
   ListNsRestletConfigsResponse,
+  ListShopifyAuthConfigsResponse,
   ListGeneratedOutputsResponse,
   ListMappingsResponse,
   ListSavedRunsResponse,
@@ -22,15 +35,23 @@ import type {
   LoginSessionResponse,
   LlmSettingsResponse,
   LogoutSessionResponse,
+  RunAutomationNowResponse,
   RunSavedRunDiffResponse,
+  SaveAutomationResponse,
   SaveJsonSchemaTextResponse,
   SaveLlmSettingsResponse,
   SaveNsAuthConfigResponse,
+  SaveOmsRestSourceConfigResponse,
   SaveDashboardPinnedMappingsResponse,
   SaveDashboardPinnedSavedRunsResponse,
   SaveRuleSetRunResponse,
   SaveSavedRunNameResponse,
   SaveActiveTenantResponse,
+  SaveTenantSettingsResponse,
+  SaveUserSettingsResponse,
+  SaveShopifyAuthConfigResponse,
+  SaveTenantNotificationSettingsResponse,
+  VerifyOwnPasswordResponse,
   SaveMappingResponse,
   SaveNsRestletConfigResponse,
   SaveRefinedSchemaResponse,
@@ -43,6 +64,9 @@ const AUTH = {
   loginSession: 'facade.AuthFacadeServices.login#Session',
   getSessionInfo: 'facade.AuthFacadeServices.get#SessionInfo',
   saveActiveTenant: 'facade.AuthFacadeServices.save#ActiveTenant',
+  saveUserSettings: 'facade.AuthFacadeServices.save#UserSettings',
+  verifyOwnPassword: 'facade.AuthFacadeServices.verify#OwnPassword',
+  changeOwnPassword: 'facade.AuthFacadeServices.change#OwnPassword',
   logoutSession: 'facade.AuthFacadeServices.logout#Session',
 }
 
@@ -50,12 +74,23 @@ const SETTINGS = {
   listEnumOptions: 'facade.SettingsFacadeServices.list#EnumOptions',
   getLlmSettings: 'facade.SettingsFacadeServices.get#LlmSettings',
   saveLlmSettings: 'facade.SettingsFacadeServices.save#LlmSettings',
+  getTenantSettings: 'facade.SettingsFacadeServices.get#TenantSettings',
+  saveTenantSettings: 'facade.SettingsFacadeServices.save#TenantSettings',
+  getTenantNotificationSettings: 'facade.SettingsFacadeServices.get#TenantNotificationSettings',
+  saveTenantNotificationSettings: 'facade.SettingsFacadeServices.save#TenantNotificationSettings',
   listSftpServers: 'facade.SettingsFacadeServices.list#SftpServers',
   saveSftpServer: 'facade.SettingsFacadeServices.save#SftpServer',
   listNsAuthConfigs: 'facade.SettingsFacadeServices.list#NsAuthConfigs',
   saveNsAuthConfig: 'facade.SettingsFacadeServices.save#NsAuthConfig',
   listNsRestletConfigs: 'facade.SettingsFacadeServices.list#NsRestletConfigs',
   saveNsRestletConfig: 'facade.SettingsFacadeServices.save#NsRestletConfig',
+  listShopifyAuthConfigs: 'facade.ShopifyFacadeServices.list#ShopifyAuthConfigs',
+  getShopifyAuthConfig: 'facade.ShopifyFacadeServices.get#ShopifyAuthConfig',
+  saveShopifyAuthConfig: 'facade.ShopifyFacadeServices.save#ShopifyAuthConfig',
+  deleteShopifyAuthConfig: 'facade.ShopifyFacadeServices.delete#ShopifyAuthConfig',
+  listOmsRestSourceConfigs: 'facade.HotWaxOmsFacadeServices.list#HotWaxOmsRestSourceConfigs',
+  saveOmsRestSourceConfig: 'facade.HotWaxOmsFacadeServices.save#HotWaxOmsRestSourceConfig',
+  deleteOmsRestSourceConfig: 'facade.HotWaxOmsFacadeServices.delete#HotWaxOmsRestSourceConfig',
 }
 
 const JSON_SCHEMA = {
@@ -86,6 +121,15 @@ const RECONCILIATION = {
   listGeneratedOutputs: 'facade.ReconciliationFacadeServices.list#GeneratedOutputs',
   getGeneratedOutput: 'facade.ReconciliationFacadeServices.get#GeneratedOutput',
   deleteGeneratedOutput: 'facade.ReconciliationFacadeServices.delete#GeneratedOutput',
+  listAutomations: 'facade.ReconciliationFacadeServices.list#Automations',
+  getAutomation: 'facade.ReconciliationFacadeServices.get#Automation',
+  saveAutomation: 'facade.ReconciliationFacadeServices.save#Automation',
+  deleteAutomation: 'facade.ReconciliationFacadeServices.delete#Automation',
+  pauseAutomation: 'facade.ReconciliationFacadeServices.pause#Automation',
+  resumeAutomation: 'facade.ReconciliationFacadeServices.resume#Automation',
+  runAutomationNow: 'facade.ReconciliationFacadeServices.run#AutomationNow',
+  listAutomationExecutions: 'facade.ReconciliationFacadeServices.list#AutomationExecutions',
+  listAutomationSourceOptions: 'facade.ReconciliationFacadeServices.list#AutomationSourceOptions',
 }
 
 export const authFacade = {
@@ -97,6 +141,15 @@ export const authFacade = {
   },
   saveActiveTenant(activeTenantUserGroupId: string): Promise<SaveActiveTenantResponse> {
     return callService<SaveActiveTenantResponse>(AUTH.saveActiveTenant, { activeTenantUserGroupId })
+  },
+  saveUserSettings(payload: Record<string, unknown>): Promise<SaveUserSettingsResponse> {
+    return callService<SaveUserSettingsResponse>(AUTH.saveUserSettings, payload)
+  },
+  verifyOwnPassword(payload: Record<string, unknown>): Promise<VerifyOwnPasswordResponse> {
+    return callService<VerifyOwnPasswordResponse>(AUTH.verifyOwnPassword, payload)
+  },
+  changeOwnPassword(payload: Record<string, unknown>): Promise<ChangeOwnPasswordResponse> {
+    return callService<ChangeOwnPasswordResponse>(AUTH.changeOwnPassword, payload)
   },
   logoutSession(): Promise<LogoutSessionResponse> {
     return callService<LogoutSessionResponse>(AUTH.logoutSession)
@@ -112,6 +165,18 @@ export const settingsFacade = {
   },
   saveLlmSettings(payload: Record<string, unknown>): Promise<SaveLlmSettingsResponse> {
     return callService<SaveLlmSettingsResponse>(SETTINGS.saveLlmSettings, payload)
+  },
+  getTenantSettings(): Promise<GetTenantSettingsResponse> {
+    return callService<GetTenantSettingsResponse>(SETTINGS.getTenantSettings)
+  },
+  saveTenantSettings(payload: Record<string, unknown>): Promise<SaveTenantSettingsResponse> {
+    return callService<SaveTenantSettingsResponse>(SETTINGS.saveTenantSettings, payload)
+  },
+  getTenantNotificationSettings(): Promise<GetTenantNotificationSettingsResponse> {
+    return callService<GetTenantNotificationSettingsResponse>(SETTINGS.getTenantNotificationSettings)
+  },
+  saveTenantNotificationSettings(payload: Record<string, unknown>): Promise<SaveTenantNotificationSettingsResponse> {
+    return callService<SaveTenantNotificationSettingsResponse>(SETTINGS.saveTenantNotificationSettings, payload)
   },
   listSftpServers(payload: Record<string, unknown>): Promise<ListSftpServersResponse> {
     return callService<ListSftpServersResponse>(SETTINGS.listSftpServers, payload)
@@ -130,6 +195,27 @@ export const settingsFacade = {
   },
   saveNsRestletConfig(payload: Record<string, unknown>): Promise<SaveNsRestletConfigResponse> {
     return callService<SaveNsRestletConfigResponse>(SETTINGS.saveNsRestletConfig, payload)
+  },
+  listShopifyAuthConfigs(payload: Record<string, unknown>): Promise<ListShopifyAuthConfigsResponse> {
+    return callService<ListShopifyAuthConfigsResponse>(SETTINGS.listShopifyAuthConfigs, payload)
+  },
+  getShopifyAuthConfig(payload: Record<string, unknown>): Promise<GetShopifyAuthConfigResponse> {
+    return callService<GetShopifyAuthConfigResponse>(SETTINGS.getShopifyAuthConfig, payload)
+  },
+  saveShopifyAuthConfig(payload: Record<string, unknown>): Promise<SaveShopifyAuthConfigResponse> {
+    return callService<SaveShopifyAuthConfigResponse>(SETTINGS.saveShopifyAuthConfig, payload)
+  },
+  deleteShopifyAuthConfig(payload: Record<string, unknown>): Promise<DeleteShopifyAuthConfigResponse> {
+    return callService<DeleteShopifyAuthConfigResponse>(SETTINGS.deleteShopifyAuthConfig, payload)
+  },
+  listOmsRestSourceConfigs(payload: Record<string, unknown>): Promise<ListOmsRestSourceConfigsResponse> {
+    return callService<ListOmsRestSourceConfigsResponse>(SETTINGS.listOmsRestSourceConfigs, payload)
+  },
+  saveOmsRestSourceConfig(payload: Record<string, unknown>): Promise<SaveOmsRestSourceConfigResponse> {
+    return callService<SaveOmsRestSourceConfigResponse>(SETTINGS.saveOmsRestSourceConfig, payload)
+  },
+  deleteOmsRestSourceConfig(payload: Record<string, unknown>): Promise<DeleteOmsRestSourceConfigResponse> {
+    return callService<DeleteOmsRestSourceConfigResponse>(SETTINGS.deleteOmsRestSourceConfig, payload)
   },
 }
 
@@ -208,5 +294,32 @@ export const reconciliationFacade = {
   },
   deleteGeneratedOutput(payload: Record<string, unknown>): Promise<DeleteGeneratedOutputResponse> {
     return callService<DeleteGeneratedOutputResponse>(RECONCILIATION.deleteGeneratedOutput, payload)
+  },
+  listAutomations(payload: Record<string, unknown>): Promise<ListAutomationsResponse> {
+    return callService<ListAutomationsResponse>(RECONCILIATION.listAutomations, payload)
+  },
+  getAutomation(payload: Record<string, unknown>): Promise<GetAutomationResponse> {
+    return callService<GetAutomationResponse>(RECONCILIATION.getAutomation, payload)
+  },
+  saveAutomation(payload: Record<string, unknown>): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.saveAutomation, payload)
+  },
+  deleteAutomation(payload: Record<string, unknown>): Promise<DeleteAutomationResponse> {
+    return callService<DeleteAutomationResponse>(RECONCILIATION.deleteAutomation, payload)
+  },
+  pauseAutomation(payload: Record<string, unknown>): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.pauseAutomation, payload)
+  },
+  resumeAutomation(payload: Record<string, unknown>): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.resumeAutomation, payload)
+  },
+  runAutomationNow(payload: Record<string, unknown>): Promise<RunAutomationNowResponse> {
+    return callService<RunAutomationNowResponse>(RECONCILIATION.runAutomationNow, payload)
+  },
+  listAutomationExecutions(payload: Record<string, unknown>): Promise<ListAutomationExecutionsResponse> {
+    return callService<ListAutomationExecutionsResponse>(RECONCILIATION.listAutomationExecutions, payload)
+  },
+  listAutomationSourceOptions(): Promise<ListAutomationSourceOptionsResponse> {
+    return callService<ListAutomationSourceOptionsResponse>(RECONCILIATION.listAutomationSourceOptions)
   },
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildReconciliationRuleSetDraftState,
+  buildCreateRuleSetRunPayload,
   buildRuleSetRulePayloads,
   readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
@@ -104,6 +105,25 @@ describe('reconciliationRuleSetDraft', () => {
       ruleText: 'totalQuantity > quantity',
       ruleLogic: 'rule "quantity-check"',
       expression: JSON.stringify({ type: 'FIELD_COMPARISON' }),
+    })
+  })
+
+  it('persists API source config ids in create payloads', () => {
+    const payload = buildCreateRuleSetRunPayload(createDraft({
+      file1SourceTypeEnumId: 'AUT_SRC_API',
+      file1SystemMessageRemoteId: 'OMS_REMOTE',
+      file1SourceConfigId: 'KREWE_OMS',
+      file1SourceConfigType: 'HOTWAX_OMS_REST',
+      file1FileTypeEnumId: '',
+      file1PrimaryIdExpression: '$.records[*].orderId',
+    }))
+
+    expect(payload).toMatchObject({
+      file1SourceTypeEnumId: 'AUT_SRC_API',
+      file1SystemMessageRemoteId: 'OMS_REMOTE',
+      file1SourceConfigId: 'KREWE_OMS',
+      file1SourceConfigType: 'HOTWAX_OMS_REST',
+      file1PrimaryIdExpression: '$.records[*].orderId',
     })
   })
 })

@@ -21,6 +21,7 @@ const saveSavedRunName = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'editor',
+    canRunActiveTenantReconciliation: true,
     canEditActiveTenantData: true,
     isSuperAdmin: false,
   },
@@ -43,6 +44,11 @@ vi.mock('../../../lib/api/facade', () => ({
 
 vi.mock('../../../lib/auth', () => ({
   useUiPermissions: () => ({
+    get canRunActiveTenantReconciliation() {
+      return authState.sessionInfo.canRunActiveTenantReconciliation === true ||
+        authState.sessionInfo.canEditActiveTenantData === true ||
+        authState.sessionInfo.isSuperAdmin === true
+    },
     get canEditTenantSettings() {
       return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
     },
@@ -57,7 +63,7 @@ vi.mock('../../../lib/auth', () => ({
 
 import ReconciliationRunResultPage from '../ReconciliationRunResultPage.vue'
 
-function buildGeneratedOutputFile(contentText: string) {
+function buildGeneratedOutputFile(contentText: string, outputFileOverrides: Record<string, unknown> = {}) {
   return {
     ok: true,
     messages: [],
@@ -69,6 +75,7 @@ function buildGeneratedOutputFile(contentText: string) {
       format: 'json',
       contentType: 'application/json',
       contentText,
+      ...outputFileOverrides,
     },
   }
 }
@@ -111,6 +118,7 @@ describe('ReconciliationRunResultPage', () => {
   beforeEach(() => {
     authState.sessionInfo = {
       userId: 'editor',
+      canRunActiveTenantReconciliation: true,
       canEditActiveTenantData: true,
       isSuperAdmin: false,
     }
@@ -123,7 +131,31 @@ describe('ReconciliationRunResultPage', () => {
       '/reconciliation/run-result/RS_ORDER_CSV/CSV-Order-Compare-diff-20260331-063304.json?runName=CSV%20Order%20Compare&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY'
 
     getGeneratedOutput.mockReset()
-    getGeneratedOutput.mockResolvedValue(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails)))
+    getGeneratedOutput.mockResolvedValue(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails), {
+      sourceDetails: {
+        mode: 'FILES',
+        files: [
+          {
+            side: 'file1',
+            label: 'OMS',
+            fileName: 'orders-1.csv',
+            filePath: 'reconciliation-runs/RS_ORDER_CSV/20260331-081106134/RS_ORDER_CSV_file1_orders-1.csv',
+            downloadFileName: 'orders-1.csv',
+            sourceFormat: 'csv',
+            canDownload: true,
+          },
+          {
+            side: 'file2',
+            label: 'SHOPIFY',
+            fileName: 'orders-2.csv',
+            filePath: 'reconciliation-runs/RS_ORDER_CSV/20260331-081106134/RS_ORDER_CSV_file2_orders-2.csv',
+            downloadFileName: 'orders-2.csv',
+            sourceFormat: 'csv',
+            canDownload: true,
+          },
+        ],
+      },
+    }))
     saveSavedRunName.mockReset()
     saveSavedRunName.mockResolvedValue({
       ok: true,
@@ -155,9 +187,17 @@ describe('ReconciliationRunResultPage', () => {
     expect(editableTitle.attributes('contenteditable')).toBe('plaintext-only')
     expect(editableTitle.attributes('aria-label')).toBe('Run name')
     expect(editableTitle.classes()).toContain('static-page-inline-edit-title')
+    const sourceDetails = wrapper.get('[data-testid="run-result-source-details"]')
+    expect(sourceDetails.text()).toContain('Source files')
+    expect(sourceDetails.text()).toContain('OMS')
+    expect(sourceDetails.text()).toContain('orders-1.csv')
+    expect(sourceDetails.text()).toContain('SHOPIFY')
+    expect(sourceDetails.text()).toContain('orders-2.csv')
+    expect(sourceDetails.findAll('[data-testid="run-result-source-download"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('Missing from OMS')
     expect(wrapper.text()).toContain('Missing from SHOPIFY')
-    expect(wrapper.text()).toContain('Rule differences')
+    expect(wrapper.find('[data-testid="diff-bucket-rule"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Rule differences')
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('"order_id": "1001"')
     expect(wrapper.get('[data-testid="run-result-download"]').attributes('aria-label')).toBe('Download saved result')
@@ -176,7 +216,14 @@ describe('ReconciliationRunResultPage', () => {
         file2SystemLabel: 'SHOPIFY',
       },
     })
-    expect(JSON.parse(wrapper.get('[data-testid="run-result-open-workflow"]').attributes('data-to') ?? '{}')).toEqual({
+    expect(wrapper.find('.static-page-board [data-testid="run-result-open-workflow"]').exists()).toBe(false)
+    const openWorkflowAction = wrapper.get('.static-page-actions [data-testid="run-result-open-workflow"]')
+    expect(openWorkflowAction.classes()).toContain('app-icon-action')
+    expect(openWorkflowAction.classes()).toContain('app-icon-action--large')
+    expect(openWorkflowAction.attributes('aria-label')).toBe('Open run')
+    expect(openWorkflowAction.find('svg').exists()).toBe(true)
+    expect(openWorkflowAction.text()).not.toContain('Open Run')
+    expect(JSON.parse(openWorkflowAction.attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-diff',
       query: {
         savedRunId: 'RS_ORDER_CSV',
@@ -199,6 +246,76 @@ describe('ReconciliationRunResultPage', () => {
       savedRunId: 'RS_ORDER_CSV',
       runName: 'CSV Order Compare Revised',
     })
+  })
+
+  it('renders API date range source details and downloads compared source files', async () => {
+    const createObjectUrl = vi.fn(() => 'blob:source')
+    const revokeObjectUrl = vi.fn()
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.stubGlobal(
+      'URL',
+      {
+        createObjectURL: createObjectUrl,
+        revokeObjectURL: revokeObjectUrl,
+      } as unknown as typeof URL,
+    )
+    getGeneratedOutput.mockResolvedValueOnce(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails), {
+      sourceDetails: {
+        mode: 'API',
+        dateRange: {
+          start: '2026-05-01T04:00:00Z',
+          end: '2026-05-02T04:00:00Z',
+        },
+        files: [
+          {
+            side: 'file1',
+            label: 'HotWax',
+            fileName: 'HotWax-orders-api.json',
+            filePath: 'reconciliation-runs/RS_API_ORDER_SYNC/20260502-054559147/RS_API_ORDER_SYNC_file1_HotWax-orders-api.json',
+            downloadFileName: 'HotWax-orders-api.json',
+            sourceFormat: 'json',
+            canDownload: true,
+          },
+          {
+            side: 'file2',
+            label: 'SHOPIFY',
+            fileName: 'SHOPIFY-orders-api.json',
+            filePath: 'reconciliation-runs/RS_API_ORDER_SYNC/20260502-054559147/RS_API_ORDER_SYNC_file2_SHOPIFY-orders-api.json',
+            downloadFileName: 'SHOPIFY-orders-api.json',
+            sourceFormat: 'json',
+            canDownload: true,
+          },
+        ],
+      },
+    }))
+    getGeneratedOutput.mockResolvedValueOnce(buildGeneratedOutputFile('{"orders":[]}', {
+      fileName: 'reconciliation-runs/RS_API_ORDER_SYNC/20260502-054559147/RS_API_ORDER_SYNC_file1_HotWax-orders-api.json',
+      downloadFileName: 'HotWax-orders-api.json',
+      sourceFormat: 'json',
+      format: 'json',
+    }))
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    const sourceDetails = wrapper.get('[data-testid="run-result-source-details"]')
+    expect(sourceDetails.text()).toContain('API date range')
+    expect(sourceDetails.text()).toContain('May 1, 2026 to May 2, 2026')
+    expect(sourceDetails.text()).toContain('Files compared')
+    expect(sourceDetails.text()).toContain('HotWax')
+    expect(sourceDetails.text()).toContain('HotWax-orders-api.json')
+    expect(sourceDetails.text()).toContain('SHOPIFY-orders-api.json')
+
+    await sourceDetails.findAll('[data-testid="run-result-source-download"]')[0]!.trigger('click')
+    await flushPromises()
+
+    expect(getGeneratedOutput).toHaveBeenLastCalledWith({
+      fileName: 'reconciliation-runs/RS_API_ORDER_SYNC/20260502-054559147/RS_API_ORDER_SYNC_file1_HotWax-orders-api.json',
+      format: 'json',
+    })
+    expect(createObjectUrl).toHaveBeenCalledTimes(1)
+    expect(anchorClick).toHaveBeenCalledTimes(1)
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:source')
   })
 
   it('filters and paginates saved diff details', async () => {
@@ -404,6 +521,7 @@ describe('ReconciliationRunResultPage', () => {
 
     expect(source).toContain('.reconciliation-diff-details__toolbar')
     expect(source).toContain('justify-content: space-between;')
+    expect(source).toMatch(/\.reconciliation-diff-details__search \{[^}]*width: 100%;[^}]*\}/)
     expect(source).toContain('.reconciliation-diff-details__pagination')
     expect(source).toContain('justify-content: space-between;')
     expect(source).toContain("import AppTableFrame from '../../components/ui/AppTableFrame.vue'")

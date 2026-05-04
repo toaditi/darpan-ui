@@ -114,7 +114,7 @@ describe('JsonSchemaWizardPage', () => {
     })
   })
 
-  it('creates a schema from a sample file through the workflow steps, assigns the system, and saves it on Enter from the final naming step', async () => {
+  it('creates a schema from a sample file by assigning the system before reviewing the interpreted schema', async () => {
     const wrapper = mount(JsonSchemaWizardPage)
     await flushPromises()
 
@@ -148,11 +148,17 @@ describe('JsonSchemaWizardPage', () => {
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await flushPromises()
 
+    expect(inferFromText).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Assign the system')
+    await chooseAppSelectOption(wrapper, 'schema-wizard-system', 'DarSysOms')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
     expect(inferFromText).toHaveBeenCalledTimes(1)
     expect(inferFromText).toHaveBeenCalledWith({
       jsonText: '{"orderId":"1001"}',
     })
-    expect(wrapper.text()).toContain('Verify the schema')
+    expect(wrapper.text()).toContain('Review the interpreted schema')
     expect(wrapper.text()).toContain('$.orderId')
     expect(wrapper.text()).not.toContain('Uploaded file:')
     const tableColumns = wrapper.findAll('.app-table colgroup col')
@@ -166,10 +172,6 @@ describe('JsonSchemaWizardPage', () => {
     expect((requiredCheckboxes[1]!.element as HTMLInputElement).checked).toBe(false)
     await requiredCheckboxes[1]!.setValue(true)
 
-    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
-    await flushPromises()
-
-    await chooseAppSelectOption(wrapper, 'schema-wizard-system', 'DarSysOms')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await flushPromises()
 
@@ -258,10 +260,8 @@ describe('JsonSchemaWizardPage', () => {
     await fileInput.trigger('keydown.enter')
     await flushPromises()
 
-    expect(inferFromText).toHaveBeenCalledWith({
-      jsonText: '{"orderId":"1001"}',
-    })
-    expect(wrapper.text()).toContain('Verify the schema')
+    expect(inferFromText).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Assign the system')
 
     wrapper.unmount()
   })
@@ -281,8 +281,6 @@ describe('JsonSchemaWizardPage', () => {
     await fileInput.trigger('change')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
-    await flushPromises()
 
     expect(wrapper.text()).toContain('Assign the system')
     expect(wrapper.get('[data-testid="wizard-next"]').attributes('disabled')).toBeDefined()
@@ -291,8 +289,11 @@ describe('JsonSchemaWizardPage', () => {
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Name the schema')
-    expect(wrapper.get('[data-testid="save-schema"]').attributes('disabled')).toBeUndefined()
+    expect(inferFromText).toHaveBeenCalledWith({
+      jsonText: '{"orderId":"1001"}',
+    })
+    expect(wrapper.text()).toContain('Review the interpreted schema')
+    expect(wrapper.text()).toContain('$.orderId')
   })
 
   it('advances from the system step when Enter selects a highlighted system option', async () => {
@@ -310,8 +311,6 @@ describe('JsonSchemaWizardPage', () => {
     await fileInput.trigger('change')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
-    await flushPromises()
 
     expect(wrapper.text()).toContain('Assign the system')
 
@@ -321,8 +320,10 @@ describe('JsonSchemaWizardPage', () => {
       .trigger('keydown.enter')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Name the schema')
-    expect(wrapper.get('[data-testid="save-schema"]').attributes('disabled')).toBeUndefined()
+    expect(inferFromText).toHaveBeenCalledWith({
+      jsonText: '{"orderId":"1001"}',
+    })
+    expect(wrapper.text()).toContain('Review the interpreted schema')
 
     wrapper.unmount()
   })
@@ -345,12 +346,16 @@ describe('JsonSchemaWizardPage', () => {
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Verify the schema')
+    await chooseAppSelectOption(wrapper, 'schema-wizard-system', 'DarSysOms')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Review the interpreted schema')
 
     await wrapper.get('[data-testid="schema-verify-required-0"]').trigger('keydown.enter')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Assign the system')
+    expect(wrapper.text()).toContain('Name the schema')
 
     wrapper.unmount()
   })

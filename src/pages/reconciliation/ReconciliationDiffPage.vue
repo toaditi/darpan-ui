@@ -18,7 +18,7 @@
             :submit-disabled="!canContinue || running || loadingMappings"
             :show-back="currentStepIndex > 0"
             :allow-select-enter="true"
-            :allow-file-enter="currentStep.id === 'file-1' || currentStep.id === 'file-2'"
+            :allow-file-enter="isFileStepId(currentStep.id)"
             primary-test-id="reconciliation-step-primary"
             @submit="handlePrimaryAction"
             @back="goBack"
@@ -45,7 +45,104 @@
               />
             </label>
 
-            <label v-else class="wizard-file-shell wizard-input-shell">
+            <WorkflowShortcutChoiceCards
+              v-else-if="currentStep.id === 'api-window'"
+              class="wizard-api-preset-choice"
+              :options="apiWindowPresetOptions"
+              :selected-value="apiWindowPreset"
+              test-id-prefix="api-window-preset"
+              @choose="chooseApiWindowPresetChoice"
+            />
+
+            <div v-else-if="currentStep.id === 'api-window-custom'" class="wizard-api-range-selector wizard-input-shell">
+              <div class="wizard-api-range-panel wizard-api-range-panel--custom">
+                <div class="wizard-api-window-shell">
+                  <button
+                    type="button"
+                    :class="[
+                      'wizard-api-window-field',
+                      { 'wizard-api-window-field--active': customApiWindowSelecting === 'start' },
+                    ]"
+                    data-testid="api-window-custom-start"
+                    @click="setCustomDateSelectionSide('start')"
+                  >
+                    <span class="workflow-context-label">Start</span>
+                    <span :class="['wizard-api-window-value', { empty: !customApiWindowStartDate }]">
+                      {{ customApiWindowStartLabel }}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    :class="[
+                      'wizard-api-window-field',
+                      { 'wizard-api-window-field--active': customApiWindowSelecting === 'end' },
+                    ]"
+                    data-testid="api-window-custom-end"
+                    @click="setCustomDateSelectionSide('end')"
+                  >
+                    <span class="workflow-context-label">End</span>
+                    <span :class="['wizard-api-window-value', { empty: !customApiWindowEndDate }]">
+                      {{ customApiWindowEndLabel }}
+                    </span>
+                  </button>
+                </div>
+
+                <div class="wizard-api-calendar-grid">
+                  <section
+                    v-for="(month, monthIndex) in customCalendarMonths"
+                    :key="month.key"
+                    class="wizard-api-calendar-month"
+                  >
+                    <div class="wizard-api-calendar-month__head">
+                      <button
+                        v-if="monthIndex === 0"
+                        type="button"
+                        class="wizard-api-calendar-nav"
+                        aria-label="Show previous month"
+                        data-testid="api-window-custom-previous-month"
+                        @click="shiftCustomCalendarMonth(-1)"
+                      >
+                        ‹
+                      </button>
+                      <span v-else class="wizard-api-calendar-nav-spacer" aria-hidden="true"></span>
+                      <h3>{{ month.label }}</h3>
+                      <button
+                        v-if="monthIndex === customCalendarMonths.length - 1 && canShiftCustomCalendarMonth(1)"
+                        type="button"
+                        class="wizard-api-calendar-nav"
+                        aria-label="Show next month"
+                        data-testid="api-window-custom-next-month"
+                        @click="shiftCustomCalendarMonth(1)"
+                      >
+                        ›
+                      </button>
+                      <span v-else class="wizard-api-calendar-nav-spacer" aria-hidden="true"></span>
+                    </div>
+                    <div class="wizard-api-calendar-weekdays" aria-hidden="true">
+                      <span v-for="(weekday, weekdayIndex) in weekdayLabels" :key="`${month.key}-${weekdayIndex}`">
+                        {{ weekday }}
+                      </span>
+                    </div>
+                    <div class="wizard-api-calendar-days">
+                      <button
+                        v-for="cell in month.cells"
+                        :key="cell.key"
+                        type="button"
+                        class="wizard-api-calendar-day"
+                        :class="customCalendarCellClasses(cell)"
+                        :disabled="isCustomCalendarCellDisabled(cell)"
+                        :data-testid="cell.isCurrentMonth ? `api-window-custom-day-${cell.key}` : undefined"
+                        @click="selectCustomCalendarDate(cell)"
+                      >
+                        <span class="wizard-api-calendar-day__label">{{ cell.day }}</span>
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+
+            <label v-else-if="isFileStepId(currentStep.id)" class="wizard-file-shell wizard-input-shell">
               <input
                 :key="`${currentStep.id}-${inputResetKey}`"
                 class="wizard-file-input"
@@ -62,6 +159,18 @@
 
             <InlineValidation v-if="runError" tone="error" :message="runError" />
           </WorkflowStepForm>
+
+          <div v-if="pendingSubmittedRun" class="reconciliation-run-submitted-hint" data-testid="run-submitted-hint">
+            <p>Run submitted. This can take a while. You can leave this page and come back later from run history.</p>
+            <RouterLink
+              v-if="runHistoryRoute"
+              class="reconciliation-run-history-link"
+              data-testid="run-submitted-history-link"
+              :to="runHistoryRoute"
+            >
+              Open run history
+            </RouterLink>
+          </div>
 
           <section v-if="hasFeedbackMessages" class="workflow-feedback-board">
             <article v-if="validationErrors.length > 0" class="card workflow-panel">
@@ -129,12 +238,20 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect from '../../components/workflow/WorkflowSelect.vue'
+import WorkflowShortcutChoiceCards, {
+  type WorkflowShortcutChoiceOption,
+} from '../../components/workflow/WorkflowShortcutChoiceCards.vue'
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
 import type { GeneratedOutput, SavedRunSummary, SavedRunSystemOption } from '../../lib/api/types'
+import {
+  clearPendingReconciliationRun,
+  recordPendingReconciliationRun,
+  type PendingReconciliationRun,
+} from '../../lib/reconciliationPendingRuns'
 import {
   buildReconciliationRunHistoryRoute,
   buildReconciliationRunResultRoute,
@@ -143,7 +260,7 @@ import {
 import { formatSavedResultDateTime } from '../../lib/utils/date'
 
 interface UploadStep {
-  id: 'run' | 'system-1' | 'file-1' | 'system-2' | 'file-2'
+  id: 'run' | 'system-1' | 'api-window' | 'api-window-custom' | 'file-1' | 'system-2' | 'file-2'
 }
 
 type FailedRunFeedback = {
@@ -152,19 +269,35 @@ type FailedRunFeedback = {
 }
 
 type ExpectedFileType = 'CSV' | 'JSON' | null
+type FileStepId = 'file-1' | 'file-2'
+type ApiWindowPreset = 'previous-day' | 'previous-week' | 'previous-month' | 'custom'
+type CustomApiWindowSelectionSide = 'start' | 'end'
 
-const baseUploadSteps: UploadStep[] = [
-  { id: 'run' },
-  { id: 'file-1' },
-  { id: 'file-2' },
-]
-const systemUploadSteps: UploadStep[] = [
-  { id: 'run' },
-  { id: 'system-1' },
-  { id: 'file-1' },
-  { id: 'system-2' },
-  { id: 'file-2' },
-]
+interface ApiWindowPresetOption extends WorkflowShortcutChoiceOption {
+  value: ApiWindowPreset
+}
+
+interface ApiWindowRange {
+  startDate: Date
+  endExclusiveDate: Date
+  summary: string
+}
+
+interface ApiWindowCalendarCell {
+  key: string
+  date: Date
+  day: number
+  isCurrentMonth: boolean
+}
+
+interface ApiWindowCalendarMonth {
+  key: string
+  label: string
+  cells: ApiWindowCalendarCell[]
+}
+
+const SOURCE_TYPE_API = 'AUT_SRC_API'
+const weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 const route = useRoute()
 const router = useRouter()
@@ -176,6 +309,11 @@ const file1SystemEnumId = ref('')
 const file2SystemEnumId = ref('')
 const file1 = ref<File | null>(null)
 const file2 = ref<File | null>(null)
+const apiWindowPreset = ref<ApiWindowPreset | ''>('')
+const customApiWindowStartDate = ref('')
+const customApiWindowEndDate = ref('')
+const customApiWindowSelecting = ref<CustomApiWindowSelectionSide>('start')
+const customCalendarMonth = ref(getDefaultCustomCalendarMonth())
 const runError = ref<string | null>(null)
 const running = ref(false)
 const validationErrors = ref<string[]>([])
@@ -183,6 +321,7 @@ const processingWarnings = ref<string[]>([])
 const latestSavedOutput = ref<GeneratedOutput | null>(null)
 const latestSavedOutputLoading = ref(false)
 const latestSavedOutputError = ref<string | null>(null)
+const pendingSubmittedRun = ref<PendingReconciliationRun | null>(null)
 const currentStepIndex = ref(0)
 const inputResetKey = ref(0)
 const stepFocusRegion = ref<HTMLElement | null>(null)
@@ -211,6 +350,9 @@ const systemSelectOptions = computed(() =>
 )
 const file1SystemOption = computed(() => resolveSystemOptionForFileSide('FILE_1', file1SystemEnumId.value))
 const file2SystemOption = computed(() => resolveSystemOptionForFileSide('FILE_2', file2SystemEnumId.value))
+const file1UsesApi = computed(() => isApiSource(file1SystemOption.value))
+const file2UsesApi = computed(() => isApiSource(file2SystemOption.value))
+const hasApiSource = computed(() => file1UsesApi.value || file2UsesApi.value)
 const file1ExpectedFileType = computed<ExpectedFileType>(() => resolveExpectedFileType(file1SystemOption.value))
 const file2ExpectedFileType = computed<ExpectedFileType>(() => resolveExpectedFileType(file2SystemOption.value))
 const requiresSystemSelection = computed(() => selectedSavedRun.value?.requiresSystemSelection === true)
@@ -218,11 +360,60 @@ const shouldSkipMappingStep = computed(
   () => requestedSavedRunId.value.length > 0 && selectedSavedRun.value?.savedRunId === requestedSavedRunId.value,
 )
 const workflowSteps = computed<UploadStep[]>(() => {
-  const steps = requiresSystemSelection.value ? systemUploadSteps : baseUploadSteps
+  const steps: UploadStep[] = [{ id: 'run' }]
+  if (requiresSystemSelection.value) {
+    steps.push({ id: 'system-1' }, { id: 'system-2' })
+  }
+  if (hasApiSource.value) steps.push({ id: 'api-window' })
+  if (hasApiSource.value && apiWindowPreset.value === 'custom') steps.push({ id: 'api-window-custom' })
+  if (!file1UsesApi.value) steps.push({ id: 'file-1' })
+  if (!file2UsesApi.value) steps.push({ id: 'file-2' })
   return shouldSkipMappingStep.value ? steps.filter((step) => step.id !== 'run') : steps
 })
 const currentStep = computed<UploadStep>(() => workflowSteps.value[currentStepIndex.value] ?? workflowSteps.value[0]!)
 const progressPercent = computed(() => ((Math.max(1, currentStepIndex.value + 1) / workflowSteps.value.length) * 100).toFixed(2))
+const isFinalStep = computed(() => currentStepIndex.value === workflowSteps.value.length - 1)
+const apiWindowPresetOptions = computed<ApiWindowPresetOption[]>(() => {
+  const previousDay = buildPresetApiWindowRange('previous-day')
+  const previousWeek = buildPresetApiWindowRange('previous-week')
+  const previousMonth = buildPresetApiWindowRange('previous-month')
+
+  return [
+    {
+      value: 'previous-day',
+      label: formatApiWindowPresetOptionLabel('Previous Day', previousDay.summary),
+      shortcutKey: 'A',
+    },
+    {
+      value: 'previous-week',
+      label: formatApiWindowPresetOptionLabel('Previous Week', previousWeek.summary),
+      shortcutKey: 'B',
+    },
+    {
+      value: 'previous-month',
+      label: formatApiWindowPresetOptionLabel('Previous Month', previousMonth.summary),
+      shortcutKey: 'C',
+    },
+    {
+      value: 'custom',
+      label: 'Custom Dates, select start and end dates',
+      shortcutKey: 'D',
+    },
+  ]
+})
+const selectedApiWindowRange = computed<ApiWindowRange | null>(() => {
+  if (!apiWindowPreset.value) return null
+  if (apiWindowPreset.value === 'custom') return buildCustomApiWindowRange()
+  return buildPresetApiWindowRange(apiWindowPreset.value)
+})
+const customApiWindowStartDateValue = computed(() => parseDateInput(customApiWindowStartDate.value))
+const customApiWindowEndDateValue = computed(() => parseDateInput(customApiWindowEndDate.value))
+const customApiWindowStartLabel = computed(() => formatDateInputLabel(customApiWindowStartDate.value))
+const customApiWindowEndLabel = computed(() => formatDateInputLabel(customApiWindowEndDate.value))
+const customCalendarMonths = computed<ApiWindowCalendarMonth[]>(() => [
+  buildCalendarMonth(customCalendarMonth.value),
+  buildCalendarMonth(addMonths(customCalendarMonth.value, 1)),
+])
 const file1SystemLabel = computed(() => {
   const option = selectedSystemOptions.value.find((systemOption) => systemOption.enumId === file1SystemEnumId.value)
   return option?.label || option?.enumCode || option?.enumId || ''
@@ -271,6 +462,10 @@ const currentQuestion = computed(() => {
       return 'Select a Run'
     case 'system-1':
       return `Select the first system for ${activeRunName.value}`
+    case 'api-window':
+      return 'Which API time period should we use?'
+    case 'api-window-custom':
+      return 'Select custom dates'
     case 'file-1':
       return buildFileUploadQuestion(file1PromptSystemName.value, file1ExpectedFileType.value)
     case 'system-2':
@@ -297,6 +492,10 @@ const canContinue = computed(() => {
       return !!file1.value
     case 'system-2':
       return !!file2SystemEnumId.value && file2SystemEnumId.value !== file1SystemEnumId.value
+    case 'api-window':
+      return !!apiWindowPreset.value
+    case 'api-window-custom':
+      return !!selectedApiWindowRange.value
     case 'file-2':
       return !!file2.value
     default:
@@ -309,16 +508,22 @@ const showLatestSavedOutputBoard = computed(
   () => !!selectedSavedRun.value && (latestSavedOutputLoading.value || !!latestSavedOutputError.value || !!latestSavedOutput.value),
 )
 const primaryButtonLabel = computed(() => {
-  if (currentStep.value.id !== workflowSteps.value[workflowSteps.value.length - 1]?.id) return 'Next'
+  if (!isFinalStep.value) return 'Next'
   return running.value ? 'Running…' : 'Execute'
 })
 
 const stepFocusSelectorById: Record<UploadStep['id'], string> = {
   run: '[data-testid="saved-run-select"]',
   'system-1': '[data-testid="file1-system-select"]',
+  'api-window': '[data-testid="api-window-preset-previous-day"]',
+  'api-window-custom': '[data-testid="api-window-custom-start"]',
   'file-1': '[data-testid="file1-input"]',
   'system-2': '[data-testid="file2-system-select"]',
   'file-2': '[data-testid="file2-input"]',
+}
+
+function isFileStepId(stepId: UploadStep['id']): stepId is FileStepId {
+  return stepId === 'file-1' || stepId === 'file-2'
 }
 
 function buildRunResultRoute(outputFileName: string): RouteLocationRaw | null {
@@ -343,6 +548,246 @@ function resolveSystemOptionForFileSide(fileSide: 'FILE_1' | 'FILE_2', systemEnu
 
 function resolveExpectedFileType(option: SavedRunSystemOption | null): ExpectedFileType {
   return normalizeExpectedFileType(option?.fileTypeEnumId ?? option?.fileTypeLabel ?? null)
+}
+
+function isApiSource(option: SavedRunSystemOption | null): boolean {
+  return option?.sourceTypeEnumId?.trim() === SOURCE_TYPE_API
+}
+
+function isApiWindowPreset(value: string): value is ApiWindowPreset {
+  return ['previous-day', 'previous-week', 'previous-month', 'custom'].includes(value)
+}
+
+function chooseApiWindowPresetChoice(value: string): void {
+  if (!isApiWindowPreset(value)) return
+  chooseApiWindowPreset(value)
+}
+
+function chooseApiWindowPreset(preset: ApiWindowPreset): void {
+  apiWindowPreset.value = preset
+  if (preset !== 'custom') {
+    customApiWindowStartDate.value = ''
+    customApiWindowEndDate.value = ''
+    customApiWindowSelecting.value = 'start'
+    return
+  }
+
+  customApiWindowSelecting.value = customApiWindowStartDate.value ? 'end' : 'start'
+  customCalendarMonth.value = clampCustomCalendarMonth(customApiWindowStartDateValue.value ?? getDefaultCustomCalendarMonth())
+  currentStepIndex.value = Math.min(currentStepIndex.value + 1, workflowSteps.value.length - 1)
+  void focusCurrentStepControlOnNextTick()
+}
+
+function buildPresetApiWindowRange(preset: Exclude<ApiWindowPreset, 'custom'>): ApiWindowRange {
+  const today = startOfLocalDay(new Date())
+  if (preset === 'previous-day') {
+    const previousDay = addDays(today, -1)
+    return {
+      startDate: previousDay,
+      endExclusiveDate: today,
+      summary: formatDateLabel(previousDay),
+    }
+  }
+  if (preset === 'previous-week') {
+    const startDate = addDays(today, -8)
+    const endDate = addDays(today, -1)
+    return {
+      startDate,
+      endExclusiveDate: today,
+      summary: formatDateRangeLabel(startDate, endDate),
+    }
+  }
+
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+  const previousMonthStart = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1)
+  return {
+    startDate: previousMonthStart,
+    endExclusiveDate: currentMonthStart,
+    summary: formatMonthLabel(previousMonthStart),
+  }
+}
+
+function buildCustomApiWindowRange(): ApiWindowRange | null {
+  const startDate = parseDateInput(customApiWindowStartDate.value)
+  const endDate = parseDateInput(customApiWindowEndDate.value)
+  const today = startOfLocalDay(new Date())
+  if (
+    !startDate ||
+    !endDate ||
+    startDate.getTime() > endDate.getTime() ||
+    startDate.getTime() > today.getTime() ||
+    endDate.getTime() > today.getTime()
+  ) {
+    return null
+  }
+
+  return {
+    startDate,
+    endExclusiveDate: addDays(endDate, 1),
+    summary: formatDateRangeLabel(startDate, endDate),
+  }
+}
+
+function formatApiWindowPresetOptionLabel(title: string, summary: string): string {
+  return `${title}, ${summary}`
+}
+
+function parseDateInput(value: string): Date | null {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const monthIndex = Number(match[2]) - 1
+  const day = Number(match[3])
+  const date = new Date(year, monthIndex, day)
+  if (date.getFullYear() !== year || date.getMonth() !== monthIndex || date.getDate() !== day) return null
+  return date
+}
+
+function formatDateInputLabel(value: string): string {
+  const date = parseDateInput(value)
+  if (!date) return 'mm/dd/yyyy'
+  return formatDateInputValue(date).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3/$1')
+}
+
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function addDays(date: Date, dayCount: number): Date {
+  const nextDate = new Date(date)
+  nextDate.setDate(nextDate.getDate() + dayCount)
+  return nextDate
+}
+
+function addMonths(date: Date, monthCount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + monthCount, 1)
+}
+
+function getDefaultCustomCalendarMonth(): Date {
+  return addMonths(startOfMonth(new Date()), -1)
+}
+
+function clampCustomCalendarMonth(date: Date): Date {
+  const monthStart = startOfMonth(date)
+  const latestMonthStart = getDefaultCustomCalendarMonth()
+  if (monthStart.getTime() > latestMonthStart.getTime()) return latestMonthStart
+  return monthStart
+}
+
+function formatDateInputValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function buildCalendarMonth(monthDate: Date): ApiWindowCalendarMonth {
+  const monthStart = startOfMonth(monthDate)
+  const firstCellDate = addDays(monthStart, -monthStart.getDay())
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(firstCellDate, index)
+    return {
+      key: formatDateInputValue(date),
+      date,
+      day: date.getDate(),
+      isCurrentMonth: date.getMonth() === monthStart.getMonth() && date.getFullYear() === monthStart.getFullYear(),
+    }
+  })
+
+  return {
+    key: formatDateInputValue(monthStart),
+    label: formatMonthLabel(monthStart),
+    cells,
+  }
+}
+
+function setCustomDateSelectionSide(side: CustomApiWindowSelectionSide): void {
+  customApiWindowSelecting.value = side
+}
+
+function shiftCustomCalendarMonth(monthCount: number): void {
+  if (!canShiftCustomCalendarMonth(monthCount)) return
+  customCalendarMonth.value = addMonths(customCalendarMonth.value, monthCount)
+}
+
+function canShiftCustomCalendarMonth(monthCount: number): boolean {
+  const nextMonth = addMonths(customCalendarMonth.value, monthCount)
+  return nextMonth.getTime() <= getDefaultCustomCalendarMonth().getTime()
+}
+
+function isCustomCalendarDateDisabled(date: Date): boolean {
+  return startOfLocalDay(date).getTime() > startOfLocalDay(new Date()).getTime()
+}
+
+function isCustomCalendarCellDisabled(cell: ApiWindowCalendarCell): boolean {
+  return !cell.isCurrentMonth || isCustomCalendarDateDisabled(cell.date)
+}
+
+function selectCustomCalendarDate(cell: ApiWindowCalendarCell): void {
+  if (isCustomCalendarCellDisabled(cell)) return
+
+  const selectedDate = startOfLocalDay(cell.date)
+  const selectedDateValue = formatDateInputValue(selectedDate)
+  const selectedStartDate = customApiWindowStartDateValue.value
+  const selectedEndDate = customApiWindowEndDateValue.value
+
+  if (customApiWindowSelecting.value === 'start' || (selectedStartDate && selectedEndDate)) {
+    customApiWindowStartDate.value = selectedDateValue
+    customApiWindowEndDate.value = ''
+    customApiWindowSelecting.value = 'end'
+    return
+  }
+
+  if (selectedStartDate && selectedDate.getTime() < selectedStartDate.getTime()) {
+    customApiWindowStartDate.value = selectedDateValue
+    customApiWindowEndDate.value = ''
+    customApiWindowSelecting.value = 'end'
+    return
+  }
+
+  customApiWindowEndDate.value = selectedDateValue
+  customApiWindowSelecting.value = 'start'
+}
+
+function customCalendarCellClasses(cell: ApiWindowCalendarCell): Record<string, boolean> {
+  const isDisabled = isCustomCalendarCellDisabled(cell)
+  const startDate = customApiWindowStartDateValue.value
+  const endDate = customApiWindowEndDateValue.value
+  const cellTime = startOfLocalDay(cell.date).getTime()
+  const startTime = startDate?.getTime()
+  const endTime = endDate?.getTime()
+  const isRangeStart = !isDisabled && startTime === cellTime
+  const isRangeEnd = !isDisabled && endTime === cellTime
+  const isInRange = !isDisabled && startTime !== undefined && endTime !== undefined && startTime < cellTime && cellTime < endTime
+
+  return {
+    'wizard-api-calendar-day--outside': !cell.isCurrentMonth,
+    'wizard-api-calendar-day--disabled': isDisabled,
+    'wizard-api-calendar-day--range-start': isRangeStart,
+    'wizard-api-calendar-day--range-end': isRangeEnd,
+    'wizard-api-calendar-day--in-range': isInRange,
+  }
+}
+
+function formatDateForPayload(date: Date): string {
+  return date.toISOString()
+}
+
+function formatDateLabel(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
+}
+
+function formatDateRangeLabel(startDate: Date, endDate: Date): string {
+  return `${formatDateLabel(startDate)} to ${formatDateLabel(endDate)}`
+}
+
+function formatMonthLabel(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(date)
 }
 
 function normalizeExpectedFileType(rawType?: string | null): ExpectedFileType {
@@ -424,6 +869,11 @@ function resetWorkflow(): void {
   currentStepIndex.value = 0
   file1.value = null
   file2.value = null
+  apiWindowPreset.value = ''
+  customApiWindowStartDate.value = ''
+  customApiWindowEndDate.value = ''
+  customApiWindowSelecting.value = 'start'
+  customCalendarMonth.value = getDefaultCustomCalendarMonth()
   inputResetKey.value += 1
 }
 
@@ -585,7 +1035,7 @@ async function handlePrimaryAction(): Promise<void> {
     return
   }
 
-  if (currentStep.value.id !== 'file-2') {
+  if (!isFinalStep.value) {
     if (!canContinue.value) return
     currentStepIndex.value = Math.min(currentStepIndex.value + 1, workflowSteps.value.length - 1)
     return
@@ -599,8 +1049,17 @@ async function runDiff(): Promise<void> {
     runError.value = 'Select a run before running the diff.'
     return
   }
-  if (!file1.value || !file2.value) {
-    runError.value = 'Upload both files before running the diff.'
+  if (!file1UsesApi.value && !file1.value) {
+    runError.value = `Upload the ${file1PromptSystemName.value} file before running the diff.`
+    return
+  }
+  if (!file2UsesApi.value && !file2.value) {
+    runError.value = `Upload the ${file2PromptSystemName.value} file before running the diff.`
+    return
+  }
+  const apiWindowRange = hasApiSource.value ? selectedApiWindowRange.value : null
+  if (hasApiSource.value && !apiWindowRange) {
+    runError.value = 'Choose a valid API time period before running the diff.'
     return
   }
   if (!file1SystemEnumId.value || !file2SystemEnumId.value || file1SystemEnumId.value === file2SystemEnumId.value) {
@@ -610,50 +1069,74 @@ async function runDiff(): Promise<void> {
 
   clearRunState()
   running.value = true
+  pendingSubmittedRun.value = null
+  let pendingRun: PendingReconciliationRun | null = null
 
   try {
-    const [file1Text, file2Text] = await Promise.all([readFileAsText(file1.value), readFileAsText(file2.value)])
-    const file1ValidationError = validateSelectedFile(
-      file1.value,
-      file1Text,
-      file1PromptSystemName.value,
-      file1ExpectedFileType.value,
-    )
-    if (file1ValidationError) {
-      runError.value = file1ValidationError
-      return
-    }
-
-    const file2ValidationError = validateSelectedFile(
-      file2.value,
-      file2Text,
-      file2PromptSystemName.value,
-      file2ExpectedFileType.value,
-    )
-    if (file2ValidationError) {
-      runError.value = file2ValidationError
-      return
-    }
-
-    const response = await reconciliationFacade.runSavedRunDiff({
+    const payload: Record<string, unknown> = {
       savedRunId: selectedSavedRun.value.savedRunId,
-      file1Name: file1.value.name,
-      file1Text,
-      file2Name: file2.value.name,
-      file2Text,
       file1SystemEnumId: file1SystemEnumId.value,
       file2SystemEnumId: file2SystemEnumId.value,
       hasHeader: true,
-    })
+    }
+
+    if (apiWindowRange) {
+      payload.windowStartDate = formatDateForPayload(apiWindowRange.startDate)
+      payload.windowEndDate = formatDateForPayload(apiWindowRange.endExclusiveDate)
+      payload.windowStartLocalDate = formatDateInputValue(apiWindowRange.startDate)
+      payload.windowEndLocalDate = formatDateInputValue(apiWindowRange.endExclusiveDate)
+    }
+
+    if (!file1UsesApi.value && file1.value) {
+      const file1Text = await readFileAsText(file1.value)
+      const file1ValidationError = validateSelectedFile(
+        file1.value,
+        file1Text,
+        file1PromptSystemName.value,
+        file1ExpectedFileType.value,
+      )
+      if (file1ValidationError) {
+        runError.value = file1ValidationError
+        return
+      }
+      payload.file1Name = file1.value.name
+      payload.file1Text = file1Text
+    }
+
+    if (!file2UsesApi.value && file2.value) {
+      const file2Text = await readFileAsText(file2.value)
+      const file2ValidationError = validateSelectedFile(
+        file2.value,
+        file2Text,
+        file2PromptSystemName.value,
+        file2ExpectedFileType.value,
+      )
+      if (file2ValidationError) {
+        runError.value = file2ValidationError
+        return
+      }
+      payload.file2Name = file2.value.name
+      payload.file2Text = file2Text
+    }
+
+    if (reconciliationRunRouteContext.value) {
+      pendingRun = recordPendingReconciliationRun(reconciliationRunRouteContext.value)
+      pendingSubmittedRun.value = pendingRun
+    }
+
+    const response = await reconciliationFacade.runSavedRunDiff(payload)
 
     validationErrors.value = response.runResult?.validationErrors ?? []
     processingWarnings.value = response.runResult?.processingWarnings ?? []
 
     const generatedOutput = response.runResult?.generatedOutput ?? null
     if (!generatedOutput?.fileName?.trim()) {
-      runError.value = response.errors?.[0] ?? 'Diff did not return a saved result.'
+      if (!pendingRun) runError.value = response.errors?.[0] ?? 'Diff did not return a saved result.'
       return
     }
+
+    clearPendingReconciliationRun(pendingRun?.pendingRunId)
+    pendingSubmittedRun.value = null
 
     const resultRoute = buildRunResultRoute(generatedOutput.fileName)
     if (!resultRoute) {
@@ -663,6 +1146,8 @@ async function runDiff(): Promise<void> {
 
     await router.push(resultRoute)
   } catch (error) {
+    clearPendingReconciliationRun(pendingRun?.pendingRunId)
+    pendingSubmittedRun.value = null
     if (error instanceof ApiCallError) {
       const failedFeedback = readFailedRunFeedback(error)
       validationErrors.value = failedFeedback.validationErrors
@@ -709,27 +1194,336 @@ onMounted(() => {
 <style scoped>
 .reconciliation-diff-layout {
   width: min(var(--workflow-shell-width), 100%);
+  min-width: 0;
   min-height: 100%;
   display: grid;
-  gap: 0;
+  justify-items: center;
+  align-content: start;
+  gap: var(--space-5);
 }
 
 .reconciliation-diff-main {
   width: 100%;
+  min-width: 0;
   display: grid;
   justify-items: center;
   gap: var(--space-5);
 }
 
-.reconciliation-run-history-board {
-  position: fixed;
-  left: 50%;
-  bottom: calc(var(--floating-actions-bottom-offset) + var(--floating-actions-gap) + var(--floating-command-bubble-height));
-  transform: translateX(-50%);
+.workflow-step-shell {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.reconciliation-run-submitted-hint {
+  width: min(var(--workflow-question-width), 100%);
   display: grid;
-  width: min(var(--workflow-question-width), calc(100vw - 2 * var(--space-6)));
   gap: var(--space-2);
-  z-index: 10;
+  justify-items: start;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-soft);
+}
+
+.reconciliation-run-submitted-hint p {
+  margin: 0;
+}
+
+.wizard-api-range-selector {
+  width: min(42rem, 100%);
+  min-width: 0;
+  max-width: 100%;
+  justify-self: center;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.wizard-api-range-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--surface-2) 82%, var(--surface));
+  box-shadow: 0 0.8rem 1.8rem color-mix(in oklab, black 8%, transparent);
+}
+
+.wizard-api-range-panel--custom {
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.wizard-api-window-shell {
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: end;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.wizard-api-window-field {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wizard-api-window-field--active,
+.wizard-api-window-field:focus-visible {
+  border-color: color-mix(in oklab, var(--accent) 72%, var(--border));
+  outline: none;
+}
+
+.wizard-api-window-value {
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(0.9rem, 1vw, 1.02rem);
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard-api-window-value.empty {
+  color: var(--text-muted);
+}
+
+.wizard-api-calendar-grid {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.wizard-api-calendar-month {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.wizard-api-calendar-month__head {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) 1.75rem;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.wizard-api-calendar-month__head h3 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard-api-calendar-nav,
+.wizard-api-calendar-nav-spacer {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.wizard-api-calendar-nav {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wizard-api-calendar-nav:hover,
+.wizard-api-calendar-nav:focus-visible {
+  background: color-mix(in oklab, var(--surface) 74%, var(--accent) 26%);
+  color: var(--accent);
+  outline: none;
+}
+
+.wizard-api-calendar-weekdays,
+.wizard-api-calendar-days {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.wizard-api-calendar-weekdays {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.wizard-api-calendar-weekdays span {
+  min-width: 0;
+  min-height: 1.75rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.wizard-api-calendar-days {
+  row-gap: 0.2rem;
+}
+
+.wizard-api-calendar-day {
+  position: relative;
+  width: 100%;
+  inline-size: 100%;
+  height: 2rem;
+  min-width: 0;
+  min-inline-size: 0;
+  max-width: 100%;
+  display: grid;
+  place-items: center;
+  justify-self: stretch;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 0;
+}
+
+.wizard-api-calendar-day__label {
+  position: relative;
+  z-index: 2;
+  display: inline-grid;
+  width: min(1.95rem, 100%);
+  inline-size: min(1.95rem, 100%);
+  min-width: 0;
+  max-width: 100%;
+  height: 1.95rem;
+  place-items: center;
+  line-height: 1;
+}
+
+.wizard-api-calendar-day::before,
+.wizard-api-calendar-day::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.wizard-api-calendar-day::before {
+  top: 0.18rem;
+  right: 0;
+  bottom: 0.18rem;
+  left: 0;
+  background: transparent;
+  z-index: 0;
+}
+
+.wizard-api-calendar-day::after {
+  top: 50%;
+  left: 50%;
+  width: min(1.95rem, 100%);
+  inline-size: min(1.95rem, 100%);
+  height: 1.95rem;
+  border-radius: 999px;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.wizard-api-calendar-day--in-range::before,
+.wizard-api-calendar-day--range-start::before,
+.wizard-api-calendar-day--range-end::before {
+  background: color-mix(in oklab, var(--accent) 16%, var(--surface));
+}
+
+.wizard-api-calendar-day--range-start::before {
+  left: 50%;
+}
+
+.wizard-api-calendar-day--range-end::before {
+  right: 50%;
+}
+
+.wizard-api-calendar-day--range-start.wizard-api-calendar-day--range-end::before {
+  background: transparent;
+}
+
+.wizard-api-calendar-day--range-start,
+.wizard-api-calendar-day--range-end {
+  color: var(--surface);
+  font-weight: 700;
+}
+
+.wizard-api-calendar-day--range-start::after,
+.wizard-api-calendar-day--range-end::after {
+  background: color-mix(in oklab, var(--accent) 66%, var(--surface));
+}
+
+.wizard-api-calendar-day--outside {
+  color: color-mix(in oklab, var(--text-muted) 58%, transparent);
+}
+
+.wizard-api-calendar-day:disabled,
+.wizard-api-calendar-day--disabled {
+  color: color-mix(in oklab, var(--text-muted) 56%, transparent);
+  cursor: not-allowed;
+}
+
+.wizard-api-calendar-day:disabled::before,
+.wizard-api-calendar-day:disabled::after {
+  background: transparent;
+  box-shadow: none;
+}
+
+.wizard-api-calendar-day:hover,
+.wizard-api-calendar-day:focus-visible {
+  outline: none;
+}
+
+.wizard-api-calendar-day:hover::after,
+.wizard-api-calendar-day:focus-visible::after {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 65%, var(--border));
+}
+
+@media (max-width: 720px) {
+  .wizard-api-window-shell,
+  .wizard-api-calendar-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.reconciliation-run-history-board {
+  display: grid;
+  width: min(var(--workflow-question-width), 100%);
+  min-width: 0;
+  max-width: 100%;
+  gap: var(--space-2);
+  justify-self: center;
 }
 
 .reconciliation-run-history-card,
@@ -808,18 +1602,16 @@ onMounted(() => {
     gap: var(--space-4);
   }
 
+  .wizard-api-window-shell {
+    grid-template-columns: 1fr;
+  }
+
   .reconciliation-run-history-card__metrics {
     grid-template-columns: 1fr;
   }
 
   .reconciliation-run-history-board {
-    position: static;
-    left: auto;
-    bottom: auto;
-    transform: none;
     width: min(var(--workflow-question-width), 100%);
-    justify-self: center;
-    margin-top: var(--space-6);
   }
 }
 </style>

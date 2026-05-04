@@ -4,6 +4,10 @@ import { installLocalStorageStub } from '../../test/localStorage'
 const getSessionInfo = vi.hoisted(() => vi.fn())
 const loginSession = vi.hoisted(() => vi.fn())
 const saveActiveTenantRpc = vi.hoisted(() => vi.fn())
+const saveTenantSettingsRpc = vi.hoisted(() => vi.fn())
+const saveUserSettingsRpc = vi.hoisted(() => vi.fn())
+const verifyOwnPasswordRpc = vi.hoisted(() => vi.fn())
+const changeOwnPasswordRpc = vi.hoisted(() => vi.fn())
 const logoutSessionRpc = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/facade', () => ({
@@ -11,7 +15,13 @@ vi.mock('../api/facade', () => ({
     getSessionInfo,
     loginSession,
     saveActiveTenant: saveActiveTenantRpc,
+    saveUserSettings: saveUserSettingsRpc,
+    verifyOwnPassword: verifyOwnPasswordRpc,
+    changeOwnPassword: changeOwnPasswordRpc,
     logoutSession: logoutSessionRpc,
+  },
+  settingsFacade: {
+    saveTenantSettings: saveTenantSettingsRpc,
   },
 }))
 
@@ -21,6 +31,10 @@ describe('auth state', () => {
     getSessionInfo.mockReset()
     loginSession.mockReset()
     saveActiveTenantRpc.mockReset()
+    saveTenantSettingsRpc.mockReset()
+    saveUserSettingsRpc.mockReset()
+    verifyOwnPasswordRpc.mockReset()
+    changeOwnPasswordRpc.mockReset()
     logoutSessionRpc.mockReset()
     installLocalStorageStub()
   })
@@ -143,35 +157,217 @@ describe('auth state', () => {
     expect(useAuthState().error).toBeNull()
   })
 
+  it('updates the authenticated session when user settings change', async () => {
+    saveUserSettingsRpc.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      authenticated: true,
+      sessionInfo: {
+        userId: 'backend-user',
+        username: 'backend',
+        displayName: 'Aditi',
+        timeZone: 'America/Los_Angeles',
+        scopeType: 'TENANT',
+        customerScopeId: 'KREWE',
+        activeTenantUserGroupId: 'KREWE',
+        activeTenantLabel: 'Krewe',
+        availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+        isSuperAdmin: false,
+      },
+    })
+
+    const { saveUserSettings, useAuthState } = await import('../auth')
+
+    await expect(saveUserSettings({ displayName: 'Aditi' })).resolves.toBe(true)
+    expect(saveUserSettingsRpc).toHaveBeenCalledWith({ displayName: 'Aditi' })
+    expect(useAuthState().status).toBe('authenticated')
+    expect(useAuthState().sessionInfo?.displayName).toBe('Aditi')
+    expect(useAuthState().sessionInfo?.timeZone).toBe('America/Los_Angeles')
+    expect(useAuthState().error).toBeNull()
+  })
+
+  it('updates the authenticated session timezone when tenant settings change', async () => {
+    getSessionInfo.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      authenticated: true,
+      sessionInfo: {
+        userId: 'backend-user',
+        username: 'backend',
+        timeZone: 'America/Los_Angeles',
+        scopeType: 'TENANT',
+        customerScopeId: 'KREWE',
+        activeTenantUserGroupId: 'KREWE',
+        activeTenantLabel: 'Krewe',
+        availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+        isSuperAdmin: false,
+      },
+    })
+    saveTenantSettingsRpc.mockResolvedValue({
+      ok: true,
+      messages: ['Saved tenant settings.'],
+      errors: [],
+      tenantSettings: {
+        companyUserGroupId: 'KREWE',
+        companyLabel: 'Krewe',
+        timeZone: 'Europe/London',
+      },
+    })
+
+    const { ensureAuthenticated, saveTenantSettings, useAuthState } = await import('../auth')
+
+    await expect(ensureAuthenticated()).resolves.toBe(true)
+    await expect(saveTenantSettings({ timeZone: 'Europe/London' })).resolves.toMatchObject({
+      ok: true,
+      tenantSettings: { timeZone: 'Europe/London' },
+    })
+    expect(saveTenantSettingsRpc).toHaveBeenCalledWith({ timeZone: 'Europe/London' })
+    expect(useAuthState().status).toBe('authenticated')
+    expect(useAuthState().sessionInfo?.timeZone).toBe('Europe/London')
+  })
+
+  it('changes the current user password through the authenticated auth facade', async () => {
+    changeOwnPasswordRpc.mockResolvedValue({
+      ok: true,
+      messages: ['Password updated for user backend'],
+      errors: [],
+      authenticated: true,
+      passwordUpdated: true,
+      sessionInfo: {
+        userId: 'backend-user',
+        username: 'backend',
+        scopeType: 'TENANT',
+        customerScopeId: 'KREWE',
+        activeTenantUserGroupId: 'KREWE',
+        activeTenantLabel: 'Krewe',
+        availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+        isSuperAdmin: false,
+      },
+    })
+
+    const { changeOwnPassword, useAuthState } = await import('../auth')
+
+    await expect(changeOwnPassword({
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+      newPasswordVerify: 'new-password',
+    })).resolves.toBe(true)
+    expect(changeOwnPasswordRpc).toHaveBeenCalledWith({
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+      newPasswordVerify: 'new-password',
+    })
+    expect(useAuthState().status).toBe('authenticated')
+    expect(useAuthState().error).toBeNull()
+  })
+
+  it('verifies the current user password through the authenticated auth facade', async () => {
+    verifyOwnPasswordRpc.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      authenticated: true,
+      passwordVerified: true,
+      sessionInfo: {
+        userId: 'backend-user',
+        username: 'backend',
+        scopeType: 'TENANT',
+        customerScopeId: 'KREWE',
+        activeTenantUserGroupId: 'KREWE',
+        activeTenantLabel: 'Krewe',
+        availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+        isSuperAdmin: false,
+      },
+    })
+
+    const { verifyOwnPassword, useAuthState } = await import('../auth')
+
+    await expect(verifyOwnPassword('old-password')).resolves.toBe(true)
+    expect(verifyOwnPasswordRpc).toHaveBeenCalledWith({ currentPassword: 'old-password' })
+    expect(useAuthState().status).toBe('authenticated')
+    expect(useAuthState().error).toBeNull()
+  })
+
+  it('keeps the session authenticated when current password verification returns false', async () => {
+    verifyOwnPasswordRpc.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      authenticated: true,
+      passwordVerified: false,
+      sessionInfo: {
+        userId: 'backend-user',
+        username: 'backend',
+        scopeType: 'TENANT',
+        customerScopeId: 'KREWE',
+        activeTenantUserGroupId: 'KREWE',
+        activeTenantLabel: 'Krewe',
+        availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
+        isSuperAdmin: false,
+      },
+    })
+
+    const { verifyOwnPassword, useAuthState } = await import('../auth')
+
+    await expect(verifyOwnPassword('wrong-password')).resolves.toBe(false)
+    expect(useAuthState().status).toBe('authenticated')
+    expect(useAuthState().error).toBe('Password incorrect.')
+  })
+
   it('derives UI permissions for view-only, editor, and super-admin sessions', async () => {
     const { buildUiPermissionPolicy } = await import('../auth')
 
     expect(buildUiPermissionPolicy({
       userId: 'view-only',
+      canViewActiveTenantData: true,
+      canRunActiveTenantReconciliation: false,
       canEditActiveTenantData: false,
       isSuperAdmin: false,
     })).toEqual({
       canViewTenantSettings: true,
+      canRunActiveTenantReconciliation: false,
+      canEditTenantSettings: false,
+      canManageGlobalSettings: false,
+    })
+
+    expect(buildUiPermissionPolicy({
+      userId: 'tenant-user',
+      canViewActiveTenantData: true,
+      canRunActiveTenantReconciliation: true,
+      canEditActiveTenantData: false,
+      isSuperAdmin: false,
+    })).toEqual({
+      canViewTenantSettings: true,
+      canRunActiveTenantReconciliation: true,
       canEditTenantSettings: false,
       canManageGlobalSettings: false,
     })
 
     expect(buildUiPermissionPolicy({
       userId: 'editor',
+      canViewActiveTenantData: true,
+      canRunActiveTenantReconciliation: true,
       canEditActiveTenantData: true,
       isSuperAdmin: false,
     })).toMatchObject({
       canViewTenantSettings: true,
+      canRunActiveTenantReconciliation: true,
       canEditTenantSettings: true,
       canManageGlobalSettings: false,
     })
 
     expect(buildUiPermissionPolicy({
       userId: 'super-admin',
+      canViewActiveTenantData: true,
+      canRunActiveTenantReconciliation: true,
       canEditActiveTenantData: false,
+      canManageDarpanCore: true,
       isSuperAdmin: true,
     })).toMatchObject({
       canViewTenantSettings: true,
+      canRunActiveTenantReconciliation: true,
       canEditTenantSettings: true,
       canManageGlobalSettings: true,
     })

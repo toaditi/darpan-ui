@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { ApiCallError } from '../../../lib/api/client'
+import { installLocalStorageStub } from '../../../test/localStorage'
 
 const route = vi.hoisted(() => ({
   params: {
@@ -18,6 +19,7 @@ const saveSavedRunName = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'editor',
+    canRunActiveTenantReconciliation: true,
     canEditActiveTenantData: true,
     isSuperAdmin: false,
   },
@@ -40,6 +42,11 @@ vi.mock('../../../lib/api/facade', () => ({
 
 vi.mock('../../../lib/auth', () => ({
   useUiPermissions: () => ({
+    get canRunActiveTenantReconciliation() {
+      return authState.sessionInfo.canRunActiveTenantReconciliation === true ||
+        authState.sessionInfo.canEditActiveTenantData === true ||
+        authState.sessionInfo.isSuperAdmin === true
+    },
     get canEditTenantSettings() {
       return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
     },
@@ -86,6 +93,10 @@ function buildGeneratedOutput(day: number) {
 
 describe('ReconciliationRunHistoryPage', () => {
   beforeEach(() => {
+    installLocalStorageStub()
+    window.localStorage.clear()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-03-31T09:10:00.000Z'))
     route.params.savedRunId = 'RS_ORDER_CSV'
     route.query.runName = 'CSV Order Compare'
     route.query.file1SystemLabel = 'OMS'
@@ -116,6 +127,7 @@ describe('ReconciliationRunHistoryPage', () => {
     saveSavedRunName.mockReset()
     authState.sessionInfo = {
       userId: 'editor',
+      canRunActiveTenantReconciliation: true,
       canEditActiveTenantData: true,
       isSuperAdmin: false,
     }
@@ -131,6 +143,10 @@ describe('ReconciliationRunHistoryPage', () => {
         systemOptions: [],
       },
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('loads saved-run scoped results and features the most recent output above the previous results list', async () => {
@@ -188,7 +204,14 @@ describe('ReconciliationRunHistoryPage', () => {
         file2SystemLabel: 'SHOPIFY',
       },
     })
-    expect(JSON.parse(wrapper.get('[data-testid="run-history-open-workflow"]').attributes('data-to') ?? '{}')).toEqual({
+    expect(wrapper.find('.static-page-board [data-testid="run-history-open-workflow"]').exists()).toBe(false)
+    const openWorkflowAction = wrapper.get('.static-page-actions [data-testid="run-history-open-workflow"]')
+    expect(openWorkflowAction.classes()).toContain('app-icon-action')
+    expect(openWorkflowAction.classes()).toContain('app-icon-action--large')
+    expect(openWorkflowAction.attributes('aria-label')).toBe('Open run')
+    expect(openWorkflowAction.find('svg').exists()).toBe(true)
+    expect(openWorkflowAction.text()).not.toContain('Open Run')
+    expect(JSON.parse(openWorkflowAction.attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-diff',
       query: {
         savedRunId: 'RS_ORDER_CSV',
@@ -211,6 +234,46 @@ describe('ReconciliationRunHistoryPage', () => {
       savedRunId: 'RS_ORDER_CSV',
       runName: 'CSV Order Compare Revised',
     })
+  })
+
+  it('shows locally submitted unfinished runs as Running in run history', async () => {
+    window.localStorage.setItem('darpan.pendingReconciliationRuns', JSON.stringify([
+      {
+        pendingRunId: 'pending-RS_ORDER_CSV',
+        savedRunId: 'RS_ORDER_CSV',
+        runName: 'CSV Order Compare',
+        file1SystemLabel: 'OMS',
+        file2SystemLabel: 'SHOPIFY',
+        submittedAt: '2026-03-31T09:05:00.000Z',
+      },
+    ]))
+
+    const wrapper = mount(ReconciliationRunHistoryPage)
+    await flushPromises()
+
+    const runningTile = wrapper.get('[data-testid="run-history-running-tile"]')
+    expect(wrapper.findAll('.static-page-section-heading').map((node) => node.text())).toEqual(['In Progress', 'Most Recent', 'Previous Results'])
+    expect(runningTile.text()).toContain('Running')
+    expect(runningTile.text()).toContain(formatCreatedDateForExpectation('2026-03-31T09:05:00.000Z'))
+  })
+
+  it('clears a pending history marker after a newer saved result is available', async () => {
+    window.localStorage.setItem('darpan.pendingReconciliationRuns', JSON.stringify([
+      {
+        pendingRunId: 'pending-RS_ORDER_CSV',
+        savedRunId: 'RS_ORDER_CSV',
+        runName: 'CSV Order Compare',
+        file1SystemLabel: 'OMS',
+        file2SystemLabel: 'SHOPIFY',
+        submittedAt: '2026-03-30T09:05:00.000Z',
+      },
+    ]))
+
+    const wrapper = mount(ReconciliationRunHistoryPage)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="run-history-running-tile"]').exists()).toBe(false)
+    expect(window.localStorage.getItem('darpan.pendingReconciliationRuns')).toBeNull()
   })
 
   it('reveals more previous results in five-at-a-time batches', async () => {

@@ -13,6 +13,23 @@
       </div>
     </template>
 
+    <StaticPageSection v-if="pendingRuns.length > 0" title="In Progress">
+      <div class="static-page-tile-grid run-history-grid" data-testid="run-history-running-results">
+        <article
+          v-for="pendingRun in pendingRuns"
+          :key="pendingRun.pendingRunId"
+          class="static-page-tile run-history-tile run-history-running-tile"
+          data-testid="run-history-running-tile"
+        >
+          <div class="run-history-tile__head run-history-tile__head--status">
+            <span class="static-page-tile-title">{{ formatSavedResultDateTime(pendingRun.submittedAt) }}</span>
+            <StatusBadge label="Running" tone="warning" />
+          </div>
+          <p class="section-note">Results will appear here when this reconciliation finishes.</p>
+        </article>
+      </div>
+    </StaticPageSection>
+
     <StaticPageSection v-if="featuredOutput" title="Most Recent">
       <RouterLink
         class="static-page-tile run-history-tile run-history-featured-tile"
@@ -82,23 +99,40 @@
       <div v-else class="static-page-drop-hint" data-testid="run-history-empty">No saved results yet for this run.</div>
     </StaticPageSection>
 
-    <RouterLink v-if="canEditTenantSettings" class="static-page-action-tile" data-testid="run-history-open-workflow" :to="workflowRoute">
-      Open Run
-    </RouterLink>
+    <template v-if="canRunActiveTenantReconciliation" #actions>
+      <RouterLink
+        class="app-icon-action app-icon-action--large"
+        data-testid="run-history-open-workflow"
+        aria-label="Open run"
+        title="Open run"
+        :to="workflowRoute"
+      >
+        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
+        </svg>
+      </RouterLink>
+    </template>
   </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import StaticEditableTitle from '../../components/ui/StaticEditableTitle.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
+import StatusBadge from '../../components/ui/StatusBadge.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
 import type { PaginationMeta, GeneratedOutput } from '../../lib/api/types'
 import { useUiPermissions } from '../../lib/auth'
+import {
+  listPendingReconciliationRuns,
+  PENDING_RECONCILIATION_RUNS_EVENT,
+  resolveCompletedPendingReconciliationRuns,
+  type PendingReconciliationRun,
+} from '../../lib/reconciliationPendingRuns'
 import {
   buildReconciliationDiffRoute,
   buildReconciliationRunResultRoute,
@@ -119,6 +153,7 @@ const editableRunName = ref('')
 const persistedRunName = ref('')
 const savingRunName = ref(false)
 const generatedOutputs = ref<GeneratedOutput[]>([])
+const pendingRuns = ref<PendingReconciliationRun[]>([])
 const lastLoadedPageIndex = ref(-1)
 const visibleOtherOutputCount = ref(OTHER_RESULTS_BATCH_SIZE)
 const pagination = ref<PaginationMeta>({
@@ -128,6 +163,10 @@ const pagination = ref<PaginationMeta>({
   pageCount: 1,
 })
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
+const playIconPath =
+  'M6.75 4.2c0-.91.99-1.48 1.78-1.01l7.1 4.25a1.18 1.18 0 0 1 0 2.02l-7.1 4.25a1.18 1.18 0 0 1-1.78-1.01V4.2Z'
+const playIconTransform = 'translate(0 1.5)'
 
 const savedRunId = computed(() =>
   typeof route.params.savedRunId === 'string' ? route.params.savedRunId.trim() : '',
@@ -165,12 +204,17 @@ function buildResultRoute(outputFileName: string) {
   return buildReconciliationRunResultRoute(reconciliationRunRouteContext.value, outputFileName)
 }
 
+function refreshPendingRuns(): void {
+  pendingRuns.value = listPendingReconciliationRuns(savedRunId.value)
+}
+
 function resetHistoryState(): void {
   loadError.value = null
   editableRunName.value = routeRunName.value
   persistedRunName.value = routeRunName.value
   savingRunName.value = false
   generatedOutputs.value = []
+  pendingRuns.value = []
   loadingMore.value = false
   lastLoadedPageIndex.value = -1
   visibleOtherOutputCount.value = OTHER_RESULTS_BATCH_SIZE
@@ -249,6 +293,7 @@ async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promis
     const nextOutputs = response.generatedOutputs ?? []
     if (append) appendGeneratedOutputs(nextOutputs)
     else generatedOutputs.value = nextOutputs
+    pendingRuns.value = resolveCompletedPendingReconciliationRuns(requestedSavedRunId, generatedOutputs.value)
 
     pagination.value = response.pagination ?? pagination.value
     lastLoadedPageIndex.value = targetPageIndex
@@ -279,8 +324,17 @@ async function loadMoreOutputs(): Promise<void> {
 
 watch(savedRunId, () => {
   resetHistoryState()
+  refreshPendingRuns()
   void loadGeneratedOutputs()
 }, { immediate: true })
+
+onMounted(() => {
+  window.addEventListener(PENDING_RECONCILIATION_RUNS_EVENT, refreshPendingRuns)
+})
+
+onUnmounted(() => {
+  window.removeEventListener(PENDING_RECONCILIATION_RUNS_EVENT, refreshPendingRuns)
+})
 </script>
 
 <style scoped>
@@ -314,6 +368,12 @@ watch(savedRunId, () => {
 .run-history-metrics {
   display: grid;
   gap: var(--space-2);
+}
+
+.run-history-tile__head--status {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 }
 
 .run-history-metrics {

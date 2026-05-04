@@ -9,6 +9,12 @@ import { buildWorkflowOriginState } from '../../../lib/workflowOrigin'
 const getJsonSchema = vi.hoisted(() => vi.fn())
 const deleteSavedRun = vi.hoisted(() => vi.fn())
 const routerPush = vi.hoisted(() => vi.fn())
+const permissionState = vi.hoisted(() => ({
+  canRunActiveTenantReconciliation: true,
+  canEditTenantSettings: true,
+  canManageGlobalSettings: false,
+  canViewTenantSettings: true,
+}))
 const route = vi.hoisted(() => ({
   fullPath: '/reconciliation/ruleset-manager',
 }))
@@ -32,6 +38,10 @@ vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
     deleteSavedRun,
   },
+}))
+
+vi.mock('../../../lib/auth', () => ({
+  useUiPermissions: () => permissionState,
 }))
 
 import ReconciliationRuleSetManagerPage from '../ReconciliationRuleSetManagerPage.vue'
@@ -79,11 +89,53 @@ function createSavedRunReopenDraftState(rules: ReconciliationRuleSetDraftRule[] 
   )
 }
 
+function createApiDraftState() {
+  return buildReconciliationRuleSetDraftState(
+    {
+      savedRunId: 'RS_API_ORDER_SYNC',
+      runName: 'API Order Sync',
+      file1SystemEnumId: 'OMS',
+      file1SystemLabel: 'HotWax',
+      file1SourceTypeEnumId: 'AUT_SRC_API',
+      file1SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
+      file1SystemMessageRemoteLabel: 'Orders API',
+      file1SourceConfigId: 'HOTWAX_ORDERS',
+      file1FileTypeEnumId: 'DftJson',
+      file1JsonSchemaId: 'schema-oms-orders',
+      file1SchemaLabel: 'HotWax orders',
+      file1PrimaryIdExpression: '$.externalId',
+      file2SystemEnumId: 'SHOPIFY',
+      file2SystemLabel: 'SHOPIFY',
+      file2SourceTypeEnumId: 'AUT_SRC_API',
+      file2SystemMessageRemoteId: 'SHOPIFY_ORDERS_API',
+      file2SystemMessageRemoteLabel: 'Shopify Orders Endpoint',
+      file2SourceConfigId: 'SHOPIFY_ORDERS',
+      file2FileTypeEnumId: 'DftJson',
+      file2JsonSchemaId: 'schema-shopify-orders',
+      file2SchemaLabel: 'Shopify orders',
+      file2PrimaryIdExpression: '$.id',
+      rules: [
+        {
+          file1FieldPath: '$.externalId',
+          file2FieldPath: '$.id',
+          operator: '=',
+          sequenceNum: 1,
+        },
+      ],
+    },
+    'ruleset-manager',
+  )
+}
+
 describe('ReconciliationRuleSetManagerPage', () => {
   beforeEach(() => {
     getJsonSchema.mockReset()
     deleteSavedRun.mockReset()
     routerPush.mockReset()
+    permissionState.canRunActiveTenantReconciliation = true
+    permissionState.canEditTenantSettings = true
+    permissionState.canManageGlobalSettings = false
+    permissionState.canViewTenantSettings = true
     window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     getJsonSchema.mockImplementation(async ({ jsonSchemaId, schemaName }: { jsonSchemaId?: string, schemaName?: string }) => {
@@ -273,6 +325,35 @@ describe('ReconciliationRuleSetManagerPage', () => {
     ])
   })
 
+  it('labels API-backed sources by endpoint name in the run summary', async () => {
+    window.history.replaceState(
+      {
+        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
+        ...createApiDraftState(),
+      },
+      '',
+      '/reconciliation/ruleset-manager',
+    )
+
+    const wrapper = mount(ReconciliationRuleSetManagerPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('API Order Sync')
+    const schemaRows = wrapper.findAll('.ruleset-manager-schema-row')
+    expect(schemaRows).toHaveLength(2)
+    expect(schemaRows[0]?.text()).toContain('HOTWAX_ORDERS')
+    expect(schemaRows[0]?.text()).not.toContain('HotWax')
+    expect(schemaRows[0]?.text()).toContain('Schema')
+    expect(schemaRows[0]?.text()).toContain('Orders API')
+    expect(schemaRows[0]?.text()).not.toContain('CSV source')
+    expect(schemaRows[0]?.text()).not.toContain('HotWax orders')
+    expect(schemaRows[1]?.text()).toContain('SHOPIFY_ORDERS')
+    expect(schemaRows[1]?.text()).toContain('Schema')
+    expect(schemaRows[1]?.text()).toContain('Shopify Orders Endpoint')
+    expect(schemaRows[1]?.text()).not.toContain('CSV source')
+    expect(schemaRows[1]?.text()).not.toContain('Shopify orders')
+  })
+
   it('renders a saved run summary and equation without editable rule controls', async () => {
     window.history.replaceState(
       {
@@ -302,6 +383,32 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(wrapper.text()).not.toContain('Shopify Orders - SHOPIFY - Primary ID')
     expect(wrapper.text()).not.toContain('Krewe OMS Orders - OMS - Primary ID')
     expect(wrapper.text()).not.toContain('orders-reconciliation-prod-2026-03-01-to-2026-03-31-2026-04-09-04-55-22')
+  })
+
+  it('allows tenant users to run a saved ruleset without edit or delete actions', async () => {
+    permissionState.canRunActiveTenantReconciliation = true
+    permissionState.canEditTenantSettings = false
+    window.history.replaceState(
+      {
+        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
+        ...createSavedRunReopenDraftState(),
+      },
+      '',
+      '/reconciliation/ruleset-manager',
+    )
+
+    const wrapper = mount(ReconciliationRuleSetManagerPage)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="ruleset-manager-edit-run"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ruleset-manager-edit-rules"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ruleset-manager-delete-run"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ruleset-manager-run-ruleset"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="ruleset-manager-run-ruleset"]').trigger('click')
+    await flushPromises()
+
+    expect(routerPush).toHaveBeenCalledWith(expect.objectContaining({ name: 'reconciliation-diff' }))
   })
 
   it('renders persisted rules from the rules editor draft and keeps the basic diff visible', async () => {
@@ -459,6 +566,38 @@ describe('ReconciliationRuleSetManagerPage', () => {
         workflowOriginLabel: 'Run Details',
         workflowOriginPath: '/reconciliation/ruleset-manager',
       }),
+    })
+  })
+
+  it('opens the previous runs page from the bottom list action', async () => {
+    window.history.replaceState(
+      {
+        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
+        ...createSavedRunReopenDraftState(),
+      },
+      '',
+      '/reconciliation/ruleset-manager',
+    )
+
+    const wrapper = mount(ReconciliationRuleSetManagerPage)
+    await flushPromises()
+
+    const footerActions = wrapper.findAll('.ruleset-manager-footer-row > *')
+    expect(footerActions.map((action) => action.attributes('data-testid'))).toEqual([
+      'ruleset-manager-run-ruleset',
+      'ruleset-manager-view-history',
+      'ruleset-manager-delete-run',
+    ])
+    expect(JSON.parse(wrapper.get('[data-testid="ruleset-manager-view-history"]').attributes('data-to') ?? '{}')).toEqual({
+      name: 'reconciliation-run-history',
+      params: {
+        savedRunId: 'RS_ORDER_SYNC',
+      },
+      query: {
+        runName: 'Order Sync',
+        file1SystemLabel: 'SHOPIFY',
+        file2SystemLabel: 'OMS',
+      },
     })
   })
 

@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { DISMISS_INLINE_MENUS_EVENT, WORKFLOW_CANCEL_REQUEST_EVENT } from '../lib/uiEvents'
+import { installLocalStorageStub } from '../test/localStorage'
+import { DISMISS_INLINE_MENUS_EVENT, WORKFLOW_CANCEL_REQUEST_EVENT, WORKFLOW_HINT_REQUEST_EVENT } from '../lib/uiEvents'
 
 const ensureAuthenticated = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const logoutSession = vi.hoisted(() => vi.fn().mockResolvedValue(true))
@@ -21,8 +22,6 @@ const resolve = vi.hoisted(() =>
       '/reconciliation/create',
       '/reconciliation/diff',
       '/reconciliation/ruleset-manager/rules',
-      '/settings/ai/create',
-      '/settings/ai/edit/',
       '/settings/runs/edit/',
       '/settings/sftp/create',
       '/settings/sftp/edit/',
@@ -30,6 +29,10 @@ const resolve = vi.hoisted(() =>
       '/settings/netsuite/auth/edit/',
       '/settings/netsuite/endpoints/create',
       '/settings/netsuite/endpoints/edit/',
+      '/settings/shopify/create',
+      '/settings/shopify/edit/',
+      '/settings/hotwax/create',
+      '/settings/hotwax/edit/',
       '/schemas/create',
     ]
 
@@ -47,6 +50,7 @@ type AuthSessionInfo = {
   activeTenantUserGroupId?: string
   activeTenantLabel?: string
   availableTenants?: Array<{ userGroupId: string; label?: string }>
+  canRunActiveTenantReconciliation?: boolean
   canEditActiveTenantData?: boolean
   isSuperAdmin?: boolean
 }
@@ -57,6 +61,7 @@ const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: '100000',
     username: 'test.customer',
+    canRunActiveTenantReconciliation: true,
     canEditActiveTenantData: true,
     isSuperAdmin: true,
   } as AuthSessionInfo | null,
@@ -141,6 +146,11 @@ vi.mock('../lib/auth', () => ({
   saveActiveTenant,
   useAuthState: () => authState,
   useUiPermissions: () => ({
+    get canRunActiveTenantReconciliation() {
+      return authState.sessionInfo?.canRunActiveTenantReconciliation === true ||
+        authState.sessionInfo?.canEditActiveTenantData === true ||
+        authState.sessionInfo?.isSuperAdmin === true
+    },
     get canEditTenantSettings() {
       return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
     },
@@ -183,6 +193,7 @@ function mountApp() {
 
 describe('App shell logout', () => {
   beforeEach(() => {
+    installLocalStorageStub()
     ensureAuthenticated.mockClear()
     logoutSession.mockClear()
     saveActiveTenant.mockClear()
@@ -222,6 +233,7 @@ describe('App shell logout', () => {
       canEditActiveTenantData: true,
       isSuperAdmin: true,
     }
+    localStorage.removeItem('darpan-ui-display-name:100000')
   })
 
   afterEach(() => {
@@ -236,8 +248,7 @@ describe('App shell logout', () => {
     await wrapper.get('.user-fab').trigger('click')
     await flushPromises()
 
-    const logoutButton = wrapper.get('.user-menu-logout')
-    expect(logoutButton.text()).toContain('Sign Out')
+    const logoutButton = wrapper.get('.user-menu-actions .app-icon-action[aria-label="Sign out"]')
 
     await logoutButton.trigger('click')
     await flushPromises()
@@ -374,6 +385,19 @@ describe('App shell logout', () => {
     expect(source).not.toContain("to: '/schemas/editor'")
   })
 
+  it('adds tenant integration settings to Ask Darpan navigation', async () => {
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await wrapper.get('.command-bubble').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="command-action-navigate-tenant-settings"]').text()).toBe('Open Tenant Settings')
+    expect(wrapper.find('[data-testid="command-action-navigate-notifications"]').text()).toBe('Configure Notifications')
+    expect(wrapper.find('[data-testid="command-action-navigate-shopify"]').text()).toBe('Open Shopify Settings')
+    expect(wrapper.find('[data-testid="command-action-navigate-oms"]').text()).toBe('Open HotWax Settings')
+  })
+
   it('uses a reduced gap between the floating quick actions and Ask Darpan bubble', () => {
     const source = readFileSync('src/style.css', 'utf8')
 
@@ -449,9 +473,11 @@ describe('App shell logout', () => {
     const sharedSelectSource = readFileSync('src/components/ui/AppSelect.vue', 'utf8')
     const runsWorkflowSource = readFileSync('src/pages/settings/RunsSettingsWorkflowPage.vue', 'utf8')
     const sftpWorkflowSource = readFileSync('src/pages/settings/SftpServerWorkflowPage.vue', 'utf8')
-    const llmWorkflowSource = readFileSync('src/pages/settings/LlmSettingsWorkflowPage.vue', 'utf8')
+    const tenantSettingsSource = readFileSync('src/pages/settings/TenantSettingsPage.vue', 'utf8')
     const authSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
     const endpointsSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+    const shopifySource = readFileSync('src/pages/settings/ShopifyAuthWorkflowPage.vue', 'utf8')
+    const omsSource = readFileSync('src/pages/settings/OmsRestSourceWorkflowPage.vue', 'utf8')
     const schemaEditorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
 
     expect(sharedSelectSource).toContain('app-select-option--selected')
@@ -460,13 +486,18 @@ describe('App shell logout', () => {
     expect(runsWorkflowSource).not.toContain('<select')
     expect(sftpWorkflowSource).toContain('<WorkflowSelect')
     expect(sftpWorkflowSource).not.toContain('<select')
-    expect(llmWorkflowSource).toContain('<AppSelect')
-    expect(llmWorkflowSource).toContain('<WorkflowSelect')
-    expect(llmWorkflowSource).not.toContain('<select')
+    expect(tenantSettingsSource).toContain('<AppSelect')
+    expect(tenantSettingsSource).toContain('<WorkflowSelect')
+    expect(tenantSettingsSource).not.toContain('<select')
     expect(authSource).toContain('<AppSelect')
     expect(authSource).not.toContain('<select')
     expect(endpointsSource).toContain('<AppSelect')
     expect(endpointsSource).not.toContain('<select')
+    expect(shopifySource).toContain('class="app-table__checkbox"')
+    expect(shopifySource).not.toContain('<select')
+    expect(omsSource).toContain('<AppSelect')
+    expect(omsSource).toContain('<WorkflowShortcutChoiceCards')
+    expect(omsSource).not.toContain('<select')
     expect(schemaEditorSource).toContain('<AppSelect')
     expect(schemaEditorSource).not.toContain('<select')
   })
@@ -475,9 +506,11 @@ describe('App shell logout', () => {
     const saveActionSource = readFileSync('src/components/ui/AppSaveAction.vue', 'utf8')
     const workflowStepFormSource = readFileSync('src/components/workflow/WorkflowStepForm.vue', 'utf8')
     const runsWorkflowSource = readFileSync('src/pages/settings/RunsSettingsWorkflowPage.vue', 'utf8')
-    const llmWorkflowSource = readFileSync('src/pages/settings/LlmSettingsWorkflowPage.vue', 'utf8')
+    const tenantSettingsSource = readFileSync('src/pages/settings/TenantSettingsPage.vue', 'utf8')
     const authSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
     const endpointsSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+    const shopifySource = readFileSync('src/pages/settings/ShopifyAuthWorkflowPage.vue', 'utf8')
+    const omsSource = readFileSync('src/pages/settings/OmsRestSourceWorkflowPage.vue', 'utf8')
     const schemaEditorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
 
     expect(saveActionSource).toContain('app-icon-action app-icon-action--large app-icon-action--primary')
@@ -486,10 +519,10 @@ describe('App shell logout', () => {
     expect(workflowStepFormSource).toContain("primaryActionVariant === 'save'")
     expect(runsWorkflowSource).toContain('<WorkflowStepForm')
     expect(runsWorkflowSource).toContain('primary-action-variant="save"')
-    expect(llmWorkflowSource).toContain('<WorkflowStepForm')
-    expect(llmWorkflowSource).toContain(':primary-label="primaryLabel"')
-    expect(llmWorkflowSource).toContain(':primary-action-variant="primaryActionVariant"')
-    expect(llmWorkflowSource).toContain("? 'Save'")
+    expect(tenantSettingsSource).toContain('<WorkflowStepForm')
+    expect(tenantSettingsSource).toContain(':primary-label="aiPrimaryLabel"')
+    expect(tenantSettingsSource).toContain(':primary-action-variant="aiPrimaryActionVariant"')
+    expect(tenantSettingsSource).toContain("aiWorkflowSaving.value ? 'Saving' : 'Save'")
     expect(authSource).toContain('<WorkflowStepForm')
     expect(authSource).toContain(':primary-label="primaryLabel"')
     expect(authSource).toContain(':primary-action-variant="primaryActionVariant"')
@@ -498,6 +531,14 @@ describe('App shell logout', () => {
     expect(endpointsSource).toContain(':primary-label="primaryLabel"')
     expect(endpointsSource).toContain(':primary-action-variant="primaryActionVariant"')
     expect(endpointsSource).toContain("? 'Save'")
+    expect(shopifySource).toContain('<WorkflowStepForm')
+    expect(shopifySource).toContain(':primary-label="primaryLabel"')
+    expect(shopifySource).toContain(':primary-action-variant="primaryActionVariant"')
+    expect(shopifySource).toContain("? 'Save'")
+    expect(omsSource).toContain('<WorkflowStepForm')
+    expect(omsSource).toContain(':primary-label="primaryLabel"')
+    expect(omsSource).toContain(':primary-action-variant="primaryActionVariant"')
+    expect(omsSource).toContain("? 'Save'")
     expect(schemaEditorSource).toContain('<AppSaveAction')
   })
 
@@ -508,6 +549,8 @@ describe('App shell logout', () => {
     const sftpWorkflowSource = readFileSync('src/pages/settings/SftpServerWorkflowPage.vue', 'utf8')
     const authSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
     const endpointsSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+    const shopifySource = readFileSync('src/pages/settings/ShopifyAuthWorkflowPage.vue', 'utf8')
+    const omsSource = readFileSync('src/pages/settings/OmsRestSourceWorkflowPage.vue', 'utf8')
 
     expect(cancelActionSource).toContain('class="app-icon-action app-icon-action--large"')
     expect(cancelActionSource).toContain('<line x1="5" y1="5" x2="15" y2="15"')
@@ -518,6 +561,8 @@ describe('App shell logout', () => {
     expect(sftpWorkflowSource).toContain(':show-cancel-action="isEditing"')
     expect(authSource).toContain(':show-cancel-action="isEditing"')
     expect(endpointsSource).toContain(':show-cancel-action="isEditing"')
+    expect(shopifySource).toContain(':show-cancel-action="isEditing"')
+    expect(omsSource).toContain(':show-cancel-action="isEditing"')
   })
 
   it('provides shared settings-dashboard layout utilities while static pages inherit dynamic board height globally', () => {
@@ -548,9 +593,11 @@ describe('App shell logout', () => {
     const workflowSource = readFileSync('src/components/workflow/WorkflowStepForm.vue', 'utf8')
     const runsWorkflowSource = readFileSync('src/pages/settings/RunsSettingsWorkflowPage.vue', 'utf8')
     const sftpWorkflowSource = readFileSync('src/pages/settings/SftpServerWorkflowPage.vue', 'utf8')
-    const llmWorkflowSource = readFileSync('src/pages/settings/LlmSettingsWorkflowPage.vue', 'utf8')
+    const tenantSettingsSource = readFileSync('src/pages/settings/TenantSettingsPage.vue', 'utf8')
     const authWorkflowSource = readFileSync('src/pages/settings/NetSuiteAuthWorkflowPage.vue', 'utf8')
     const endpointWorkflowSource = readFileSync('src/pages/settings/NetSuiteEndpointWorkflowPage.vue', 'utf8')
+    const shopifyWorkflowSource = readFileSync('src/pages/settings/ShopifyAuthWorkflowPage.vue', 'utf8')
+    const omsWorkflowSource = readFileSync('src/pages/settings/OmsRestSourceWorkflowPage.vue', 'utf8')
 
     expect(styleSource).toContain('.workflow-form--compact {')
     expect(styleSource).toContain('.workflow-form-grid {')
@@ -569,11 +616,16 @@ describe('App shell logout', () => {
     expect(sftpWorkflowSource).toContain("'workflow-form--edit-single-page': isEditing")
     expect(sftpWorkflowSource).toContain(':edit-surface="isEditing"')
     expect(sftpWorkflowSource).toContain(':show-enter-hint="!isEditing"')
-    expect(llmWorkflowSource).toContain(':edit-surface="isEditing"')
+    expect(tenantSettingsSource).toContain("'workflow-form--edit-single-page': isAiEditing")
     expect(authWorkflowSource).toContain(':edit-surface="isEditing"')
     expect(authWorkflowSource).toContain(':show-enter-hint="!isEditing"')
     expect(endpointWorkflowSource).toContain(':edit-surface="isEditing"')
     expect(endpointWorkflowSource).toContain(':show-enter-hint="!isEditing"')
+    expect(shopifyWorkflowSource).toContain(':edit-surface="isEditing"')
+    expect(shopifyWorkflowSource).toContain(':show-enter-hint="!isEditing"')
+    expect(omsWorkflowSource).toContain(':edit-surface="isEditing"')
+    expect(omsWorkflowSource).toContain(':show-enter-hint="!isEditing && !isCreateChoiceStep"')
+    expect(omsWorkflowSource).toContain('<WorkflowShortcutChoiceCards')
     expect(sftpWorkflowSource).not.toContain('settings-workflow-form')
   })
 
@@ -633,6 +685,7 @@ describe('App shell logout', () => {
     expect(styleSource).toContain('.static-page-module-grid')
     expect(styleSource).toContain('.static-page-module-tile')
     expect(styleSource).toContain('.static-page-summary-grid')
+    expect(styleSource).toMatch(/\.static-page-summary-grid\s*\{[^}]*align-items: start;/)
     expect(styleSource).toContain('.static-page-summary-card')
     expect(styleSource).toContain('.static-page-summary-label')
     expect(sftpPageSource).toContain('class="static-page-pager"')
@@ -760,33 +813,14 @@ describe('App shell logout', () => {
     expect(wrapper.text()).not.toContain('Ask Darpan shortcut: Cmd/Ctrl+K')
     expect(wrapper.find('.user-menu-tenant').exists()).toBe(false)
 
-    const themeToggle = wrapper.get('.theme-toggle')
+    const themeToggle = wrapper.get('.user-menu-actions .app-icon-action[aria-label="Switch to dark mode"]')
     await themeToggle.trigger('click')
 
     expect(toggleTheme).toHaveBeenCalledTimes(1)
   })
 
-  it('shows available tenants and saves a new active tenant from the user menu', async () => {
-    saveActiveTenant.mockImplementationOnce(async (tenantUserGroupId: string) => {
-      authState.sessionInfo = {
-        ...authState.sessionInfo,
-        userId: authState.sessionInfo?.userId ?? '100000',
-        activeTenantUserGroupId: tenantUserGroupId,
-        activeTenantLabel: 'Gorjana',
-      }
-      return true
-    })
-    authState.sessionInfo = {
-      userId: '100000',
-      username: 'test.customer',
-      canEditActiveTenantData: true,
-      activeTenantUserGroupId: 'KREWE',
-      activeTenantLabel: 'Krewe',
-      availableTenants: [
-        { userGroupId: 'KREWE', label: 'Krewe' },
-        { userGroupId: 'GORJANA', label: 'Gorjana' },
-      ],
-    }
+  it('does not render authenticated action errors inside the user menu', async () => {
+    authState.error = 'The name [metaClass] is not a valid field name or relationship name for entity moqui.security.UserAccount'
 
     const wrapper = mountApp()
     await flushPromises()
@@ -794,160 +828,22 @@ describe('App shell logout', () => {
     await wrapper.get('.user-fab').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="user-tenant-active"]').text()).toBe('Active tenant: Krewe')
-    expect(wrapper.get('[data-testid="user-tenant-select"]').text()).toContain('Krewe')
+    expect(wrapper.get('.user-menu-name').text()).toBe('test.customer')
+    expect(wrapper.find('.user-menu-card').text()).not.toContain('metaClass')
+  })
 
-    await wrapper.get('[data-testid="user-tenant-select"]').trigger('click')
+  it('routes user settings from the user menu gear action', async () => {
+    const wrapper = mountApp()
     await flushPromises()
 
-    const tenantOptions = wrapper.findAll('[data-testid="app-select-option"]')
-    expect(tenantOptions).toHaveLength(2)
-    expect(tenantOptions[0]?.classes()).toContain('app-select-option--selected')
-
-    await wrapper.get('[data-testid="app-select-option"][data-option-value="GORJANA"]').trigger('click')
+    await wrapper.get('.user-fab').trigger('click')
     await flushPromises()
 
-    expect(saveActiveTenant).toHaveBeenCalledWith('GORJANA')
+    await wrapper.get('.user-menu-actions .app-icon-action[aria-label="Open user settings"]').trigger('click')
+    await flushPromises()
+
+    expect(push).toHaveBeenCalledWith('/settings/user')
     expect(wrapper.find('.user-menu-card').exists()).toBe(false)
-    expect(replace).not.toHaveBeenCalled()
-  })
-
-  it('redirects tenant-scoped detail routes to the dashboard after switching active tenant', async () => {
-    route.name = 'reconciliation-run-result'
-    route.path = '/reconciliation/run-result/RS_ORDER_CSV/CSV-Order-Compare-diff-20260331-063304.json'
-    route.fullPath = '/reconciliation/run-result/RS_ORDER_CSV/CSV-Order-Compare-diff-20260331-063304.json'
-    route.meta = { surfaceMode: 'static', tenantSwitchRedirectName: 'hub' }
-    authState.sessionInfo = {
-      userId: '100000',
-      username: 'test.customer',
-      canEditActiveTenantData: true,
-      activeTenantUserGroupId: 'KREWE',
-      activeTenantLabel: 'Krewe',
-      availableTenants: [
-        { userGroupId: 'KREWE', label: 'Krewe' },
-        { userGroupId: 'GORJANA', label: 'Gorjana' },
-      ],
-    }
-
-    const wrapper = mountApp()
-    await flushPromises()
-
-    await wrapper.get('.user-fab').trigger('click')
-    await wrapper.get('[data-testid="user-tenant-select"]').trigger('click')
-    await wrapper.get('[data-testid="app-select-option"][data-option-value="GORJANA"]').trigger('click')
-    await flushPromises()
-
-    expect(saveActiveTenant).toHaveBeenCalledWith('GORJANA')
-    expect(replace).toHaveBeenCalledWith({ name: 'hub' })
-  })
-
-  it('keeps safe tenant-scoped dashboard routes in place so they refresh under the new tenant', async () => {
-    route.name = 'settings-sftp'
-    route.path = '/settings/sftp'
-    route.fullPath = '/settings/sftp'
-    route.meta = { surfaceMode: 'static', staticPageLabel: 'SFTP Servers' }
-    saveActiveTenant.mockImplementationOnce(async (tenantUserGroupId: string) => {
-      authState.sessionInfo = {
-        ...authState.sessionInfo,
-        userId: authState.sessionInfo?.userId ?? '100000',
-        activeTenantUserGroupId: tenantUserGroupId,
-        activeTenantLabel: 'Gorjana',
-      }
-      return true
-    })
-    authState.sessionInfo = {
-      userId: '100000',
-      username: 'test.customer',
-      canEditActiveTenantData: true,
-      activeTenantUserGroupId: 'KREWE',
-      activeTenantLabel: 'Krewe',
-      availableTenants: [
-        { userGroupId: 'KREWE', label: 'Krewe' },
-        { userGroupId: 'GORJANA', label: 'Gorjana' },
-      ],
-    }
-
-    const wrapper = mountApp()
-    await flushPromises()
-
-    await wrapper.get('.user-fab').trigger('click')
-    await wrapper.get('[data-testid="user-tenant-select"]').trigger('click')
-    await wrapper.get('[data-testid="app-select-option"][data-option-value="GORJANA"]').trigger('click')
-    await flushPromises()
-
-    expect(saveActiveTenant).toHaveBeenCalledWith('GORJANA')
-    expect(replace).not.toHaveBeenCalled()
-  })
-
-  it('reloads data-backed command actions after the active tenant changes', async () => {
-    authState.sessionInfo = {
-      userId: '100000',
-      username: 'test.customer',
-      canEditActiveTenantData: true,
-      activeTenantUserGroupId: 'KREWE',
-      activeTenantLabel: 'Krewe',
-      availableTenants: [
-        { userGroupId: 'KREWE', label: 'Krewe' },
-        { userGroupId: 'GORJANA', label: 'Gorjana' },
-      ],
-    }
-    saveActiveTenant.mockImplementationOnce(async (tenantUserGroupId: string) => {
-      authState.sessionInfo = {
-        ...authState.sessionInfo,
-        userId: authState.sessionInfo?.userId ?? '100000',
-        activeTenantUserGroupId: tenantUserGroupId,
-        activeTenantLabel: 'Gorjana',
-      }
-      return true
-    })
-    listSftpServers
-      .mockResolvedValueOnce({
-        ok: true,
-        messages: [],
-        errors: [],
-        pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
-        servers: [
-          {
-            sftpServerId: 'krewe-dropship',
-            description: 'Krewe Dropship',
-            companyUserGroupId: 'KREWE',
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        messages: [],
-        errors: [],
-        pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
-        servers: [
-          {
-            sftpServerId: 'gorjana-dropship',
-            description: 'Gorjana Dropship',
-            companyUserGroupId: 'GORJANA',
-          },
-        ],
-      })
-
-    const wrapper = mountApp()
-    await flushPromises()
-
-    await wrapper.get('.command-bubble').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Edit SFTP: Krewe Dropship')
-
-    await wrapper.get('.user-fab').trigger('click')
-    await wrapper.get('[data-testid="user-tenant-select"]').trigger('click')
-    await wrapper.get('[data-testid="app-select-option"][data-option-value="GORJANA"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).not.toContain('Edit SFTP: Krewe Dropship')
-
-    await wrapper.get('.command-bubble').trigger('click')
-    await flushPromises()
-
-    expect(listSftpServers).toHaveBeenCalledTimes(2)
-    expect(wrapper.text()).toContain('Edit SFTP: Gorjana Dropship')
   })
 
   it('keeps the page visible by avoiding a full-screen user-menu backdrop', async () => {
@@ -984,9 +880,9 @@ describe('App shell logout', () => {
   })
 
   it('routes the floating home action back to the hub on non-hub routes', async () => {
-    route.name = 'settings-ai'
-    route.path = '/settings/ai'
-    route.fullPath = '/settings/ai'
+    route.name = 'settings-tenant'
+    route.path = '/settings/tenant'
+    route.fullPath = '/settings/tenant'
     route.meta = {}
 
     const wrapper = mountApp()
@@ -1038,6 +934,34 @@ describe('App shell logout', () => {
     expect(wrapper.text()).not.toContain('Press Esc to go back to Dashboard')
   })
 
+  it('shows workflow warning hints for five seconds in the Escape hint position', async () => {
+    vi.useFakeTimers()
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    document.dispatchEvent(new CustomEvent(WORKFLOW_HINT_REQUEST_EVENT, {
+      detail: {
+        message: 'Password incorrect.',
+        tone: 'warning',
+        durationMs: 5000,
+      },
+    }))
+    await flushPromises()
+
+    const hint = wrapper.get('.workflow-escape-hint')
+    expect(hint.text()).toBe('Password incorrect.')
+    expect(hint.classes()).toContain('workflow-escape-hint--warning')
+
+    vi.advanceTimersByTime(4999)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Password incorrect.')
+
+    vi.advanceTimersByTime(1)
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Password incorrect.')
+  })
+
   it('uses Escape to return workflow routes to the static origin when provided', async () => {
     route.name = 'reconciliation-create'
     route.path = '/reconciliation/create'
@@ -1066,6 +990,30 @@ describe('App shell logout', () => {
     route.path = '/reconciliation/ruleset-manager/rules'
     route.fullPath = '/reconciliation/ruleset-manager/rules'
     route.meta = { surfaceMode: 'workflow' }
+    const handleCancelRequest = vi.fn((event: Event) => {
+      event.preventDefault()
+    })
+    document.addEventListener(WORKFLOW_CANCEL_REQUEST_EVENT, handleCancelRequest)
+
+    try {
+      mountApp()
+      await flushPromises()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      await flushPromises()
+
+      expect(handleCancelRequest).toHaveBeenCalledTimes(1)
+      expect(push).not.toHaveBeenCalled()
+    } finally {
+      document.removeEventListener(WORKFLOW_CANCEL_REQUEST_EVENT, handleCancelRequest)
+    }
+  })
+
+  it('lets static-page popup workflows handle Escape through the shared cancel request', async () => {
+    route.name = 'settings-user'
+    route.path = '/settings/user'
+    route.fullPath = '/settings/user'
+    route.meta = {}
     const handleCancelRequest = vi.fn((event: Event) => {
       event.preventDefault()
     })
@@ -1137,9 +1085,9 @@ describe('App shell logout', () => {
   })
 
   it('does not navigate home on Escape for non-workflow routes', async () => {
-    route.name = 'settings-ai'
-    route.path = '/settings/ai'
-    route.fullPath = '/settings/ai'
+    route.name = 'settings-tenant'
+    route.path = '/settings/tenant'
+    route.fullPath = '/settings/tenant'
     route.meta = {}
 
     mountApp()

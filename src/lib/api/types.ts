@@ -4,11 +4,21 @@ export interface ApiEnvelope {
   errors: string[]
 }
 
+export type ApiTimestamp = string | number
+
 export type SessionScopeType = 'GLOBAL' | 'TENANT' | 'ANONYMOUS'
 
 export interface SessionTenantOption {
   userGroupId: string
   label?: string
+}
+
+export interface SessionLastRun {
+  reconciliationRunResultId?: string
+  savedRunId?: string
+  savedRunType?: string
+  reconciliationRunId?: string
+  createdDate?: string
 }
 
 export interface PaginationMeta {
@@ -29,15 +39,21 @@ export interface EnumOption {
 export interface SessionInfo {
   userId: string
   username?: string
+  displayName?: string
   locale?: string
   timeZone?: string
+  lastLoginDate?: string
+  lastRun?: SessionLastRun | null
   scopeType?: SessionScopeType
   customerScopeId?: string | null
   activeTenantUserGroupId?: string | null
   activeTenantLabel?: string | null
   availableTenants?: SessionTenantOption[]
   activeTenantPermissionGroupIds?: string[]
+  canViewActiveTenantData?: boolean
+  canRunActiveTenantReconciliation?: boolean
   canEditActiveTenantData?: boolean
+  canManageDarpanCore?: boolean
   isSuperAdmin?: boolean
 }
 
@@ -55,6 +71,23 @@ export interface SessionInfoResponse extends ApiEnvelope {
 
 export interface SaveActiveTenantResponse extends ApiEnvelope {
   authenticated: boolean
+  sessionInfo?: SessionInfo | null
+}
+
+export interface SaveUserSettingsResponse extends ApiEnvelope {
+  authenticated: boolean
+  sessionInfo?: SessionInfo | null
+}
+
+export interface VerifyOwnPasswordResponse extends ApiEnvelope {
+  authenticated: boolean
+  passwordVerified?: boolean
+  sessionInfo?: SessionInfo | null
+}
+
+export interface ChangeOwnPasswordResponse extends ApiEnvelope {
+  authenticated: boolean
+  passwordUpdated?: boolean
   sessionInfo?: SessionInfo | null
 }
 
@@ -90,6 +123,42 @@ export interface LlmSettingsResponse extends ApiEnvelope {
 
 export interface SaveLlmSettingsResponse extends ApiEnvelope {
   llmSettings?: LlmSettings
+}
+
+export interface TenantSettings {
+  companyUserGroupId?: string | null
+  companyLabel?: string | null
+  timeZone: string
+  createdByUserId?: string
+  createdDate?: string
+  lastUpdatedDate?: string
+}
+
+export interface GetTenantSettingsResponse extends ApiEnvelope {
+  tenantSettings?: TenantSettings
+}
+
+export interface SaveTenantSettingsResponse extends ApiEnvelope {
+  tenantSettings?: TenantSettings
+}
+
+export interface TenantNotificationSettings {
+  companyUserGroupId?: string | null
+  companyLabel?: string | null
+  googleChatConfigured: boolean
+  googleChatWebhookUrlMasked?: string | null
+  isActive: string
+  createdByUserId?: string
+  createdDate?: string
+  lastUpdatedDate?: string
+}
+
+export interface GetTenantNotificationSettingsResponse extends ApiEnvelope {
+  tenantNotificationSettings?: TenantNotificationSettings
+}
+
+export interface SaveTenantNotificationSettingsResponse extends ApiEnvelope {
+  tenantNotificationSettings?: TenantNotificationSettings
 }
 
 export interface SftpServerRecord {
@@ -151,6 +220,62 @@ export interface SaveNsRestletConfigResponse extends ApiEnvelope {
   savedRestletConfig?: NsRestletConfigRecord
 }
 
+export interface ShopifyAuthConfigRecord {
+  shopifyAuthConfigId: string
+  description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
+  createdByUserId?: string
+  shopApiUrl: string
+  apiVersion: string
+  timeZone: string
+  isActive: string
+  canReadOrders: boolean
+  hasAccessToken: boolean
+}
+
+export interface SaveShopifyAuthConfigResponse extends ApiEnvelope {
+  savedShopifyAuthConfig?: ShopifyAuthConfigRecord
+}
+
+export interface DeleteShopifyAuthConfigResponse extends ApiEnvelope {
+  deleted?: boolean
+  deletedShopifyAuthConfigId?: string
+}
+
+export interface GetShopifyAuthConfigResponse extends ApiEnvelope {
+  shopifyAuthConfig?: ShopifyAuthConfigRecord | null
+}
+
+export interface OmsRestSourceConfigRecord {
+  omsRestSourceConfigId: string
+  description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
+  baseUrl: string
+  ordersPath: string
+  authType: string
+  hasUsername?: boolean
+  hasPassword?: boolean
+  hasApiToken?: boolean
+  customHeaderNames?: string[]
+  connectTimeoutSeconds: number
+  readTimeoutSeconds: number
+  isActive: string
+  canReadOrders?: boolean
+  createdDate?: string
+  lastUpdatedDate?: string
+}
+
+export interface SaveOmsRestSourceConfigResponse extends ApiEnvelope {
+  savedOmsRestSourceConfig?: OmsRestSourceConfigRecord
+}
+
+export interface DeleteOmsRestSourceConfigResponse extends ApiEnvelope {
+  deleted?: boolean
+  deletedOmsRestSourceConfigId?: string
+}
+
 export interface PaginatedResponse extends ApiEnvelope {
   pagination: PaginationMeta
 }
@@ -164,6 +289,14 @@ export interface MappingSystemOption {
   fileTypeLabel?: string
   idFieldExpression?: string
   schemaFileName?: string
+  sourceTypeEnumId?: string
+  sourceTypeLabel?: string
+  systemMessageRemoteId?: string
+  systemMessageRemoteLabel?: string
+  nsRestletConfigId?: string
+  nsRestletConfigLabel?: string
+  sourceConfigId?: string
+  sourceConfigType?: string
 }
 
 export interface SavedRunSystemOption extends MappingSystemOption {
@@ -200,6 +333,165 @@ export interface SavedRunSummary {
   defaultFile2SystemEnumId?: string
   systemOptions: SavedRunSystemOption[]
   rules?: SavedRunRule[]
+}
+
+export interface AutomationPermissions {
+  canViewHistory?: boolean
+  canEdit?: boolean
+  canDelete?: boolean
+  canPause?: boolean
+  canResume?: boolean
+  canRunNow?: boolean
+}
+
+export interface AutomationExecutionSummary {
+  automationExecutionId: string
+  automationId?: string
+  companyUserGroupId?: string
+  statusEnumId?: string
+  statusLabel?: string
+  scheduledDate?: ApiTimestamp
+  startedDate?: ApiTimestamp
+  completedDate?: ApiTimestamp
+  resultFileName?: string
+  resultDataManagerPath?: string
+  reconciliationRunResultId?: string
+  file1RecordCount?: number
+  file2RecordCount?: number
+  differenceCount?: number
+  onlyInFile1Count?: number
+  onlyInFile2Count?: number
+  errorMessage?: string
+  createdDate?: ApiTimestamp
+}
+
+export interface AutomationSourceRecord {
+  automationId?: string
+  fileSide: string
+  companyUserGroupId?: string
+  sourceTypeEnumId?: string
+  sourceTypeLabel?: string
+  systemEnumId?: string
+  systemLabel?: string
+  fileTypeEnumId?: string
+  fileTypeLabel?: string
+  schemaFileName?: string
+  recordRootExpression?: string
+  primaryIdExpression?: string
+  idValueNormalizer?: string
+  systemMessageRemoteId?: string
+  nsRestletConfigId?: string
+  sftpServerId?: string
+  sftpServerLabel?: string
+  remotePathTemplate?: string
+  fileNamePattern?: string
+  apiRequestTemplateJson?: string
+  apiResponsePathExpression?: string
+  dateFromParameterName?: string
+  dateToParameterName?: string
+  safeMetadataJson?: string
+}
+
+export interface AutomationRecord {
+  automationId: string
+  automationName: string
+  description?: string
+  companyUserGroupId?: string
+  companyLabel?: string
+  savedRunId?: string
+  savedRunName?: string
+  savedRunType?: string
+  savedRun?: SavedRunSummary
+  ruleSetId?: string
+  compareScopeId?: string
+  reconciliationMappingId?: string
+  inputModeEnumId?: string
+  inputModeLabel?: string
+  inputModeCode?: string
+  sourceSummary?: string
+  scheduleExpr?: string
+  scheduleSummary?: string
+  timezone?: string
+  nextScheduledFireTime?: ApiTimestamp
+  lastScheduledFireTime?: ApiTimestamp
+  relativeWindowTypeEnumId?: string
+  relativeWindowLabel?: string
+  relativeWindowCount?: number
+  customWindowStartDate?: string
+  customWindowEndDate?: string
+  maxWindowDays?: number
+  splitWindowDays?: number
+  isActive?: string
+  active?: boolean
+  executionCount?: number
+  lastExecution?: AutomationExecutionSummary | null
+  permissions?: AutomationPermissions
+  sources?: AutomationSourceRecord[]
+  createdDate?: string
+  lastUpdatedDate?: string
+}
+
+export interface AutomationSftpServerOption {
+  sftpServerId: string
+  description?: string
+  companyUserGroupId?: string
+  scopeEnumId?: string
+  host?: string
+  port?: number
+  username?: string
+  label?: string
+}
+
+export interface AutomationNsRestletOption {
+  nsRestletConfigId: string
+  description?: string
+  endpointUrl?: string
+  httpMethod?: string
+  nsAuthConfigId?: string
+  sourceConfigId?: string
+  sourceConfigType?: string
+  sourceConfigLabel?: string
+  isActive?: string
+  systemEnumId?: string
+  systemLabel?: string
+  safeMetadataJson?: string
+  primaryIdOptions?: AutomationPrimaryIdOption[]
+  label?: string
+}
+
+export interface AutomationSystemRemoteOption {
+  systemMessageRemoteId: string
+  description?: string
+  sendUrl?: string
+  systemEnumId?: string
+  systemLabel?: string
+  safeMetadataJson?: string
+  optionKey?: string
+  sourceConfigId?: string
+  sourceConfigType?: string
+  sourceConfigLabel?: string
+  shopifyAuthConfigId?: string
+  omsRestSourceConfigId?: string
+  primaryIdOptions?: AutomationPrimaryIdOption[]
+  label?: string
+}
+
+export interface AutomationSourceConfigOption {
+  sourceConfigId: string
+  sourceConfigType?: string
+  description?: string
+  systemEnumId?: string
+  systemLabel?: string
+  label?: string
+  nsAuthConfigId?: string
+  shopifyAuthConfigId?: string
+  omsRestSourceConfigId?: string
+}
+
+export interface AutomationPrimaryIdOption {
+  fieldPath: string
+  label?: string
+  type?: string
 }
 
 export interface MappingSummary {
@@ -289,6 +581,26 @@ export interface GetGeneratedOutputFile {
   format: string
   contentType: string
   contentText: string
+  sourceDetails?: GeneratedOutputSourceDetails
+}
+
+export interface GeneratedOutputSourceFile {
+  side?: string
+  label?: string
+  fileName?: string
+  filePath?: string
+  downloadFileName?: string
+  sourceFormat?: string
+  canDownload?: boolean
+}
+
+export interface GeneratedOutputSourceDetails {
+  mode?: string
+  dateRange?: {
+    start?: string
+    end?: string
+  }
+  files?: GeneratedOutputSourceFile[]
 }
 
 export interface ListSftpServersResponse extends PaginatedResponse {
@@ -303,6 +615,14 @@ export interface ListNsRestletConfigsResponse extends PaginatedResponse {
   restletConfigs: NsRestletConfigRecord[]
 }
 
+export interface ListShopifyAuthConfigsResponse extends PaginatedResponse {
+  shopifyAuthConfigs: ShopifyAuthConfigRecord[]
+}
+
+export interface ListOmsRestSourceConfigsResponse extends PaginatedResponse {
+  omsRestSourceConfigs: OmsRestSourceConfigRecord[]
+}
+
 export interface ListMappingsResponse extends PaginatedResponse {
   pinnedReconciliationMappingIds?: string[]
   mappings: MappingSummary[]
@@ -311,6 +631,47 @@ export interface ListMappingsResponse extends PaginatedResponse {
 export interface ListSavedRunsResponse extends PaginatedResponse {
   pinnedSavedRunIds?: string[]
   savedRuns: SavedRunSummary[]
+}
+
+export interface ListAutomationsResponse extends PaginatedResponse {
+  automations: AutomationRecord[]
+}
+
+export interface GetAutomationResponse extends ApiEnvelope {
+  automation?: AutomationRecord | null
+}
+
+export interface SaveAutomationResponse extends ApiEnvelope {
+  automation?: AutomationRecord | null
+}
+
+export interface DeleteAutomationResponse extends ApiEnvelope {
+  deleted?: boolean
+  deletedAutomationId?: string
+  deletedSourceCount?: number
+  deletedExecutionCount?: number
+}
+
+export interface RunAutomationNowResponse extends ApiEnvelope {
+  automation?: AutomationRecord | null
+  runResult?: Record<string, unknown> | null
+}
+
+export interface ListAutomationExecutionsResponse extends PaginatedResponse {
+  executions: AutomationExecutionSummary[]
+}
+
+export interface ListAutomationSourceOptionsResponse extends ApiEnvelope {
+  inputModes: EnumOption[]
+  sourceTypes: EnumOption[]
+  relativeWindows: EnumOption[]
+  fileTypes: EnumOption[]
+  systems: EnumOption[]
+  savedRuns: SavedRunSummary[]
+  sftpServers: AutomationSftpServerOption[]
+  sourceConfigs?: AutomationSourceConfigOption[]
+  nsRestletConfigs: AutomationNsRestletOption[]
+  systemRemotes: AutomationSystemRemoteOption[]
 }
 
 export interface SaveDashboardPinnedMappingsResponse extends ApiEnvelope {

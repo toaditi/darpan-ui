@@ -181,11 +181,12 @@ function buildWorkflowSteps(uploadIntent: SchemaUploadIntent | ''): WorkflowStep
     },
   ]
 
+  steps.push({ id: 'system', title: 'Assign the system' })
+
   if (uploadIntent !== 'schema') {
-    steps.push({ id: 'verify', title: 'Verify the schema' })
+    steps.push({ id: 'verify', title: 'Review the interpreted schema' })
   }
 
-  steps.push({ id: 'system', title: 'Assign the system' })
   steps.push({ id: 'name', title: 'Name the schema' })
   return steps
 }
@@ -221,7 +222,7 @@ const submitDisabled = computed(() => {
     case 'verify':
       return fieldRows.value.length === 0
     case 'system':
-      return !systemEnumId.value
+      return !systemEnumId.value || loading.value
     case 'name':
       return !schemaName.value.trim() || !schemaTextToSave.value.trim() || saving.value
     default:
@@ -478,9 +479,14 @@ async function handlePrimarySubmit(): Promise<void> {
   }
 
   if (currentStep.value.id === 'upload') {
-    const uploadPrepared = selectedUploadIntent.value === 'schema'
-      ? await prepareSchemaFileUpload()
-      : await inferSchemaFromSampleUpload()
+    if (selectedUploadIntent.value === 'schema') {
+      const uploadPrepared = await prepareSchemaFileUpload()
+      if (!uploadPrepared) return
+    }
+  }
+
+  if (currentStep.value.id === 'system' && selectedUploadIntent.value === 'sample') {
+    const uploadPrepared = await inferSchemaFromSampleUpload()
     if (!uploadPrepared) return
   }
 

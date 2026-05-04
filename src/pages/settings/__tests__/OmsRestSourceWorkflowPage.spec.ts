@@ -1,0 +1,505 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { WORKFLOW_CANCEL_REQUEST_EVENT } from '../../../lib/uiEvents'
+
+const route = vi.hoisted(() => ({
+  params: {} as Record<string, string>,
+  name: 'settings-oms-create',
+  fullPath: '/settings/hotwax/create',
+}))
+const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const listOmsRestSourceConfigs = vi.hoisted(() => vi.fn())
+const saveOmsRestSourceConfig = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    userId: 'john.doe',
+    activeTenantUserGroupId: 'KREWE',
+    canEditActiveTenantData: true,
+    isSuperAdmin: false,
+  },
+}))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => route,
+  useRouter: () => ({
+    push,
+  }),
+}))
+
+vi.mock('../../../lib/api/facade', () => ({
+  settingsFacade: {
+    listOmsRestSourceConfigs,
+    saveOmsRestSourceConfig,
+  },
+}))
+
+vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
+  useUiPermissions: () => ({
+    get canEditTenantSettings() {
+      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo.isSuperAdmin === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo.userId)
+    },
+  }),
+}))
+
+import OmsRestSourceWorkflowPage from '../OmsRestSourceWorkflowPage.vue'
+
+describe('OmsRestSourceWorkflowPage', () => {
+  beforeEach(() => {
+    route.params = {}
+    route.name = 'settings-oms-create'
+    route.fullPath = '/settings/hotwax/create'
+    push.mockReset()
+    listOmsRestSourceConfigs.mockReset()
+    saveOmsRestSourceConfig.mockReset()
+    authState.sessionInfo = {
+      userId: 'john.doe',
+      activeTenantUserGroupId: 'KREWE',
+      canEditActiveTenantData: true,
+      isSuperAdmin: false,
+    }
+  })
+
+  it('returns to the selected HotWax source dashboard when canceling an edit', async () => {
+    route.params = { omsRestSourceConfigId: 'dev_oms' }
+    route.name = 'settings-oms-edit'
+    route.fullPath = '/settings/hotwax/edit/dev_oms'
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'dev_oms',
+          description: 'Dev HotWax',
+          companyUserGroupId: 'KREWE',
+          baseUrl: 'https://oms.example.com',
+          authType: 'NONE',
+          hasUsername: false,
+          hasPassword: false,
+          hasApiToken: false,
+          customHeaderNames: [],
+          connectTimeoutSeconds: 10,
+          readTimeoutSeconds: 20,
+          isActive: 'Y',
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="cancel-oms-rest-source"]').trigger('click')
+    await flushPromises()
+
+    expect(push).toHaveBeenCalledWith({
+      name: 'settings-oms-auth',
+      params: { omsRestSourceConfigId: 'dev_oms' },
+    })
+  })
+
+  it('returns to the selected HotWax source dashboard when Escape aborts an edit', async () => {
+    route.params = { omsRestSourceConfigId: 'dev_oms' }
+    route.name = 'settings-oms-edit'
+    route.fullPath = '/settings/hotwax/edit/dev_oms'
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'dev_oms',
+          description: 'Dev HotWax',
+          companyUserGroupId: 'KREWE',
+          baseUrl: 'https://oms.example.com',
+          authType: 'NONE',
+          hasUsername: false,
+          hasPassword: false,
+          hasApiToken: false,
+          customHeaderNames: [],
+          connectTimeoutSeconds: 10,
+          readTimeoutSeconds: 20,
+          isActive: 'Y',
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    const cancelRequest = new Event(WORKFLOW_CANCEL_REQUEST_EVENT, { cancelable: true })
+    document.dispatchEvent(cancelRequest)
+    await flushPromises()
+    wrapper.unmount()
+
+    expect(cancelRequest.defaultPrevented).toBe(true)
+    expect(push).toHaveBeenCalledWith({
+      name: 'settings-oms-auth',
+      params: { omsRestSourceConfigId: 'dev_oms' },
+    })
+  })
+
+  it('saves a new HotWax source config with Swagger API key auth and orders endpoint available by default', async () => {
+    saveOmsRestSourceConfig.mockResolvedValue({
+      ok: true,
+      messages: ['Saved HotWax source config.'],
+      errors: [],
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    await wrapper.get('input[name="baseUrl"]').setValue('https://oms.example.com')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await wrapper.get('[data-testid="oms-auth-type-choice-API_KEY"]').trigger('click')
+    await wrapper.get('input[name="apiToken"]').setValue('oms-api-key')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await wrapper.get('input[name="description"]').setValue('Krewe HotWax')
+    expect(wrapper.find('input[name="omsRestSourceConfigId"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="save-oms-rest-source"]').trigger('click')
+    await flushPromises()
+
+    expect(saveOmsRestSourceConfig).toHaveBeenCalledWith({
+      omsRestSourceConfigId: 'krewe_hotwax',
+      description: 'Krewe HotWax',
+      baseUrl: 'https://oms.example.com',
+      authType: 'API_KEY',
+      username: '',
+      password: '',
+      apiToken: 'oms-api-key',
+      headersJson: '',
+      connectTimeoutSeconds: 30,
+      readTimeoutSeconds: 60,
+      isActive: true,
+      canReadOrders: true,
+    })
+    expect(push).toHaveBeenCalledWith('/settings/hotwax')
+  })
+
+  it('renders HotWax auth type with Darpan shortcut choice cards in create flow', async () => {
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    await wrapper.get('input[name="baseUrl"]').setValue('https://oms.example.com')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    const authChoiceCards = wrapper.findAll('.workflow-shortcut-choice-card')
+
+    expect(wrapper.text()).not.toContain('Orders Path')
+    expect(authChoiceCards).toHaveLength(4)
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-NONE"]').text()).toContain('A')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-NONE"]').text()).toContain('None')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-BASIC"]').text()).toContain('B')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-BASIC"]').text()).toContain('Basic')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-BEARER"]').text()).toContain('C')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-BEARER"]').text()).toContain('Bearer')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-API_KEY"]').text()).toContain('D')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-API_KEY"]').text()).toContain('API Key')
+    expect(wrapper.get('[data-testid="oms-auth-type-choice-NONE"]').classes()).toContain('workflow-shortcut-choice-card--active')
+    expect(wrapper.find('input[type="radio"]').exists()).toBe(false)
+    expect(wrapper.find('.workflow-choice-option--filter').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="workflow-select-option"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="wizard-next"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('press Enter')
+
+    await wrapper.get('[data-testid="oms-auth-type-choice-API_KEY"]').trigger('click')
+
+    expect(wrapper.find('input[name="apiToken"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('What API key should Darpan use?')
+    expect(wrapper.find('input[name="username"]').exists()).toBe(false)
+    expect(wrapper.find('input[name="password"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    expect(wrapper.text()).not.toContain('Active')
+    expect(wrapper.find('[data-testid="oms-is-active"]').exists()).toBe(false)
+  })
+
+  it('loads an existing basic HotWax config with only basic secret fields visible', async () => {
+    route.params = { omsRestSourceConfigId: 'krewe-oms' }
+    route.name = 'settings-oms-edit'
+    route.fullPath = '/settings/hotwax/edit/krewe-oms'
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'krewe-oms',
+          description: 'Krewe HotWax',
+          companyUserGroupId: 'KREWE',
+          baseUrl: 'https://oms.example.com',
+          authType: 'BASIC',
+          hasUsername: true,
+          hasPassword: true,
+          hasApiToken: false,
+          customHeaderNames: ['X-Tenant'],
+          connectTimeoutSeconds: 10,
+          readTimeoutSeconds: 20,
+          isActive: 'Y',
+          canReadOrders: true,
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    expect(wrapper.get('input[name="omsRestSourceConfigId"]').element).toHaveProperty('value', 'krewe-oms')
+    expect(wrapper.get('input[name="username"]').element).toHaveProperty('value', '')
+    expect(wrapper.get('input[name="password"]').element).toHaveProperty('value', '')
+    expect(wrapper.get('input[name="password"]').attributes('autocomplete')).toBe('off')
+    const ordersEndpointCheckbox = wrapper.get('[data-testid="oms-endpoint-orders-list"]')
+    expect(ordersEndpointCheckbox.attributes('name')).toBe('canReadOrders')
+    expect((ordersEndpointCheckbox.element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.get('[data-testid="oms-endpoint-options"]').text()).toContain('Orders API')
+    expect(wrapper.find('input[name="apiToken"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="oms-is-active"]').exists()).toBe(true)
+    expect(wrapper.get('input[name="isActive"]').attributes('type')).toBe('checkbox')
+    expect(wrapper.get('input[name="isActive"]').classes()).toContain('app-table__checkbox')
+    expect((wrapper.get('input[name="isActive"]').element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.text()).not.toContain('Orders Path')
+    expect(wrapper.text()).not.toContain('Headers JSON')
+    expect(wrapper.text()).not.toContain('Connect Timeout')
+    expect(wrapper.text()).not.toContain('Read Timeout')
+    expect(wrapper.find('textarea[name="headersJson"]').exists()).toBe(false)
+    expect(wrapper.find('input[name="connectTimeoutSeconds"]').exists()).toBe(false)
+    expect(wrapper.find('input[name="readTimeoutSeconds"]').exists()).toBe(false)
+  })
+
+  it('loads an existing bearer HotWax config with only token replacement visible', async () => {
+    route.params = { omsRestSourceConfigId: 'krewe-oms' }
+    route.name = 'settings-oms-edit'
+    route.fullPath = '/settings/hotwax/edit/krewe-oms'
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'krewe-oms',
+          description: 'Krewe HotWax',
+          companyUserGroupId: 'KREWE',
+          baseUrl: 'https://oms.example.com',
+          authType: 'BEARER',
+          hasUsername: false,
+          hasPassword: false,
+          hasApiToken: true,
+          customHeaderNames: [],
+          connectTimeoutSeconds: 10,
+          readTimeoutSeconds: 20,
+          isActive: 'Y',
+          canReadOrders: true,
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    expect(wrapper.get('input[name="apiToken"]').element).toHaveProperty('value', '')
+    expect(wrapper.find('input[name="username"]').exists()).toBe(false)
+    expect(wrapper.find('input[name="password"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Orders Path')
+  })
+
+  it('returns to the selected HotWax source dashboard after saving an edit', async () => {
+    route.params = { omsRestSourceConfigId: 'dev_oms' }
+    route.name = 'settings-oms-edit'
+    route.fullPath = '/settings/hotwax/edit/dev_oms'
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'dev_oms',
+          description: 'Dev HotWax',
+          companyUserGroupId: 'KREWE',
+          baseUrl: 'https://oms.example.com',
+          authType: 'NONE',
+          hasUsername: false,
+          hasPassword: false,
+          hasApiToken: false,
+          customHeaderNames: [],
+          connectTimeoutSeconds: 10,
+          readTimeoutSeconds: 20,
+          isActive: 'Y',
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+    })
+    saveOmsRestSourceConfig.mockResolvedValue({
+      ok: true,
+      messages: ['Saved HotWax source config.'],
+      errors: [],
+      savedOmsRestSourceConfig: {
+        omsRestSourceConfigId: 'dev_oms',
+        description: 'Dev HotWax',
+        companyUserGroupId: 'KREWE',
+        baseUrl: 'https://oms.example.com',
+        ordersPath: '/rest/s1/oms/orders',
+        authType: 'NONE',
+        connectTimeoutSeconds: 10,
+        readTimeoutSeconds: 20,
+        isActive: 'Y',
+      },
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="save-oms-rest-source"]').trigger('click')
+    await flushPromises()
+
+    expect(saveOmsRestSourceConfig).toHaveBeenCalledWith({
+      omsRestSourceConfigId: 'dev_oms',
+      description: 'Dev HotWax',
+      baseUrl: 'https://oms.example.com',
+      authType: 'NONE',
+      username: '',
+      password: '',
+      apiToken: '',
+      headersJson: '',
+      connectTimeoutSeconds: 10,
+      readTimeoutSeconds: 20,
+      isActive: true,
+      canReadOrders: true,
+    })
+    expect(push).toHaveBeenCalledWith({
+      name: 'settings-oms-auth',
+      params: { omsRestSourceConfigId: 'dev_oms' },
+    })
+  })
+
+  it('saves disabled HotWax endpoint availability from the edit workflow', async () => {
+    route.params = { omsRestSourceConfigId: 'dev_oms' }
+    route.name = 'settings-oms-edit'
+    route.fullPath = '/settings/hotwax/edit/dev_oms'
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'dev_oms',
+          description: 'Dev HotWax',
+          companyUserGroupId: 'KREWE',
+          baseUrl: 'https://oms.example.com',
+          authType: 'NONE',
+          hasUsername: false,
+          hasPassword: false,
+          hasApiToken: false,
+          customHeaderNames: [],
+          connectTimeoutSeconds: 10,
+          readTimeoutSeconds: 20,
+          isActive: 'Y',
+          canReadOrders: true,
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+    })
+    saveOmsRestSourceConfig.mockResolvedValue({
+      ok: true,
+      messages: ['Saved HotWax source config.'],
+      errors: [],
+      savedOmsRestSourceConfig: {
+        omsRestSourceConfigId: 'dev_oms',
+        description: 'Dev HotWax',
+        companyUserGroupId: 'KREWE',
+        baseUrl: 'https://oms.example.com',
+        ordersPath: '/rest/s1/oms/orders',
+        authType: 'NONE',
+        connectTimeoutSeconds: 10,
+        readTimeoutSeconds: 20,
+        isActive: 'Y',
+        canReadOrders: false,
+      },
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="oms-endpoint-orders-list"]').setValue(false)
+    await wrapper.get('[data-testid="save-oms-rest-source"]').trigger('click')
+    await flushPromises()
+
+    expect(saveOmsRestSourceConfig).toHaveBeenCalledWith(expect.objectContaining({
+      omsRestSourceConfigId: 'dev_oms',
+      canReadOrders: false,
+    }))
+  })
+
+  it('derives a capped config ID from the create label', async () => {
+    saveOmsRestSourceConfig.mockResolvedValue({
+      ok: true,
+      messages: ['Saved HotWax source config.'],
+      errors: [],
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    await wrapper.get('input[name="baseUrl"]').setValue('https://oms.example.com')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await wrapper.get('[data-testid="oms-auth-type-choice-NONE"]').trigger('click')
+    await wrapper.get('input[name="description"]').setValue('Long HotWax Source Name')
+    await wrapper.get('[data-testid="save-oms-rest-source"]').trigger('click')
+    await flushPromises()
+
+    expect(saveOmsRestSourceConfig).toHaveBeenCalledWith(expect.objectContaining({
+      omsRestSourceConfigId: 'long_hotwax_source_n',
+      description: 'Long HotWax Source Name',
+      isActive: true,
+    }))
+  })
+
+  it('enforces the shared 20 character config-id cap on edit', async () => {
+    route.params = { omsRestSourceConfigId: 'krewe-oms' }
+    route.name = 'settings-oms-edit'
+    route.fullPath = '/settings/hotwax/edit/krewe-oms'
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'krewe-oms',
+          description: 'Krewe HotWax',
+          companyUserGroupId: 'KREWE',
+          baseUrl: 'https://oms.example.com',
+          authType: 'NONE',
+          hasUsername: false,
+          hasPassword: false,
+          hasApiToken: false,
+          customHeaderNames: [],
+          connectTimeoutSeconds: 10,
+          readTimeoutSeconds: 20,
+          isActive: 'Y',
+        },
+      ],
+      pagination: { pageIndex: 0, pageSize: 200, totalCount: 1, pageCount: 1 },
+    })
+
+    const wrapper = mount(OmsRestSourceWorkflowPage)
+    await flushPromises()
+
+    const idInput = wrapper.get('input[name="omsRestSourceConfigId"]')
+    expect(idInput.attributes('maxlength')).toBe('20')
+
+    await idInput.setValue('b'.repeat(21))
+    await wrapper.get('[data-testid="save-oms-rest-source"]').trigger('click')
+    await flushPromises()
+
+    expect(saveOmsRestSourceConfig).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('HotWax Config ID must be 20 characters or fewer.')
+  })
+})

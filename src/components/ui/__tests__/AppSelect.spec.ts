@@ -47,6 +47,64 @@ describe('AppSelect', () => {
     expect(wrapper.find('[data-testid="app-select-option"]').exists()).toBe(false)
   })
 
+  it('filters searchable options by query and selects the filtered match', async () => {
+    const wrapper = mount(AppSelect, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'America/Los_Angeles',
+        searchable: true,
+        searchPlaceholder: 'Search timezones',
+        options: [
+          { value: 'America/Los_Angeles', label: 'America/Los_Angeles' },
+          { value: 'America/New_York', label: 'America/New_York' },
+          { value: 'Europe/London', label: 'Europe/London' },
+        ],
+        testId: 'timezone-select',
+      },
+    })
+
+    await wrapper.get('[data-testid="timezone-select"]').trigger('click')
+    await flushPromises()
+
+    const searchInput = wrapper.get('[data-testid="app-select-search"]')
+    expect(searchInput.attributes('placeholder')).toBe('Search timezones')
+    expect(document.activeElement).toBe(searchInput.element)
+    expect(wrapper.findAll('[data-testid="app-select-option"]')).toHaveLength(3)
+
+    await searchInput.setValue('london')
+
+    expect(wrapper.get('[data-testid="timezone-select"]').text()).toContain('America/Los_Angeles')
+    const filteredOptions = wrapper.findAll('[data-testid="app-select-option"]')
+    expect(filteredOptions.map((option) => option.text())).toEqual(['Europe/London'])
+
+    await filteredOptions[0]?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([['Europe/London']])
+    expect(wrapper.find('[data-testid="app-select-search"]').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('shows an empty state for searchable options with no query match', async () => {
+    const wrapper = mount(AppSelect, {
+      props: {
+        modelValue: '',
+        searchable: true,
+        options: [
+          { value: 'Asia/Kolkata', label: 'Asia/Kolkata' },
+        ],
+        testId: 'timezone-select',
+      },
+    })
+
+    await wrapper.get('[data-testid="timezone-select"]').trigger('click')
+    await wrapper.get('[data-testid="app-select-search"]').setValue('honolulu')
+
+    expect(wrapper.findAll('[data-testid="app-select-option"]')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="app-select-empty"]').text()).toBe('No matching options')
+  })
+
   it('opens with keyboard focus on the current value and preserves a single selected option state', async () => {
     const wrapper = mount(AppSelect, {
       attachTo: document.body,

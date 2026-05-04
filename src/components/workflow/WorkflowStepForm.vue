@@ -176,6 +176,33 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.wizard-question-shell.workflow-form--popup-compact {
+  --workflow-form-question-size: var(--popup-workflow-prompt-size, 1.5rem);
+  --workflow-form-question-mobile-size: var(--popup-workflow-prompt-size, 1.5rem);
+  --workflow-form-answer-size: clamp(0.88rem, 0.95vw, 0.98rem);
+  --workflow-form-select-size: var(--workflow-form-answer-size);
+  --workflow-form-context-label-size: 0.68rem;
+  width: 100%;
+  gap: var(--space-2);
+}
+
+.wizard-question-shell.workflow-form--dense-popup {
+  --workflow-form-question-size: clamp(1.05rem, 1.2vw, 1.2rem);
+  --workflow-form-question-mobile-size: 1.05rem;
+  --workflow-form-answer-size: 0.95rem;
+  --workflow-form-select-size: var(--workflow-form-answer-size);
+  --workflow-form-context-label-size: 0.68rem;
+  gap: 0.9rem;
+}
+
+.wizard-question-shell.workflow-form--edit-single-page {
+  --workflow-form-question-size: 1.85rem;
+  --workflow-form-question-mobile-size: 1.5rem;
+  --workflow-form-answer-size: clamp(0.89rem, 1.05vw, 1.09rem);
+  --workflow-form-select-size: var(--workflow-form-answer-size);
+  --workflow-form-context-label-size: 0.76rem;
+}
+
 .wizard-prompt-row {
   display: flex;
   align-items: flex-start;

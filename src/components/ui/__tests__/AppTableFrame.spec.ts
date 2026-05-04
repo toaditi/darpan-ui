@@ -76,4 +76,32 @@ describe('AppTableFrame', () => {
       warnSpy.mockRestore()
     }
   })
+
+  it('emits row actions for labelled rows only', async () => {
+    const wrapper = mount(AppTableFrame, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        rows: [
+          { id: 'linked', name: 'Linked row' },
+          { id: 'plain', name: 'Plain row' },
+        ],
+        rowKey: 'id',
+        rowTestId: 'app-table-row',
+        rowActionLabel: (row) => (row.id === 'linked' ? 'Open linked row' : null),
+      },
+    })
+
+    const rows = wrapper.findAll('[data-testid="app-table-row"]')
+    expect(rows[0]?.attributes('role')).toBe('link')
+    expect(rows[0]?.attributes('tabindex')).toBe('0')
+    expect(rows[0]?.attributes('aria-label')).toBe('Open linked row')
+    expect(rows[1]?.attributes('role')).toBeUndefined()
+
+    await rows[0]?.trigger('click')
+    await rows[1]?.trigger('click')
+
+    expect(wrapper.emitted('rowAction')).toEqual([
+      [{ row: { id: 'linked', name: 'Linked row' }, index: 0 }],
+    ])
+  })
 })

@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { ApiCallError } from '../../../lib/api/client'
+import { installLocalStorageStub } from '../../../test/localStorage'
 
 const route = vi.hoisted(() => ({
   query: {},
@@ -66,6 +68,98 @@ const savedRunResponse = {
   ],
 }
 
+const apiSavedRunResponse = {
+  ok: true,
+  messages: [],
+  errors: [],
+  pagination: {
+    pageIndex: 0,
+    pageSize: 50,
+    totalCount: 1,
+    pageCount: 1,
+  },
+  savedRuns: [
+    {
+      savedRunId: 'RS_API_ORDER_SYNC',
+      runName: 'API Order Sync',
+      description: 'API order comparison',
+      runType: 'ruleset',
+      ruleSetId: 'RS_API_ORDER_SYNC',
+      compareScopeId: 'CS_API_ORDER_SYNC',
+      requiresSystemSelection: false,
+      defaultFile1SystemEnumId: 'OMS',
+      defaultFile2SystemEnumId: 'SHOPIFY',
+      systemOptions: [
+        {
+          enumId: 'OMS',
+          label: 'HotWax',
+          fileSide: 'FILE_1',
+          fileTypeEnumId: 'DftJson',
+          fileTypeLabel: 'JSON',
+          sourceTypeEnumId: 'AUT_SRC_API',
+          systemMessageRemoteId: 'HOTWAX_ORDERS_API',
+        },
+        {
+          enumId: 'SHOPIFY',
+          label: 'Shopify',
+          fileSide: 'FILE_2',
+          fileTypeEnumId: 'DftJson',
+          fileTypeLabel: 'JSON',
+          sourceTypeEnumId: 'AUT_SRC_API',
+          systemMessageRemoteId: 'SHOPIFY_REMOTE',
+        },
+      ],
+    },
+  ],
+}
+
+const mixedApiFileSavedRunResponse = {
+  ok: true,
+  messages: [],
+  errors: [],
+  pagination: {
+    pageIndex: 0,
+    pageSize: 50,
+    totalCount: 1,
+    pageCount: 1,
+  },
+  savedRuns: [
+    {
+      savedRunId: 'RS_MIXED_ORDER_SYNC',
+      runName: 'Mixed Order Sync',
+      description: 'API to file order comparison',
+      runType: 'ruleset',
+      ruleSetId: 'RS_MIXED_ORDER_SYNC',
+      compareScopeId: 'CS_MIXED_ORDER_SYNC',
+      requiresSystemSelection: false,
+      defaultFile1SystemEnumId: 'OMS',
+      defaultFile2SystemEnumId: 'SHOPIFY',
+      systemOptions: [
+        {
+          enumId: 'OMS',
+          label: 'HotWax',
+          fileSide: 'FILE_1',
+          fileTypeEnumId: 'DftJson',
+          fileTypeLabel: 'JSON',
+          sourceTypeEnumId: 'AUT_SRC_API',
+          systemMessageRemoteId: 'HOTWAX_ORDERS_API',
+        },
+        {
+          enumId: 'SHOPIFY',
+          label: 'Shopify',
+          fileSide: 'FILE_2',
+          fileTypeEnumId: 'DftCsv',
+          fileTypeLabel: 'CSV',
+        },
+      ],
+    },
+  ],
+}
+
+function expectedWindowPayloadDate(year: number, monthIndex: number, day: number): string {
+  return new Date(year, monthIndex, day).toISOString()
+}
+
 function stubFileReader(): void {
   class MockFileReader {
     result: string | ArrayBuffer | null = null
@@ -92,6 +186,10 @@ async function chooseWorkflowOption(
 
 describe('ReconciliationDiffPage', () => {
   beforeEach(() => {
+    installLocalStorageStub()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 4, 17, 12, 0, 0))
+    window.localStorage.clear()
     route.query = {}
     push.mockClear()
     listSavedRuns.mockReset()
@@ -113,6 +211,7 @@ describe('ReconciliationDiffPage', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -314,6 +413,360 @@ describe('ReconciliationDiffPage', () => {
         file2SystemLabel: 'SHOPIFY',
       },
     })
+  })
+
+  it('shows a come-back-later hint and records the run as pending while execution is in progress', async () => {
+    stubFileReader()
+    route.query = {
+      savedRunId: 'RS_ORDER_CSV',
+      runName: 'CSV Order Compare',
+      file1SystemLabel: 'OMS',
+      file2SystemLabel: 'SHOPIFY',
+    }
+
+    let resolveRun: (value: unknown) => void = () => {}
+    runSavedRunDiff.mockReturnValue(new Promise((resolve) => {
+      resolveRun = resolve
+    }))
+
+    const wrapper = mount(ReconciliationDiffPage)
+    await flushPromises()
+
+    const file1Input = wrapper.get('[data-testid="file1-input"]')
+    Object.defineProperty(file1Input.element, 'files', {
+      value: [new File(['order_id\n1001\n1002\n'], 'oms-orders.csv', { type: 'text/csv' })],
+      configurable: true,
+    })
+    await file1Input.trigger('change')
+    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
+    await flushPromises()
+
+    const file2Input = wrapper.get('[data-testid="file2-input"]')
+    Object.defineProperty(file2Input.element, 'files', {
+      value: [new File(['order_id\n1002\n1003\n'], 'shopify-orders.csv', { type: 'text/csv' })],
+      configurable: true,
+    })
+    await file2Input.trigger('change')
+    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
+    await flushPromises()
+
+    const hint = wrapper.get('[data-testid="run-submitted-hint"]')
+    expect(hint.text()).toContain('Run submitted')
+    expect(hint.text()).toContain('You can leave this page and come back later from run history.')
+    expect(JSON.parse(wrapper.get('[data-testid="run-submitted-history-link"]').attributes('data-to') ?? '{}')).toEqual({
+      name: 'reconciliation-run-history',
+      params: {
+        savedRunId: 'RS_ORDER_CSV',
+      },
+      query: {
+        runName: 'CSV Order Compare',
+        file1SystemLabel: 'OMS',
+        file2SystemLabel: 'SHOPIFY',
+      },
+    })
+    expect(JSON.parse(window.localStorage.getItem('darpan.pendingReconciliationRuns') ?? '[]')).toEqual([
+      expect.objectContaining({
+        savedRunId: 'RS_ORDER_CSV',
+        runName: 'CSV Order Compare',
+        file1SystemLabel: 'OMS',
+        file2SystemLabel: 'SHOPIFY',
+        submittedAt: new Date(2026, 4, 17, 12, 0, 0).toISOString(),
+      }),
+    ])
+
+    resolveRun({
+      ok: true,
+      messages: ['Generated CSV-Order-Compare-diff-20260331-063304.json.'],
+      errors: [],
+      runResult: {
+        savedRunId: 'RS_ORDER_CSV',
+        runName: 'CSV Order Compare',
+        runType: 'ruleset',
+        ruleSetId: 'RS_ORDER_CSV',
+        compareScopeId: 'CS_ORDER_CSV',
+        file1SystemEnumId: 'OMS',
+        file2SystemEnumId: 'SHOPIFY',
+        validationErrors: [],
+        processingWarnings: [],
+        generatedOutput: {
+          fileName: 'CSV-Order-Compare-diff-20260331-063304.json',
+          savedRunId: 'RS_ORDER_CSV',
+          savedRunType: 'ruleset',
+          totalDifferences: 2,
+          onlyInFile1Count: 1,
+          onlyInFile2Count: 1,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(window.localStorage.getItem('darpan.pendingReconciliationRuns')).toBeNull()
+  })
+
+  it('asks for one API time period instead of file uploads when both saved-run sources are API-backed', async () => {
+    route.query = {
+      savedRunId: 'RS_API_ORDER_SYNC',
+      runName: 'API Order Sync',
+      file1SystemLabel: 'HotWax',
+      file2SystemLabel: 'SHOPIFY',
+    }
+    listSavedRuns.mockResolvedValue(apiSavedRunResponse)
+    runSavedRunDiff.mockResolvedValue({
+      ok: true,
+      messages: ['Generated API-Order-Sync-result.json.'],
+      errors: [],
+      runResult: {
+        savedRunId: 'RS_API_ORDER_SYNC',
+        runName: 'API Order Sync',
+        runType: 'ruleset',
+        ruleSetId: 'RS_API_ORDER_SYNC',
+        compareScopeId: 'CS_API_ORDER_SYNC',
+        file1SystemEnumId: 'OMS',
+        file2SystemEnumId: 'SHOPIFY',
+        validationErrors: [],
+        processingWarnings: [],
+        generatedOutput: {
+          fileName: 'API-Order-Sync-result.json',
+          savedRunId: 'RS_API_ORDER_SYNC',
+          savedRunType: 'ruleset',
+          totalDifferences: 0,
+          onlyInFile1Count: 0,
+          onlyInFile2Count: 0,
+        },
+      },
+    })
+
+    const wrapper = mount(ReconciliationDiffPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Which API time period should we use?')
+    expect(wrapper.find('[data-testid="api-window-range-field"]').exists()).toBe(false)
+    expect(wrapper.findAll('.workflow-shortcut-choice-card')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="api-window-preset-previous-day"]').text()).toContain('Previous Day, May 16, 2026')
+    expect(wrapper.get('[data-testid="api-window-preset-previous-week"]').text()).toContain(
+      'Previous Week, May 9, 2026 to May 16, 2026',
+    )
+    expect(wrapper.get('[data-testid="api-window-preset-previous-month"]').text()).toContain(
+      'Previous Month, April 2026',
+    )
+    expect(wrapper.get('[data-testid="api-window-preset-custom"]').text()).toContain(
+      'Custom Dates, select start and end dates',
+    )
+    expect(wrapper.find('.workflow-shortcut-choice-card__description').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="file1-input"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="file2-input"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="api-window-preset-previous-week"]').trigger('click')
+    expect(wrapper.get('[data-testid="api-window-preset-previous-week"]').classes()).toContain(
+      'workflow-shortcut-choice-card--active',
+    )
+    await wrapper.get('[data-testid="reconciliation-step-primary"]').trigger('click')
+    await flushPromises()
+
+    const payload = runSavedRunDiff.mock.calls[0]?.[0]
+    expect(payload).toEqual({
+      savedRunId: 'RS_API_ORDER_SYNC',
+      file1SystemEnumId: 'OMS',
+      file2SystemEnumId: 'SHOPIFY',
+      windowStartDate: expectedWindowPayloadDate(2026, 4, 9),
+      windowEndDate: expectedWindowPayloadDate(2026, 4, 17),
+      windowStartLocalDate: '2026-05-09',
+      windowEndLocalDate: '2026-05-17',
+      hasHeader: true,
+    })
+  })
+
+  it('uses the previous calendar month for API previous-month presets', async () => {
+    vi.setSystemTime(new Date(2026, 4, 2, 12, 0, 0))
+    route.query = {
+      savedRunId: 'RS_API_ORDER_SYNC',
+      runName: 'API Order Sync',
+      file1SystemLabel: 'HotWax',
+      file2SystemLabel: 'SHOPIFY',
+    }
+    listSavedRuns.mockResolvedValue(apiSavedRunResponse)
+    runSavedRunDiff.mockResolvedValue({
+      ok: true,
+      messages: ['Generated API-Order-Sync-result.json.'],
+      errors: [],
+      runResult: {
+        savedRunId: 'RS_API_ORDER_SYNC',
+        runName: 'API Order Sync',
+        runType: 'ruleset',
+        ruleSetId: 'RS_API_ORDER_SYNC',
+        compareScopeId: 'CS_API_ORDER_SYNC',
+        file1SystemEnumId: 'OMS',
+        file2SystemEnumId: 'SHOPIFY',
+        validationErrors: [],
+        processingWarnings: [],
+        generatedOutput: {
+          fileName: 'API-Order-Sync-result.json',
+          savedRunId: 'RS_API_ORDER_SYNC',
+          savedRunType: 'ruleset',
+          totalDifferences: 0,
+          onlyInFile1Count: 0,
+          onlyInFile2Count: 0,
+        },
+      },
+    })
+
+    const wrapper = mount(ReconciliationDiffPage)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="api-window-preset-previous-month"]').text()).toContain(
+      'Previous Month, April 2026',
+    )
+    await wrapper.get('[data-testid="api-window-preset-previous-month"]').trigger('click')
+    await wrapper.get('[data-testid="reconciliation-step-primary"]').trigger('click')
+    await flushPromises()
+
+    expect(runSavedRunDiff.mock.calls[0]?.[0]).toMatchObject({
+      windowStartDate: expectedWindowPayloadDate(2026, 3, 1),
+      windowEndDate: expectedWindowPayloadDate(2026, 4, 1),
+      windowStartLocalDate: '2026-04-01',
+      windowEndLocalDate: '2026-05-01',
+    })
+  })
+
+  it('asks for an API time period and only uploads the file-backed side for mixed saved runs', async () => {
+    stubFileReader()
+    route.query = {
+      savedRunId: 'RS_MIXED_ORDER_SYNC',
+      runName: 'Mixed Order Sync',
+      file1SystemLabel: 'HotWax',
+      file2SystemLabel: 'SHOPIFY',
+    }
+    listSavedRuns.mockResolvedValue(mixedApiFileSavedRunResponse)
+    runSavedRunDiff.mockResolvedValue({
+      ok: true,
+      messages: ['Generated Mixed-Order-Sync-result.json.'],
+      errors: [],
+      runResult: {
+        savedRunId: 'RS_MIXED_ORDER_SYNC',
+        runName: 'Mixed Order Sync',
+        runType: 'ruleset',
+        ruleSetId: 'RS_MIXED_ORDER_SYNC',
+        compareScopeId: 'CS_MIXED_ORDER_SYNC',
+        file1SystemEnumId: 'OMS',
+        file2SystemEnumId: 'SHOPIFY',
+        validationErrors: [],
+        processingWarnings: [],
+        generatedOutput: {
+          fileName: 'Mixed-Order-Sync-result.json',
+          savedRunId: 'RS_MIXED_ORDER_SYNC',
+          savedRunType: 'ruleset',
+          totalDifferences: 1,
+          onlyInFile1Count: 1,
+          onlyInFile2Count: 0,
+        },
+      },
+    })
+
+    const wrapper = mount(ReconciliationDiffPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Which API time period should we use?')
+    expect(wrapper.find('[data-testid="file1-input"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="api-window-preset-custom"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Select custom dates')
+    expect(wrapper.find('[data-testid="api-window-custom-range-field"]').exists()).toBe(false)
+    expect(wrapper.find('input[type="date"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="api-window-custom-start"]').text()).toContain('mm/dd/yyyy')
+    expect(wrapper.get('[data-testid="api-window-custom-end"]').text()).toContain('mm/dd/yyyy')
+    expect(wrapper.text()).toContain('April 2026')
+    expect(wrapper.text()).toContain('May 2026')
+    expect(wrapper.text()).not.toContain('June 2026')
+    expect(wrapper.find('[data-testid="api-window-custom-next-month"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="api-window-custom-day-2026-05-18"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="api-window-custom-day-2026-05-18"]').trigger('click')
+    expect(wrapper.get('[data-testid="api-window-custom-start"]').text()).toContain('mm/dd/yyyy')
+    expect(wrapper.get('[data-testid="api-window-custom-day-2026-05-01"] .wizard-api-calendar-day__label').text()).toBe('1')
+    await wrapper.get('[data-testid="api-window-custom-day-2026-05-01"]').trigger('click')
+    expect(wrapper.get('[data-testid="api-window-custom-start"]').text()).toContain('05/01/2026')
+    await wrapper.get('[data-testid="api-window-custom-day-2026-05-02"]').trigger('click')
+    expect(wrapper.get('[data-testid="api-window-custom-end"]').text()).toContain('05/02/2026')
+    await wrapper.get('[data-testid="reconciliation-step-primary"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Upload the Shopify CSV file')
+    expect(wrapper.find('[data-testid="file1-input"]').exists()).toBe(false)
+
+    const file2Input = wrapper.get('[data-testid="file2-input"]')
+    Object.defineProperty(file2Input.element, 'files', {
+      value: [new File(['order_id\n1002\n1003\n'], 'shopify-orders.csv', { type: 'text/csv' })],
+      configurable: true,
+    })
+    await file2Input.trigger('change')
+    await wrapper.get('[data-testid="reconciliation-step-primary"]').trigger('click')
+    await flushPromises()
+
+    const payload = runSavedRunDiff.mock.calls[0]?.[0]
+    expect(payload).toEqual({
+      savedRunId: 'RS_MIXED_ORDER_SYNC',
+      file2Name: 'shopify-orders.csv',
+      file2Text: 'order_id\n1002\n1003\n',
+      file1SystemEnumId: 'OMS',
+      file2SystemEnumId: 'SHOPIFY',
+      windowStartDate: expectedWindowPayloadDate(2026, 4, 1),
+      windowEndDate: expectedWindowPayloadDate(2026, 4, 3),
+      windowStartLocalDate: '2026-05-01',
+      windowEndLocalDate: '2026-05-03',
+      hasHeader: true,
+    })
+  })
+
+  it('keeps the custom API calendar constrained to the workflow column', () => {
+    const source = readFileSync('src/pages/reconciliation/ReconciliationDiffPage.vue', 'utf8')
+
+    expect(source).toMatch(/\.reconciliation-diff-layout\s*\{[^}]*min-width: 0;/s)
+    expect(source).toMatch(/\.wizard-api-calendar-grid\s*\{[^}]*width: 100%;[^}]*min-width: 0;[^}]*max-width: 100%;/s)
+    expect(source).toMatch(/\.wizard-api-calendar-weekdays,\n\.wizard-api-calendar-days\s*\{[^}]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\);/s)
+    expect(source).toMatch(/\.wizard-api-calendar-day__label\s*\{[^}]*inline-size: min\(1\.95rem, 100%\);[^}]*min-width: 0;/s)
+  })
+
+  it('does not allow outside-month calendar cells to be selected or highlighted', async () => {
+    route.query = {
+      savedRunId: 'RS_MIXED_ORDER_SYNC',
+      runName: 'Mixed Order Sync',
+      file1SystemLabel: 'HotWax',
+      file2SystemLabel: 'SHOPIFY',
+    }
+    listSavedRuns.mockResolvedValue(mixedApiFileSavedRunResponse)
+
+    const wrapper = mount(ReconciliationDiffPage)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="api-window-preset-custom"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="api-window-custom-day-2026-04-01"]').trigger('click')
+    await wrapper.get('[data-testid="api-window-custom-day-2026-04-29"]').trigger('click')
+
+    const mayMonth = wrapper.findAll('.wizard-api-calendar-month')[1]!
+    const mayMonthDays = mayMonth.findAll('.wizard-api-calendar-day')
+    const outsideApril29InMay = mayMonthDays[3]!
+    const outsideApril30InMay = mayMonthDays[4]!
+
+    expect(outsideApril29InMay.text()).toBe('29')
+    expect(outsideApril29InMay.attributes('disabled')).toBeDefined()
+    expect(outsideApril29InMay.classes()).toContain('wizard-api-calendar-day--outside')
+    expect(outsideApril29InMay.classes()).toContain('wizard-api-calendar-day--disabled')
+    expect(outsideApril29InMay.classes()).not.toContain('wizard-api-calendar-day--range-end')
+    expect(outsideApril29InMay.classes()).not.toContain('wizard-api-calendar-day--in-range')
+
+    await outsideApril30InMay.trigger('click')
+    expect(wrapper.get('[data-testid="api-window-custom-end"]').text()).toContain('04/29/2026')
+  })
+
+  it('keeps the latest saved result board in the normal workflow layout', () => {
+    const source = readFileSync('src/pages/reconciliation/ReconciliationDiffPage.vue', 'utf8')
+    const layoutBlock = source.match(/\.reconciliation-diff-layout\s*\{(?<body>[^}]*)\}/s)?.groups?.body ?? ''
+    const boardBlock = source.match(/\.reconciliation-run-history-board\s*\{(?<body>[^}]*)\}/s)?.groups?.body ?? ''
+
+    expect(layoutBlock).toContain('gap: var(--space-5);')
+    expect(boardBlock).not.toContain('position: fixed;')
+    expect(boardBlock).toContain('width: min(var(--workflow-question-width), 100%);')
+    expect(boardBlock).toContain('justify-self: center;')
   })
 
   it('surfaces validation feedback when the backend blocks an invalid saved-run diff', async () => {

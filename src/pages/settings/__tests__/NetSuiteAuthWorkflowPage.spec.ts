@@ -451,7 +451,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
     expect(source).toContain('.workflow-choice-option--filter.workflow-choice-option--active {')
     expect(source).toContain('max-width: min(100%, 14rem);')
     expect(source).toContain('padding: 0.6rem 0.8rem;')
-    expect(source).toContain(".workflow-choice-option--filter input[type='checkbox'] {")
+    expect(source).toContain(".workflow-choice-option--filter input[type='checkbox']:not(.app-table__checkbox) {")
     expect(source).toContain('width: 1rem;')
     expect(source).toContain('height: 1rem;')
     expect(source).toContain('border: 1px solid var(--border-soft);')

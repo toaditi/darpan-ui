@@ -13,8 +13,16 @@
     </section>
   </div>
 
-  <div v-if="workflowEscapeHintLabel" class="workflow-escape-hint" role="status" aria-live="polite">
-    Press Esc to go back to {{ workflowEscapeHintLabel }}
+  <div
+    v-if="workflowHint"
+    :class="[
+      'workflow-escape-hint',
+      { 'workflow-escape-hint--warning': workflowHint.tone === 'warning' },
+    ]"
+    role="status"
+    aria-live="polite"
+  >
+    {{ workflowHint.message }}
   </div>
 
   <div v-if="!isShelllessRoute" class="floating-actions">
@@ -46,47 +54,44 @@
           <p class="user-menu-name">{{ userDisplayName }}</p>
           <p v-if="userStatusText" class="mono-copy">{{ userStatusText }}</p>
 
-          <div v-if="showTenantSwitcher" class="user-menu-tenant">
-            <p class="user-menu-tenant-active" data-testid="user-tenant-active">
-              Active tenant: {{ activeTenantLabel }}
-            </p>
-            <AppSelect
-              test-id="user-tenant-select"
-              :model-value="selectedTenantUserGroupId"
-              :options="tenantSelectOptions"
-              :disabled="isTenantSwitcherDisabled"
-              @update:model-value="handleActiveTenantChange"
-            />
-          </div>
-
-          <div class="user-menu-row">
+          <div class="user-menu-actions">
             <button
               type="button"
-              class="theme-toggle"
-              :class="{ dark: theme === 'dark', light: theme === 'light' }"
+              class="app-icon-action app-icon-action--large"
+              :disabled="isLoggingOut"
+              aria-label="Sign out"
+              @click="handleLogout"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 2v10" />
+                <path d="M18.4 6.6a9 9 0 1 1-12.8 0" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="app-icon-action app-icon-action--large"
               :aria-label="`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`"
               :aria-pressed="theme === 'dark'"
               @click="toggleTheme"
             >
-              <span class="theme-toggle-icon theme-toggle-sun" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                  <circle cx="12" cy="12" r="3.5" />
-                  <path d="M12 2.5v3.2M12 18.3v3.2M21.5 12h-3.2M5.7 12H2.5M18.7 5.3l-2.3 2.3M7.6 16.4l-2.3 2.3M18.7 18.7l-2.3-2.3M7.6 7.6 5.3 5.3" />
-                </svg>
-              </span>
-              <span class="theme-toggle-icon theme-toggle-moon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                  <path d="M15.7 3.2a8.7 8.7 0 1 0 5.1 15.6 9.8 9.8 0 1 1-5.1-15.6Z" />
-                </svg>
-              </span>
-              <span class="theme-toggle-thumb" aria-hidden="true"></span>
-              <span class="sr-only">Toggle theme</span>
+              <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M12 2.5v3.2M12 18.3v3.2M21.5 12h-3.2M5.7 12H2.5M18.7 5.3l-2.3 2.3M7.6 16.4l-2.3 2.3M18.7 18.7l-2.3-2.3M7.6 7.6 5.3 5.3" />
+              </svg>
             </button>
-          </div>
-
-          <div class="user-menu-actions">
-            <button type="button" class="user-menu-logout" :disabled="isLoggingOut" @click="handleLogout">
-              {{ isLoggingOut ? 'Signing out...' : 'Sign Out' }}
+            <button
+              type="button"
+              class="app-icon-action app-icon-action--large"
+              aria-label="Open user settings"
+              @click="goToUserSettings"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.3a2 2 0 0 1-4 0V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14H2.7a2 2 0 0 1 0-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6v-.3a2 2 0 0 1 4 0V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1A1.7 1.7 0 0 0 21 10h.3a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
+              </svg>
             </button>
           </div>
         </section>
@@ -115,8 +120,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import CommandPalette from './components/shell/CommandPalette.vue'
-import AppSelect from './components/ui/AppSelect.vue'
-import { buildAuthRedirect, ensureAuthenticated, logoutSession, saveActiveTenant, useAuthState, useUiPermissions } from './lib/auth'
+import { buildAuthRedirect, ensureAuthenticated, logoutSession, useAuthState, useUiPermissions } from './lib/auth'
 import { AUTH_REQUIRED_EVENT } from './lib/api/client'
 import { reconciliationFacade, settingsFacade } from './lib/api/facade'
 import type { GeneratedOutput, SftpServerRecord } from './lib/api/types'
@@ -125,7 +129,14 @@ import { listRecentCommandIds, recordRecentCommand } from './lib/commandSearch'
 import { shouldAbortWorkflowOnEscape } from './lib/keyboard'
 import { useTheme } from './lib/theme'
 import type { CommandAction } from './lib/types/ux'
-import { DISMISS_INLINE_MENUS_EVENT, WORKFLOW_CANCEL_REQUEST_EVENT } from './lib/uiEvents'
+import {
+  DISMISS_INLINE_MENUS_EVENT,
+  WORKFLOW_CANCEL_REQUEST_EVENT,
+  WORKFLOW_HINT_REQUEST_EVENT,
+  type WorkflowHintRequestDetail,
+  type WorkflowHintTone,
+} from './lib/uiEvents'
+import { useUserDisplayNamePreference } from './lib/userDisplayName'
 import { filterRecordsForActiveTenant } from './lib/utils/tenantRecords'
 import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState, resolveStaticPageLabel, type WorkflowOrigin } from './lib/workflowOrigin'
 
@@ -134,17 +145,16 @@ const router = useRouter()
 const authState = useAuthState()
 const permissions = useUiPermissions()
 const { theme, toggleTheme } = useTheme()
+const { resolveUserDisplayName } = useUserDisplayNamePreference()
 
 const isCommandPaletteOpen = ref(false)
 const isUserMenuOpen = ref(false)
 const isLoggingOut = ref(false)
-const isSwitchingTenant = ref(false)
 const isLoadingCommandData = ref(false)
 const recentCommandIds = ref<string[]>([])
 const dataCommandActions = ref<CommandAction[]>([])
-const selectedTenantUserGroupId = ref('')
 const userMenuWrap = ref<HTMLElement | null>(null)
-const workflowEscapeHintLabel = ref<string | null>(null)
+const workflowHint = ref<{ message: string, tone: WorkflowHintTone } | null>(null)
 const workflowEscapeOriginPath = ref<string | null>(null)
 const workflowEscapeOriginState = ref<WorkflowOrigin | null>(null)
 
@@ -153,47 +163,25 @@ const surfaceMode = computed<'static' | 'workflow'>(() => (route.meta.surfaceMod
 const routerViewKey = computed(
   () => `${route.fullPath}::${authState.sessionInfo?.activeTenantUserGroupId ?? authState.sessionInfo?.scopeType ?? 'anonymous'}`,
 )
-const userDisplayName = computed(() => authState.username ?? authState.userId ?? 'Unknown user')
-const availableTenants = computed(() => authState.sessionInfo?.availableTenants ?? [])
+const userDisplayName = computed(() => resolveUserDisplayName(authState.sessionInfo))
 const activeTenantUserGroupId = computed(() => authState.sessionInfo?.activeTenantUserGroupId ?? null)
-const activeTenantLabel = computed(() => {
-  const sessionLabel = authState.sessionInfo?.activeTenantLabel?.trim()
-  if (sessionLabel) return sessionLabel
-
-  const activeTenant = activeTenantUserGroupId.value
-    ? availableTenants.value.find((tenant) => tenant.userGroupId === activeTenantUserGroupId.value)
-    : null
-  return activeTenant?.label || activeTenant?.userGroupId || 'None'
-})
-const tenantSelectOptions = computed(() =>
-  availableTenants.value.map((tenant) => ({
-    value: tenant.userGroupId,
-    label: tenant.label || tenant.userGroupId,
-  })),
-)
-const showTenantSwitcher = computed(() => availableTenants.value.length > 0)
-const isTenantSwitcherDisabled = computed(
-  () => isSwitchingTenant.value || isLoggingOut.value || availableTenants.value.length < 2,
-)
 const userStatusText = computed<string | null>(() => {
   if (isLoggingOut.value) return 'Signing out'
-  if (isSwitchingTenant.value) return 'Switching tenant'
-  if (authState.error) return authState.error
   if (authState.authenticated) return null
+  if (authState.error) return authState.error
   if (authState.status === 'verification-failed') return 'Session check failed'
   if (authState.checked) return 'Not signed in'
   return 'Checking session'
 })
 
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
-const canManageGlobalSettings = computed(() => permissions.canManageGlobalSettings)
+const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
 const commandActions = computed<CommandAction[]>(() => [
   ...staticCommandActions.filter((action) => {
-    if (action.id === 'navigate-llm') return canManageGlobalSettings.value
+    if (action.id === 'navigate-run-reconciliation') return canRunActiveTenantReconciliation.value
     if (
       action.id === 'navigate-schema-infer'
       || action.id === 'navigate-create-reconciliation'
-      || action.id === 'navigate-run-reconciliation'
     ) {
       return canEditTenantSettings.value
     }
@@ -214,12 +202,20 @@ const staticCommandActions: CommandAction[] = [
     aliases: ['home', 'dashboard', 'start', 'main page', 'overview'],
   },
   {
-    id: 'navigate-llm',
-    label: 'Open AI Settings',
-    description: 'Manage providers, models, and API keys.',
+    id: 'navigate-user-settings',
+    label: 'Open User Settings',
+    description: 'Manage account display name, active tenant, and user preferences.',
     group: 'Navigate',
-    to: '/settings/ai',
-    aliases: ['ai', 'llm', 'openai', 'gemini', 'api key', 'model settings', 'change api key'],
+    to: '/settings/user',
+    aliases: ['user settings', 'profile', 'display name', 'tenant switcher'],
+  },
+  {
+    id: 'navigate-tenant-settings',
+    label: 'Open Tenant Settings',
+    description: 'Manage tenant connections, timezone, notifications, runs, and AI provider settings.',
+    group: 'Navigate',
+    to: '/settings/tenant',
+    aliases: ['tenant settings', 'settings', 'timezone', 'time zone', 'ai', 'llm', 'openai', 'gemini', 'api key', 'model settings', 'change api key', 'connections'],
   },
   {
     id: 'navigate-sftp',
@@ -230,12 +226,36 @@ const staticCommandActions: CommandAction[] = [
     aliases: ['sftp', 'file server', 'file transfer', 'ftp', 'server connection'],
   },
   {
+    id: 'navigate-notifications',
+    label: 'Configure Notifications',
+    description: 'Configure tenant run-completion webhooks.',
+    group: 'Navigate',
+    to: '/settings/tenant?workflow=notifications',
+    aliases: ['notifications', 'google chat', 'gchat', 'webhook', 'run notification', 'run completion'],
+  },
+  {
     id: 'navigate-netsuite',
     label: 'Open NetSuite Settings',
     description: 'Manage NetSuite auth profiles and endpoint configs.',
     group: 'Navigate',
     to: '/settings/netsuite',
     aliases: ['netsuite', 'login', 'credentials', 'token', 'oauth', 'auth', 'endpoint', 'api url', 'restlet', 'timeout', 'settings'],
+  },
+  {
+    id: 'navigate-shopify',
+    label: 'Open Shopify Settings',
+    description: 'Manage Shopify Admin API source credentials.',
+    group: 'Navigate',
+    to: '/settings/shopify',
+    aliases: ['shopify', 'shopify connection', 'shopify auth', 'shopify token', 'shopify api', 'orders api', 'automation source'],
+  },
+  {
+    id: 'navigate-oms',
+    label: 'Open HotWax Settings',
+    description: 'Manage HotWax source credentials and order API setup.',
+    group: 'Navigate',
+    to: '/settings/hotwax',
+    aliases: ['hotwax', 'oms', 'hotwax connection', 'oms connection', 'oms rest', 'orders api', 'order source', 'automation source'],
   },
   {
     id: 'navigate-runs-settings',
@@ -276,6 +296,14 @@ const staticCommandActions: CommandAction[] = [
     group: 'Navigate',
     to: '/reconciliation/diff',
     aliases: ['compare files', 'compare data', 'match records', 'reconcile data', 'run comparison', 'execute', 'diff'],
+  },
+  {
+    id: 'navigate-automations',
+    label: 'Open Automations',
+    description: 'Review scheduled reconciliation automations.',
+    group: 'Navigate',
+    to: '/reconciliation/automations',
+    aliases: ['automations', 'automation dashboard', 'scheduled runs', 'scheduled reconciliation', 'pause automation', 'run automation'],
   },
   {
     id: 'navigate-roadmap',
@@ -392,6 +420,13 @@ async function goToWorkflowOrigin(options: { clearFocus?: boolean } = {}): Promi
   }
 }
 
+async function goToUserSettings(): Promise<void> {
+  isCommandPaletteOpen.value = false
+  isUserMenuOpen.value = false
+  if (route.path === '/settings/user') return
+  await router.push('/settings/user')
+}
+
 async function handleLogout(): Promise<void> {
   if (isLoggingOut.value) return
 
@@ -405,36 +440,6 @@ async function handleLogout(): Promise<void> {
     await router.replace({ name: 'login' })
   } finally {
     isLoggingOut.value = false
-  }
-}
-
-async function handleActiveTenantChange(nextTenantUserGroupId: string): Promise<void> {
-  if (isSwitchingTenant.value || isLoggingOut.value) return
-  if (!nextTenantUserGroupId || nextTenantUserGroupId === activeTenantUserGroupId.value) return
-
-  const previousTenantUserGroupId = activeTenantUserGroupId.value ?? availableTenants.value[0]?.userGroupId ?? ''
-  selectedTenantUserGroupId.value = nextTenantUserGroupId
-  isSwitchingTenant.value = true
-  try {
-    const saved = await saveActiveTenant(nextTenantUserGroupId)
-    if (!saved) {
-      selectedTenantUserGroupId.value = previousTenantUserGroupId
-      return
-    }
-
-    isCommandPaletteOpen.value = false
-    isUserMenuOpen.value = false
-    commandDataRequestId += 1
-    dataCommandActions.value = []
-    const tenantSwitchRedirectName = typeof route.meta.tenantSwitchRedirectName === 'string'
-      ? route.meta.tenantSwitchRedirectName
-      : null
-    if (tenantSwitchRedirectName) {
-      await router.replace({ name: tenantSwitchRedirectName })
-    }
-    await nextTick()
-  } finally {
-    isSwitchingTenant.value = false
   }
 }
 
@@ -476,11 +481,18 @@ function handleKeyboard(event: KeyboardEvent): void {
     return
   }
 
-  if (shouldAbortWorkflowOnEscape(event, { workflowActive: surfaceMode.value === 'workflow' })) {
-    event.preventDefault()
+  const plainEscapePressed = shouldAbortWorkflowOnEscape(event, { workflowActive: true })
+  if (plainEscapePressed) {
     const cancelRequest = new Event(WORKFLOW_CANCEL_REQUEST_EVENT, { cancelable: true })
     document.dispatchEvent(cancelRequest)
-    if (cancelRequest.defaultPrevented) return
+    if (cancelRequest.defaultPrevented) {
+      event.preventDefault()
+      return
+    }
+  }
+
+  if (plainEscapePressed && surfaceMode.value === 'workflow') {
+    event.preventDefault()
     void goToWorkflowOrigin({ clearFocus: true })
   }
 }
@@ -516,7 +528,32 @@ function clearWorkflowEscapeHintTimer(): void {
 
 function hideWorkflowEscapeHint(): void {
   clearWorkflowEscapeHintTimer()
-  workflowEscapeHintLabel.value = null
+  workflowHint.value = null
+}
+
+function showWorkflowHint(message: string, options: { tone?: WorkflowHintTone, durationMs?: number } = {}): void {
+  const normalizedMessage = message.trim()
+  if (!normalizedMessage) return
+
+  workflowHint.value = {
+    message: normalizedMessage,
+    tone: options.tone ?? 'neutral',
+  }
+  clearWorkflowEscapeHintTimer()
+  workflowEscapeHintTimer = globalThis.setTimeout(() => {
+    workflowHint.value = null
+    workflowEscapeHintTimer = null
+  }, options.durationMs ?? 2000)
+}
+
+function handleWorkflowHintRequest(event: Event): void {
+  const detail = (event as CustomEvent<WorkflowHintRequestDetail>).detail
+  if (!detail?.message) return
+
+  showWorkflowHint(detail.message, {
+    tone: detail.tone,
+    durationMs: detail.durationMs,
+  })
 }
 
 function syncWorkflowEscapeOrigin(): void {
@@ -535,21 +572,8 @@ function syncWorkflowEscapeOrigin(): void {
     return
   }
 
-  workflowEscapeHintLabel.value = workflowOrigin.label
-  clearWorkflowEscapeHintTimer()
-  workflowEscapeHintTimer = globalThis.setTimeout(() => {
-    workflowEscapeHintLabel.value = null
-    workflowEscapeHintTimer = null
-  }, 2000)
+  showWorkflowHint(`Press Esc to go back to ${workflowOrigin.label}`, { durationMs: 2000 })
 }
-
-watch(
-  [availableTenants, activeTenantUserGroupId],
-  ([nextTenants, nextActiveTenantUserGroupId]) => {
-    selectedTenantUserGroupId.value = nextActiveTenantUserGroupId ?? nextTenants[0]?.userGroupId ?? ''
-  },
-  { immediate: true },
-)
 
 watch(activeTenantUserGroupId, () => {
   dataCommandActions.value = []
@@ -590,6 +614,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
   window.addEventListener('mousedown', handleWindowMouseDown)
   window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
+  document.addEventListener(WORKFLOW_HINT_REQUEST_EVENT, handleWorkflowHintRequest)
   syncBodySurfaceMode(surfaceMode.value)
   if (!isShelllessRoute.value) {
     void ensureAuthenticated()
@@ -601,6 +626,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyboard)
   window.removeEventListener('mousedown', handleWindowMouseDown)
   window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
+  document.removeEventListener(WORKFLOW_HINT_REQUEST_EVENT, handleWorkflowHintRequest)
   if (typeof document !== 'undefined') {
     document.body.classList.remove('surface-mode-static', 'surface-mode-workflow')
   }

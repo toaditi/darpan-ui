@@ -58,13 +58,13 @@
           data-testid="other-runs-empty-action"
           :to="createFlowRoute"
         >
-          Create New
+          Create Run
         </RouterLink>
       </div>
     </StaticPageSection>
 
     <RouterLink v-if="hasOtherRuns" class="static-page-action-tile" data-testid="dashboard-create-action" :to="createFlowRoute">
-      Create New
+      Create Run
     </RouterLink>
   </StaticPageFrame>
 </template>
@@ -95,7 +95,7 @@ const savedRunTitleOverrides: Record<string, string> = {
   JSON: 'JSON',
   LLM: 'LLM',
   NETSUITE: 'NetSuite',
-  OMS: 'OMS',
+  OMS: 'HotWax',
   PWA: 'PWA',
   SAPI: 'SAPI',
   SFTP: 'SFTP',
@@ -131,7 +131,7 @@ const pinnedSavedRunIds = ref<string[]>([])
 const showAllOtherRuns = ref(false)
 const dashboardWorkflowOriginState = buildWorkflowOriginState('Dashboard', '/')
 const createFlowRoute: RouteLocationRaw = {
-  path: '/reconciliation/create',
+  name: 'reconciliation-create',
   state: dashboardWorkflowOriginState,
 }
 

@@ -13,6 +13,7 @@
         <div class="ruleset-manager-section-header">
           <h2 class="static-page-section-heading">Run</h2>
           <button
+            v-if="canEditTenantSettings"
             type="button"
             class="app-icon-action ruleset-manager-section-edit"
             data-testid="ruleset-manager-edit-run"
@@ -67,6 +68,7 @@
         <div class="ruleset-manager-section-header">
           <h2 class="static-page-section-heading">Rules</h2>
           <button
+            v-if="canEditTenantSettings"
             type="button"
             class="app-icon-action ruleset-manager-section-edit"
             data-testid="ruleset-manager-edit-rules"
@@ -104,6 +106,7 @@
         />
 
         <RouterLink
+          v-if="canEditTenantSettings"
           class="static-page-action-tile static-page-action-tile--inline"
           :to="{ name: 'reconciliation-create' }"
         >
@@ -112,9 +115,10 @@
       </template>
     </StaticPageSection>
 
-    <template v-if="draft" #actions>
+    <template v-if="draft && (canRunActiveTenantReconciliation || canViewRunHistory || canEditTenantSettings)" #actions>
       <div class="action-row ruleset-manager-footer-row">
         <button
+          v-if="canRunActiveTenantReconciliation"
           type="button"
           class="app-icon-action app-icon-action--large ruleset-manager-run-action"
           data-testid="ruleset-manager-run-ruleset"
@@ -125,7 +129,20 @@
             <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
           </svg>
         </button>
+        <RouterLink
+          v-if="canViewRunHistory"
+          class="app-icon-action app-icon-action--large ruleset-manager-history-action"
+          data-testid="ruleset-manager-view-history"
+          aria-label="View previous runs"
+          title="View previous runs"
+          :to="runHistoryRoute"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path :d="listIconPath" fill="currentColor" />
+          </svg>
+        </RouterLink>
         <button
+          v-if="canEditTenantSettings"
           type="button"
           class="app-icon-action app-icon-action--large app-icon-action--danger ruleset-manager-delete-action"
           data-testid="ruleset-manager-delete-run"
@@ -151,26 +168,31 @@ import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, reconciliationFacade } from '../../lib/api/facade'
+import { useUiPermissions } from '../../lib/auth'
 import {
   buildReconciliationRuleSetDraftState,
   readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
   type ReconciliationRuleSetDraftRule,
 } from '../../lib/reconciliationRuleSetDraft'
-import { buildReconciliationDiffRoute } from '../../lib/reconciliationRoutes'
+import { buildReconciliationDiffRoute, buildReconciliationRunHistoryRoute } from '../../lib/reconciliationRoutes'
 import { resolveSchemaLabel } from '../../lib/utils/schemaLabel'
 import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
 const router = useRouter()
+const permissions = useUiPermissions()
 const schemaLabels = ref<Record<string, string>>({})
 const deletingSavedRun = ref(false)
 const deleteError = ref<string | null>(null)
+const SOURCE_TYPE_API = 'AUT_SRC_API'
 const editIconPath =
   'M14.73 2.73a1.75 1.75 0 0 1 2.48 2.48l-1.2 1.2-2.48-2.48 1.2-1.2ZM12.47 4.99 4.8 12.66l-1.18 3.72 3.72-1.18 7.67-7.67-2.54-2.54Z'
 const playIconPath =
   'M6.75 4.2c0-.91.99-1.48 1.78-1.01l7.1 4.25a1.18 1.18 0 0 1 0 2.02l-7.1 4.25a1.18 1.18 0 0 1-1.78-1.01V4.2Z'
 const playIconTransform = 'translate(0 1.5)'
+const listIconPath =
+  'M5.5 5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5ZM5.5 10a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5ZM5.5 15a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5Z'
 const trashIconPath =
   'M7.5 3.5A1.5 1.5 0 0 1 9 2h2a1.5 1.5 0 0 1 1.5 1.5V4H15a.75.75 0 0 1 0 1.5h-.57l-.58 9.17A1.75 1.75 0 0 1 12.1 16.5H7.9a1.75 1.75 0 0 1-1.75-1.33L5.57 5.5H5a.75.75 0 0 1 0-1.5h2.5v-.5ZM11 3.5h-2V4h2v-.5ZM7.07 5.5l.56 8.89c.02.19.13.31.27.31h4.2c.14 0 .25-.12.27-.31l.56-8.89H7.07Zm1.68 1.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Zm2.5 0a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Z'
 const trashIconTransform = 'translate(0 0.75)'
@@ -179,12 +201,21 @@ const draftState = computed(() => readReconciliationRuleSetDraftState(typeof win
 const draft = computed<ReconciliationRuleSetDraft | null>(() => draftState.value?.draft ?? null)
 const savedRunId = computed(() => draft.value?.savedRunId?.trim() ?? '')
 const heroTitle = computed(() => draft.value?.runName || 'Run')
-const file1Title = computed(() => draft.value?.file1SystemLabel || draft.value?.file1SystemEnumId || 'System 1')
-const file2Title = computed(() => draft.value?.file2SystemLabel || draft.value?.file2SystemEnumId || 'System 2')
+const file1Title = computed(() => systemTitle(draft.value, 'file1'))
+const file2Title = computed(() => systemTitle(draft.value, 'file2'))
 const file1SourceLabel = computed(() => summarizeSource(draft.value, 'file1'))
 const file2SourceLabel = computed(() => summarizeSource(draft.value, 'file2'))
 const file1PrimaryId = computed(() => formatFieldKey(draft.value?.file1PrimaryIdExpression))
 const file2PrimaryId = computed(() => formatFieldKey(draft.value?.file2PrimaryIdExpression))
+const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
+const canViewRunHistory = computed(() => Boolean(savedRunId.value))
+const runHistoryRoute = computed(() => buildReconciliationRunHistoryRoute({
+  savedRunId: savedRunId.value,
+  runName: heroTitle.value,
+  file1SystemLabel: file1Title.value,
+  file2SystemLabel: file2Title.value,
+}))
 const comparisonPreview = computed(() => {
   if (!draft.value) return 'Select fields to draft a comparison'
   return `${file1PrimaryId.value} = ${file2PrimaryId.value}`
@@ -227,13 +258,41 @@ function formatRulePreview(rule: ReconciliationRuleSetDraftRule): string {
   return `${formatFieldKey(rule.file1FieldPath)} ${rule.operator?.trim() || '='} ${formatFieldKey(rule.file2FieldPath)}`
 }
 
+function systemTitle(draftValue: ReconciliationRuleSetDraft | null, side: 'file1' | 'file2'): string {
+  if (!draftValue) return side === 'file1' ? 'System 1' : 'System 2'
+
+  const sourceTypeEnumId = side === 'file1' ? draftValue.file1SourceTypeEnumId : draftValue.file2SourceTypeEnumId
+  const sourceConfigId = side === 'file1' ? draftValue.file1SourceConfigId : draftValue.file2SourceConfigId
+  if (sourceTypeEnumId?.trim() === SOURCE_TYPE_API && sourceConfigId?.trim()) return sourceConfigId.trim()
+
+  const systemLabel = side === 'file1' ? draftValue.file1SystemLabel : draftValue.file2SystemLabel
+  const systemEnumId = side === 'file1' ? draftValue.file1SystemEnumId : draftValue.file2SystemEnumId
+  return systemLabel || systemEnumId || (side === 'file1' ? 'System 1' : 'System 2')
+}
+
 function summarizeSource(draftValue: ReconciliationRuleSetDraft | null, side: 'file1' | 'file2'): string {
   if (!draftValue) return 'Source pending'
+
+  const sourceTypeEnumId = side === 'file1' ? draftValue.file1SourceTypeEnumId : draftValue.file2SourceTypeEnumId
+  if (sourceTypeEnumId?.trim() === SOURCE_TYPE_API) return apiEndpointLabel(draftValue, side)
 
   const fileTypeEnumId = side === 'file1' ? draftValue.file1FileTypeEnumId : draftValue.file2FileTypeEnumId
   return fileTypeEnumId === 'DftJson'
     ? resolveDraftSchemaLabel(draftValue, side)
     : 'CSV source'
+}
+
+function apiEndpointLabel(draftValue: ReconciliationRuleSetDraft, side: 'file1' | 'file2'): string {
+  const systemMessageRemoteLabel = side === 'file1' ? draftValue.file1SystemMessageRemoteLabel : draftValue.file2SystemMessageRemoteLabel
+  const nsRestletConfigLabel = side === 'file1' ? draftValue.file1NsRestletConfigLabel : draftValue.file2NsRestletConfigLabel
+  const systemMessageRemoteId = side === 'file1' ? draftValue.file1SystemMessageRemoteId : draftValue.file2SystemMessageRemoteId
+  const nsRestletConfigId = side === 'file1' ? draftValue.file1NsRestletConfigId : draftValue.file2NsRestletConfigId
+
+  return systemMessageRemoteLabel?.trim()
+    || nsRestletConfigLabel?.trim()
+    || systemMessageRemoteId?.trim()
+    || nsRestletConfigId?.trim()
+    || 'API'
 }
 
 function resolveDraftSchemaLabel(draftValue: ReconciliationRuleSetDraft, side: 'file1' | 'file2'): string {
@@ -291,6 +350,7 @@ function getRunDeleteLabel(): string {
 }
 
 async function openRunEditWorkflow(): Promise<void> {
+  if (!canEditTenantSettings.value) return
   if (!draft.value || !savedRunId.value) return
 
   const runDetailsState = buildReconciliationRuleSetDraftState(draft.value)
@@ -305,6 +365,7 @@ async function openRunEditWorkflow(): Promise<void> {
 }
 
 async function openRuleEditWorkflow(): Promise<void> {
+  if (!canEditTenantSettings.value) return
   if (!draft.value) return
 
   const runDetailsState = buildReconciliationRuleSetDraftState(draft.value, 'ruleset-manager')
@@ -319,6 +380,7 @@ async function openRuleEditWorkflow(): Promise<void> {
 
 async function openRunWorkflow(): Promise<void> {
   deleteError.value = null
+  if (!canRunActiveTenantReconciliation.value) return
   if (!draft.value || !savedRunId.value) {
     deleteError.value = 'Saved run ID is missing.'
     return
@@ -338,6 +400,7 @@ async function openRunWorkflow(): Promise<void> {
 }
 
 async function deleteSavedRun(): Promise<void> {
+  if (!canEditTenantSettings.value) return
   if (deletingSavedRun.value) return
 
   deleteError.value = null

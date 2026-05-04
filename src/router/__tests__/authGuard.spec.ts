@@ -8,6 +8,7 @@ const authState = vi.hoisted(() => ({
   sessionInfo: null as {
     userId: string
     username?: string
+    canRunActiveTenantReconciliation?: boolean
     canEditActiveTenantData?: boolean
     isSuperAdmin?: boolean
   } | null,
@@ -32,6 +33,11 @@ vi.mock('../../lib/auth', () => ({
   ensureAuthenticated,
   useAuthState: () => authState,
   useUiPermissions: () => ({
+    get canRunActiveTenantReconciliation() {
+      return authState.sessionInfo?.canRunActiveTenantReconciliation === true ||
+        authState.sessionInfo?.canEditActiveTenantData === true ||
+        authState.sessionInfo?.isSuperAdmin === true
+    },
     get canEditTenantSettings() {
       return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
     },
@@ -111,6 +117,29 @@ describe('router auth guard', () => {
     expect(router.currentRoute.value.name).toBe('settings-sftp')
   })
 
+  it('allows view-only tenant users to view automations but not create or edit them', async () => {
+    ensureAuthenticated.mockResolvedValue(true)
+    authState.status = 'authenticated'
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'view.customer',
+      canEditActiveTenantData: false,
+      isSuperAdmin: false,
+    }
+
+    await router.push('/reconciliation/automations')
+    expect(router.currentRoute.value.name).toBe('reconciliation-automations')
+
+    await router.push('/reconciliation/automations/AUT_ORDER_SYNC')
+    expect(router.currentRoute.value.name).toBe('reconciliation-automation-dashboard')
+
+    await router.push('/reconciliation/automations/create')
+    expect(router.currentRoute.value.name).toBe('reconciliation-automations')
+
+    await router.push('/reconciliation/automations/edit/AUT_ORDER_SYNC')
+    expect(router.currentRoute.value.name).toBe('reconciliation-automations')
+  })
+
   it('allows editor tenant users to open tenant mutation workflows', async () => {
     ensureAuthenticated.mockResolvedValue(true)
     authState.status = 'authenticated'
@@ -126,7 +155,39 @@ describe('router auth guard', () => {
     expect(router.currentRoute.value.name).toBe('settings-sftp-create')
   })
 
-  it('restricts AI settings routes to super admins', async () => {
+  it('allows tenant users with run permission to open reconciliation run workflows', async () => {
+    ensureAuthenticated.mockResolvedValue(true)
+    authState.status = 'authenticated'
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'tenant.user',
+      canRunActiveTenantReconciliation: true,
+      canEditActiveTenantData: false,
+      isSuperAdmin: false,
+    }
+
+    await router.push('/reconciliation/diff')
+
+    expect(router.currentRoute.value.name).toBe('reconciliation-diff')
+  })
+
+  it('redirects tenant users without run permission away from reconciliation run workflows', async () => {
+    ensureAuthenticated.mockResolvedValue(true)
+    authState.status = 'authenticated'
+    authState.sessionInfo = {
+      userId: '100000',
+      username: 'view.customer',
+      canRunActiveTenantReconciliation: false,
+      canEditActiveTenantData: false,
+      isSuperAdmin: false,
+    }
+
+    await router.push('/reconciliation/diff')
+
+    expect(router.currentRoute.value.name).toBe('settings-runs')
+  })
+
+  it('redirects old AI settings routes into tenant settings for authenticated users', async () => {
     ensureAuthenticated.mockResolvedValue(true)
     authState.status = 'authenticated'
     authState.sessionInfo = {
@@ -138,7 +199,7 @@ describe('router auth guard', () => {
 
     await router.push('/settings/ai')
 
-    expect(router.currentRoute.value.name).toBe('hub')
+    expect(router.currentRoute.value.name).toBe('settings-tenant')
 
     authState.sessionInfo = {
       userId: '100000',
@@ -148,6 +209,6 @@ describe('router auth guard', () => {
     }
     await router.push('/settings/ai')
 
-    expect(router.currentRoute.value.name).toBe('settings-ai')
+    expect(router.currentRoute.value.name).toBe('settings-tenant')
   })
 })

@@ -1,0 +1,403 @@
+<template>
+  <StaticPageFrame :class="{ 'user-settings-page--popup-open': isPasswordWorkflowOpen }">
+    <template #hero>
+      <h1>User Settings</h1>
+    </template>
+
+    <StaticPageSection>
+      <template #header>
+        <h2 class="static-page-section-heading">Account</h2>
+      </template>
+
+      <div class="static-page-summary-grid">
+        <div class="user-settings-account-action-stack">
+          <article class="static-page-summary-card">
+            <span class="static-page-summary-label">User ID</span>
+            <span>{{ userId }}</span>
+          </article>
+          <button class="user-settings-control user-settings-password-trigger" type="button" @click="openPasswordWorkflow">
+            Change password
+          </button>
+        </div>
+        <article class="static-page-summary-card">
+          <span class="static-page-summary-label">Username</span>
+          <span>{{ username }}</span>
+        </article>
+        <label class="static-page-summary-card user-settings-summary-field" for="user-display-name">
+          <span class="static-page-summary-label">Display name</span>
+          <input
+            id="user-display-name"
+            v-model="displayNameInput"
+            class="user-settings-summary-input"
+            name="displayName"
+            autocomplete="name"
+            placeholder="Display name"
+            maxlength="80"
+          />
+        </label>
+      </div>
+
+      <p v-if="passwordMessage" class="section-note">{{ passwordMessage }}</p>
+    </StaticPageSection>
+
+    <StaticPageSection title="Tenant Context">
+      <div class="static-page-tile-grid static-page-record-grid">
+        <button
+          v-for="tenant in availableTenants"
+          :key="tenant.userGroupId"
+          type="button"
+          class="static-page-tile static-page-record-tile"
+          :class="{ 'static-page-module-tile--active': tenant.userGroupId === activeTenantUserGroupId }"
+          :disabled="isSwitchingTenant || tenant.userGroupId === activeTenantUserGroupId"
+          @click="switchTenant(tenant.userGroupId)"
+        >
+          <span class="static-page-tile-title">{{ tenant.label || tenant.userGroupId }}</span>
+        </button>
+      </div>
+      <p v-if="tenantMessage" class="section-note">{{ tenantMessage }}</p>
+    </StaticPageSection>
+
+    <StaticPageSection title="Preferences">
+      <div class="static-page-summary-grid user-settings-preferences-grid">
+        <article v-if="lastLoginLabel" class="static-page-summary-card user-settings-preference-card">
+          <span class="static-page-summary-label">Last Login</span>
+          <span>{{ lastLoginLabel }}</span>
+        </article>
+        <article v-if="lastRunLabel" class="static-page-summary-card user-settings-preference-card">
+          <span class="static-page-summary-label">Last Run</span>
+          <span>{{ lastRunLabel }}</span>
+        </article>
+        <article class="static-page-summary-card user-settings-preference-card">
+          <span class="static-page-summary-label">Permissions</span>
+          <span>{{ permissionSummary }}</span>
+        </article>
+      </div>
+      <p v-if="settingsMessage" class="section-note" role="status">{{ settingsMessage }}</p>
+    </StaticPageSection>
+
+    <template #actions>
+      <AppSaveAction :label="saveActionLabel" :disabled="isSavingUserSettings" @click="saveUserSettingsForm" />
+    </template>
+  </StaticPageFrame>
+
+  <div
+    v-if="isPasswordWorkflowOpen"
+    class="popup-workflow-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="password-workflow-title"
+    @click.self="closePasswordWorkflow"
+  >
+    <section class="popup-workflow-modal workflow-panel">
+      <header class="workflow-panel-header">
+        <h2 id="password-workflow-title">Change Password</h2>
+      </header>
+
+      <div class="workflow-step-wrapper">
+        <WorkflowStepForm
+          class="workflow-form--popup-compact"
+          :question="passwordStepQuestion"
+          :primary-label="passwordPrimaryLabel"
+          :submit-disabled="isPasswordStepBlocked"
+          :show-back="passwordStepIndex > 0"
+          :show-cancel-action="false"
+          :show-enter-hint="true"
+          primary-test-id="password-workflow-next"
+          @back="goBackPasswordStep"
+          @submit="submitPasswordStep"
+        >
+          <label class="workflow-context-block" :aria-label="passwordStepLabel">
+            <input
+              v-model="passwordStepValue"
+              class="wizard-answer-control"
+              :name="passwordStepName"
+              type="password"
+              :autocomplete="passwordStepAutocomplete"
+              required
+            />
+          </label>
+        </WorkflowStepForm>
+      </div>
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import AppSaveAction from '../../components/ui/AppSaveAction.vue'
+import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
+import StaticPageSection from '../../components/ui/StaticPageSection.vue'
+import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
+import { changeOwnPassword, saveActiveTenant, saveUserSettings, useAuthState, useUiPermissions, verifyOwnPassword } from '../../lib/auth'
+import { WORKFLOW_CANCEL_REQUEST_EVENT, WORKFLOW_HINT_REQUEST_EVENT } from '../../lib/uiEvents'
+import { formatDateTime } from '../../lib/utils/date'
+
+const authState = useAuthState()
+const permissions = useUiPermissions()
+
+const displayNameInput = ref('')
+const settingsMessage = ref<string | null>(null)
+const tenantMessage = ref<string | null>(null)
+const passwordMessage = ref<string | null>(null)
+const isPasswordWorkflowOpen = ref(false)
+const passwordStepIndex = ref(0)
+const isSavingUserSettings = ref(false)
+const isVerifyingCurrentPassword = ref(false)
+const isChangingPassword = ref(false)
+const isSwitchingTenant = ref(false)
+const passwordForm = ref({
+  currentPassword: '',
+  newPassword: '',
+  newPasswordVerify: '',
+})
+const passwordSteps = [
+  {
+    name: 'currentPassword',
+    label: 'Current Password',
+    question: 'Enter your current password.',
+    autocomplete: 'current-password',
+  },
+  {
+    name: 'newPassword',
+    label: 'New Password',
+    question: 'Enter your new password.',
+    autocomplete: 'new-password',
+  },
+  {
+    name: 'newPasswordVerify',
+    label: 'Verify Password',
+    question: 'Enter your new password again.',
+    autocomplete: 'new-password',
+  },
+] as const
+let displayNameSaveTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+let savedDisplayNameInput = ''
+
+const sessionInfo = computed(() => authState.sessionInfo)
+const userId = computed(() => sessionInfo.value?.userId ?? '')
+const username = computed(() => sessionInfo.value?.username ?? sessionInfo.value?.userId ?? '')
+const displayName = computed(() => sessionInfo.value?.displayName?.toString().trim() || username.value)
+const availableTenants = computed(() => sessionInfo.value?.availableTenants ?? [])
+const activeTenantUserGroupId = computed(() => sessionInfo.value?.activeTenantUserGroupId ?? null)
+const lastLoginLabel = computed(() => formatDateTime(sessionInfo.value?.lastLoginDate, { fallback: '' }))
+const lastRunLabel = computed(() => {
+  const lastRun = sessionInfo.value?.lastRun
+  if (!lastRun) return ''
+  return lastRun.savedRunId || lastRun.reconciliationRunId || lastRun.reconciliationRunResultId || 'Run available'
+})
+const permissionSummary = computed(() => {
+  if (permissions.canManageGlobalSettings) return 'Super admin'
+  if (permissions.canEditTenantSettings) return 'Tenant admin'
+  if (permissions.canRunActiveTenantReconciliation) return 'Tenant user'
+  return 'View only membership'
+})
+const passwordStep = computed(() => passwordSteps[passwordStepIndex.value] ?? passwordSteps[0])
+const passwordStepQuestion = computed(() => passwordStep.value.question)
+const passwordStepLabel = computed(() => passwordStep.value.label)
+const passwordStepName = computed(() => passwordStep.value.name)
+const passwordStepAutocomplete = computed(() => passwordStep.value.autocomplete)
+const saveActionLabel = computed(() => (isSavingUserSettings.value ? 'Saving user settings' : 'Save user settings'))
+const passwordPrimaryLabel = computed(() => {
+  if (passwordStep.value.name === 'currentPassword' && isVerifyingCurrentPassword.value) return 'Checking'
+  return passwordStepIndex.value === passwordSteps.length - 1 ? (isChangingPassword.value ? 'Changing' : 'Change') : 'OK'
+})
+const passwordStepValue = computed({
+  get() {
+    return passwordForm.value[passwordStep.value.name]
+  },
+  set(value: string) {
+    passwordForm.value = {
+      ...passwordForm.value,
+      [passwordStep.value.name]: value,
+    }
+  },
+})
+const isPasswordStepBlocked = computed(() => {
+  if (isChangingPassword.value || isVerifyingCurrentPassword.value) return true
+  return passwordStepValue.value.trim().length === 0
+})
+
+watch(
+  displayName,
+  (nextDisplayName) => {
+    const nextDisplayNameInput = nextDisplayName || ''
+    savedDisplayNameInput = nextDisplayNameInput
+    displayNameInput.value = nextDisplayNameInput
+  },
+  { immediate: true },
+)
+
+watch(displayNameInput, (nextDisplayNameInput) => {
+  if (nextDisplayNameInput === savedDisplayNameInput) return
+  settingsMessage.value = null
+  scheduleDisplayNameSave()
+})
+
+async function saveUserSettingsForm(): Promise<void> {
+  if (isSavingUserSettings.value) return
+  clearDisplayNameSaveTimer()
+  if (!userId.value) return
+  const submittedDisplayNameInput = displayNameInput.value
+  const persistedDisplayNameInput = submittedDisplayNameInput.trim() || username.value
+  let didSave = false
+
+  isSavingUserSettings.value = true
+  settingsMessage.value = 'Saving user settings'
+  try {
+    const saved = await saveUserSettings({ displayName: submittedDisplayNameInput })
+    if (!saved) {
+      settingsMessage.value = authState.error ?? 'Unable to save user settings.'
+      return
+    }
+
+    didSave = true
+    savedDisplayNameInput = persistedDisplayNameInput
+    if (displayNameInput.value === submittedDisplayNameInput && displayNameInput.value !== savedDisplayNameInput) {
+      displayNameInput.value = savedDisplayNameInput
+    }
+    tenantMessage.value = null
+    settingsMessage.value = 'User settings saved.'
+  } finally {
+    isSavingUserSettings.value = false
+    if (didSave && displayNameInput.value !== savedDisplayNameInput) {
+      settingsMessage.value = null
+      scheduleDisplayNameSave()
+    }
+  }
+}
+
+function scheduleDisplayNameSave(): void {
+  clearDisplayNameSaveTimer()
+  displayNameSaveTimer = globalThis.setTimeout(() => {
+    void saveUserSettingsForm()
+  }, 1000)
+}
+
+function clearDisplayNameSaveTimer(): void {
+  if (displayNameSaveTimer === null) return
+  globalThis.clearTimeout(displayNameSaveTimer)
+  displayNameSaveTimer = null
+}
+
+function openPasswordWorkflow(): void {
+  isPasswordWorkflowOpen.value = true
+  passwordStepIndex.value = 0
+  passwordMessage.value = null
+}
+
+function closePasswordWorkflow(): void {
+  isPasswordWorkflowOpen.value = false
+  passwordStepIndex.value = 0
+  passwordMessage.value = null
+  passwordForm.value = {
+    currentPassword: '',
+    newPassword: '',
+    newPasswordVerify: '',
+  }
+}
+
+function handlePasswordWorkflowCancelRequest(event: Event): void {
+  if (!isPasswordWorkflowOpen.value) return
+
+  event.preventDefault()
+  closePasswordWorkflow()
+}
+
+function goBackPasswordStep(): void {
+  passwordStepIndex.value = Math.max(0, passwordStepIndex.value - 1)
+}
+
+async function submitPasswordStep(): Promise<void> {
+  if (passwordStep.value.name === 'currentPassword') {
+    const verified = await verifyCurrentPasswordStep()
+    if (!verified) return
+  }
+
+  if (passwordStepIndex.value < passwordSteps.length - 1) {
+    passwordStepIndex.value += 1
+    return
+  }
+
+  await submitPasswordChange()
+}
+
+async function verifyCurrentPasswordStep(): Promise<boolean> {
+  if (isVerifyingCurrentPassword.value) return false
+
+  isVerifyingCurrentPassword.value = true
+  try {
+    const verified = await verifyOwnPassword(passwordForm.value.currentPassword)
+    if (!verified) {
+      showPasswordWorkflowWarning(authState.error || 'Password incorrect.')
+      return false
+    }
+
+    return true
+  } finally {
+    isVerifyingCurrentPassword.value = false
+  }
+}
+
+function showPasswordWorkflowWarning(message: string): void {
+  document.dispatchEvent(new CustomEvent(WORKFLOW_HINT_REQUEST_EVENT, {
+    detail: {
+      message,
+      tone: 'warning',
+      durationMs: 5000,
+    },
+  }))
+}
+
+async function submitPasswordChange(): Promise<void> {
+  if (isChangingPassword.value) return
+  if (passwordForm.value.newPassword !== passwordForm.value.newPasswordVerify) {
+    passwordMessage.value = 'New passwords do not match.'
+    return
+  }
+
+  isChangingPassword.value = true
+  passwordMessage.value = 'Changing password'
+  try {
+    const changed = await changeOwnPassword({
+      currentPassword: passwordForm.value.currentPassword,
+      newPassword: passwordForm.value.newPassword,
+      newPasswordVerify: passwordForm.value.newPasswordVerify,
+    })
+    if (changed) {
+      passwordForm.value = {
+        currentPassword: '',
+        newPassword: '',
+        newPasswordVerify: '',
+      }
+      isPasswordWorkflowOpen.value = false
+      passwordStepIndex.value = 0
+      passwordMessage.value = 'Password changed.'
+    } else {
+      passwordMessage.value = authState.error ?? 'Unable to change password.'
+    }
+  } finally {
+    isChangingPassword.value = false
+  }
+}
+
+async function switchTenant(nextTenantUserGroupId: string): Promise<void> {
+  if (isSwitchingTenant.value || !nextTenantUserGroupId || nextTenantUserGroupId === activeTenantUserGroupId.value) return
+  isSwitchingTenant.value = true
+  tenantMessage.value = 'Switching tenant'
+  try {
+    const saved = await saveActiveTenant(nextTenantUserGroupId)
+    tenantMessage.value = saved ? null : 'Unable to switch tenant.'
+  } finally {
+    isSwitchingTenant.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener(WORKFLOW_CANCEL_REQUEST_EVENT, handlePasswordWorkflowCancelRequest)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener(WORKFLOW_CANCEL_REQUEST_EVENT, handlePasswordWorkflowCancelRequest)
+  clearDisplayNameSaveTimer()
+})
+</script>

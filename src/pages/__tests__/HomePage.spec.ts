@@ -94,7 +94,7 @@ describe('HomePage', () => {
     expect(wrapper.text()).toContain('Reconciliation 5')
     expect(wrapper.text()).not.toContain('Reconciliation 6')
     expect(wrapper.text()).toContain('Reconciliation 8')
-    expect(wrapper.text()).toContain('Create New')
+    expect(wrapper.text()).toContain('Create Run')
     expect(wrapper.find('[data-testid="pinned-runs"]').text()).toContain('Reconciliation 8')
     expect(wrapper.find('[data-testid="pinned-empty-state"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-testid="other-runs"] .static-page-tile')).toHaveLength(5)
@@ -114,7 +114,7 @@ describe('HomePage', () => {
       },
     })
     expect(JSON.parse(wrapper.get('[data-testid="dashboard-create-action"]').attributes('data-to') ?? '{}')).toEqual({
-      path: '/reconciliation/create',
+      name: 'reconciliation-create',
       state: {
         workflowOriginLabel: 'Dashboard',
         workflowOriginPath: '/',
@@ -221,9 +221,9 @@ describe('HomePage', () => {
     expect(wrapper.get('[data-testid="pinned-empty-state"]').text()).toBe('drag and drop runs to pin')
     expect(wrapper.find('[data-testid="dashboard-create-action"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="other-runs-more"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="other-runs-empty-action"]').text()).toBe('Create New')
+    expect(wrapper.get('[data-testid="other-runs-empty-action"]').text()).toBe('Create Run')
     expect(JSON.parse(wrapper.get('[data-testid="other-runs-empty-action"]').attributes('data-to') ?? '{}')).toEqual({
-      path: '/reconciliation/create',
+      name: 'reconciliation-create',
       state: {
         workflowOriginLabel: 'Dashboard',
         workflowOriginPath: '/',

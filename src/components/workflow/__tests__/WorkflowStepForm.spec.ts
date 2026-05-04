@@ -28,6 +28,17 @@ describe('WorkflowStepForm', () => {
     expect(globalSource).toContain('--workflow-form-top-offset: var(--space-5);')
   })
 
+  it('keeps popup workflow prompt typography visually twice the modal title size', () => {
+    const source = readFileSync('src/components/workflow/WorkflowStepForm.vue', 'utf8')
+    const globalSource = readFileSync('src/style.css', 'utf8')
+
+    expect(source).toContain('.wizard-question-shell.workflow-form--popup-compact')
+    expect(globalSource).toContain('--popup-workflow-title-size: 0.875rem;')
+    expect(globalSource).toContain('--popup-workflow-prompt-size: 1.5rem;')
+    expect(globalSource).toContain('font-size: var(--popup-workflow-title-size);')
+    expect(source).toContain('--workflow-form-question-size: var(--popup-workflow-prompt-size, 1.5rem);')
+  })
+
   it('renders an icon-only cancel action and emits cancel when requested', async () => {
     const wrapper = mount(WorkflowStepForm, {
       props: {

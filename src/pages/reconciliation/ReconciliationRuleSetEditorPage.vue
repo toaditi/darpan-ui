@@ -261,7 +261,13 @@ import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, reconciliationFacade } from '../../lib/api/facade'
-import type { JsonSchemaField, SavedRunRule } from '../../lib/api/types'
+import type {
+  AutomationNsRestletOption,
+  AutomationPrimaryIdOption,
+  AutomationSystemRemoteOption,
+  JsonSchemaField,
+  SavedRunRule,
+} from '../../lib/api/types'
 import {
   buildReconciliationRuleSetDraftState,
   buildSaveRuleSetRunPayload,
@@ -333,6 +339,7 @@ const LONG_PRESS_MS = 320
 const FALLBACK_BOARD_WIDTH = 1000
 const FIELD_ROW_PITCH = 52
 const FIELD_ROW_TOP = 70
+const SOURCE_TYPE_API = 'AUT_SRC_API'
 const operatorOptions: AppSelectOption[] = [
   { value: '=', label: '=' },
   { value: '!=', label: '!=' },
@@ -356,6 +363,8 @@ const rulePopoverRef = ref<HTMLElement | null>(null)
 const fieldNodeRefs = new Map<string, HTMLElement>()
 const pageError = ref<string | null>(null)
 const loadingFields = ref(false)
+const nsRestletConfigs = ref<AutomationNsRestletOption[]>([])
+const systemRemotes = ref<AutomationSystemRemoteOption[]>([])
 const loadedFields = ref<Record<RuleSide, RuleField[]>>({
   file1: [],
   file2: [],
@@ -537,6 +546,18 @@ function toRuleField(field: JsonSchemaField): RuleField {
   }
 }
 
+function toApiRuleField(field: AutomationPrimaryIdOption): RuleField | null {
+  const fieldPath = normalizeFieldPathValue(field.fieldPath)
+  if (!fieldPath) return null
+
+  return {
+    fieldPath,
+    label: field.label?.trim() || formatFieldKey(fieldPath),
+    type: field.type,
+    required: true,
+  }
+}
+
 function withPrimaryField(fields: RuleField[], primaryExpression: string | undefined): RuleField[] {
   const primaryPath = normalizeFieldPathValue(primaryExpression)
   if (!primaryPath || fields.some((field) => sameField(field.fieldPath, primaryPath))) return fields
@@ -550,6 +571,67 @@ function withPrimaryField(fields: RuleField[], primaryExpression: string | undef
     },
     ...fields,
   ]
+}
+
+function sourceUsesApi(side: RuleSide): boolean {
+  const sourceTypeEnumId = side === 'file1'
+    ? draft.value?.file1SourceTypeEnumId
+    : draft.value?.file2SourceTypeEnumId
+  return sourceTypeEnumId === SOURCE_TYPE_API
+}
+
+function sourceConfigMatches(optionConfigId: string | undefined, selectedConfigId: string | undefined): boolean {
+  if (!selectedConfigId?.trim()) return true
+  return optionConfigId?.trim() === selectedConfigId.trim()
+}
+
+function selectedApiSourceOption(side: RuleSide): AutomationNsRestletOption | AutomationSystemRemoteOption | null {
+  if (!draft.value) return null
+
+  const nsRestletConfigId = side === 'file1'
+    ? draft.value.file1NsRestletConfigId
+    : draft.value.file2NsRestletConfigId
+  const systemMessageRemoteId = side === 'file1'
+    ? draft.value.file1SystemMessageRemoteId
+    : draft.value.file2SystemMessageRemoteId
+  const sourceConfigId = side === 'file1'
+    ? draft.value.file1SourceConfigId
+    : draft.value.file2SourceConfigId
+
+  if (nsRestletConfigId?.trim()) {
+    return nsRestletConfigs.value.find((config) => (
+      config.nsRestletConfigId === nsRestletConfigId.trim()
+      && sourceConfigMatches(config.sourceConfigId, sourceConfigId)
+    )) ?? null
+  }
+
+  if (systemMessageRemoteId?.trim()) {
+    return systemRemotes.value.find((remote) => (
+      remote.systemMessageRemoteId === systemMessageRemoteId.trim()
+      && sourceConfigMatches(remote.sourceConfigId || remote.optionKey, sourceConfigId)
+    )) ?? null
+  }
+
+  return null
+}
+
+async function ensureApiSourceOptionsLoaded(): Promise<void> {
+  if (!sourceUsesApi('file1') && !sourceUsesApi('file2')) return
+  if (nsRestletConfigs.value.length || systemRemotes.value.length) return
+
+  const response = await reconciliationFacade.listAutomationSourceOptions()
+  nsRestletConfigs.value = response.nsRestletConfigs ?? []
+  systemRemotes.value = response.systemRemotes ?? []
+}
+
+function loadApiSourceFields(side: RuleSide): void {
+  const apiFields = selectedApiSourceOption(side)?.primaryIdOptions ?? []
+  loadedFields.value = {
+    ...loadedFields.value,
+    [side]: apiFields
+      .map(toApiRuleField)
+      .filter((field): field is RuleField => field !== null),
+  }
 }
 
 function fieldSubtitle(field: RuleField): string {
@@ -613,6 +695,11 @@ async function resolveSchemaId(side: RuleSide): Promise<string> {
 }
 
 async function loadSourceFields(side: RuleSide): Promise<void> {
+  if (sourceUsesApi(side)) {
+    loadApiSourceFields(side)
+    return
+  }
+
   const schemaId = await resolveSchemaId(side)
   if (!schemaId?.trim()) return
 
@@ -654,12 +741,13 @@ async function loadEditorData(): Promise<void> {
   pageError.value = null
   hydrateRules()
   try {
+    await ensureApiSourceOptionsLoaded()
     await Promise.all([
       loadSourceFields('file1'),
       loadSourceFields('file2'),
     ])
   } catch (error) {
-    pageError.value = error instanceof ApiCallError ? error.message : 'Unable to load schema fields.'
+    pageError.value = error instanceof ApiCallError ? error.message : 'Unable to load source fields.'
   } finally {
     loadingFields.value = false
     await nextTick()

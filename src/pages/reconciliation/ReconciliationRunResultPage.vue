@@ -84,6 +84,41 @@
         <InlineValidation v-else-if="loadError" tone="error" :message="loadError" />
 
         <section v-else-if="savedOutput" class="reconciliation-diff-details">
+          <section v-if="showRunSourceDetails" class="run-result-source-details" data-testid="run-result-source-details">
+            <div class="run-result-source-details__summary">
+              <span class="run-result-source-details__eyebrow">{{ runSourceModeLabel }}</span>
+              <strong v-if="runSourceDateRangeLabel">{{ runSourceDateRangeLabel }}</strong>
+            </div>
+            <div class="run-result-source-details__files" :aria-label="runSourceFilesLabel">
+              <span v-if="isApiRunSource" class="run-result-source-details__files-label">Files compared</span>
+              <div
+                v-for="sourceFile in runSourceFiles"
+                :key="sourceFile.key"
+                class="run-result-source-file"
+              >
+                <span class="run-result-source-file__label">{{ sourceFile.label }}</span>
+                <span class="run-result-source-file__name">{{ sourceFile.fileName }}</span>
+                <button
+                  v-if="sourceFile.canDownload"
+                  type="button"
+                  class="run-result-source-file__download"
+                  data-testid="run-result-source-download"
+                  :aria-label="`Download ${sourceFile.fileName}`"
+                  :disabled="downloadingSourceFilePath === sourceFile.filePath"
+                  @click="downloadRunSourceFile(sourceFile)"
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                    <path
+                      d="M10 2.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5Zm-5 11a.75.75 0 0 1 .75.75v1.5c0 .14.11.25.25.25h8c.14 0 .25-.11.25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 14 17.5H6A1.75 1.75 0 0 1 4.25 15.75v-1.5A.75.75 0 0 1 5 13.5Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <InlineValidation v-if="sourceDownloadError" tone="error" :message="sourceDownloadError" />
+          </section>
+
           <div class="reconciliation-diff-details__bucket-grid">
             <template
               v-for="bucket in diffDetailBuckets"
@@ -214,15 +249,21 @@
         >
           View all previous runs
         </RouterLink>
+      </div>
+
+      <template v-if="savedOutput && canRunActiveTenantReconciliation" #actions>
         <RouterLink
-          v-if="canEditTenantSettings"
-          class="static-page-action-tile static-page-action-tile--inline"
+          class="app-icon-action app-icon-action--large"
           data-testid="run-result-open-workflow"
+          aria-label="Open run"
+          title="Open run"
           :to="workflowRoute"
         >
-          Open Run
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
+          </svg>
         </RouterLink>
-      </div>
+      </template>
     </StaticPageFrame>
   </div>
 </template>
@@ -237,8 +278,9 @@ import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
-import type { GetGeneratedOutputFile, GeneratedOutput } from '../../lib/api/types'
+import type { GeneratedOutput, GeneratedOutputSourceDetails, GeneratedOutputSourceFile, GetGeneratedOutputFile } from '../../lib/api/types'
 import { useUiPermissions } from '../../lib/auth'
+import { DEFAULT_LIST_PAGE_SIZE, getListPageCount, paginateListItems } from '../../lib/listPagination'
 import {
   buildReconciliationDiffRoute,
   buildReconciliationRunHistoryRoute,
@@ -322,6 +364,16 @@ interface DiffDetailBucketCard {
   bucketKey?: DiffBucketKey
 }
 
+interface RunSourceFileView {
+  key: string
+  label: string
+  fileName: string
+  filePath: string
+  sourceFormat: string
+  downloadFileName: string
+  canDownload: boolean
+}
+
 const diffDetailColumns = [
   {
     key: 'recordId',
@@ -348,6 +400,9 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const savedOutput = ref<GeneratedOutput | null>(null)
 const downloadableOutputFile = ref<GetGeneratedOutputFile | null>(null)
+const runSourceDetails = ref<GeneratedOutputSourceDetails | null>(null)
+const sourceDownloadError = ref<string | null>(null)
+const downloadingSourceFilePath = ref('')
 const editableRunName = ref('')
 const persistedRunName = ref('')
 const savingRunName = ref(false)
@@ -360,7 +415,7 @@ const ruleSelectorCollapsed = ref(false)
 const diffDetailsSearch = ref('')
 const diffDetailsPageIndex = ref(0)
 
-const DIFF_DETAILS_PAGE_SIZE = 5
+const DIFF_DETAILS_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE
 const DIFF_BUCKET_ORDER: DiffBucketKey[] = ['file-1', 'file-2', 'rule']
 const ALL_RULE_FILTER_KEY = 'all'
 const BASE_RULE_FILTER_KEY = 'base-diff'
@@ -372,6 +427,10 @@ const outputFileName = computed(() =>
   typeof route.params.outputFileName === 'string' ? route.params.outputFileName.trim() : '',
 )
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
+const playIconPath =
+  'M6.75 4.2c0-.91.99-1.48 1.78-1.01l7.1 4.25a1.18 1.18 0 0 1 0 2.02l-7.1 4.25a1.18 1.18 0 0 1-1.78-1.01V4.2Z'
+const playIconTransform = 'translate(0 1.5)'
 const routeRunName = computed(() => (typeof route.query.runName === 'string' && route.query.runName.trim() ? route.query.runName.trim() : 'Selected Run'))
 const runName = computed(() => editableRunName.value || routeRunName.value)
 const file1SystemLabel = computed(() =>
@@ -404,38 +463,59 @@ const diffDetailsFile1Label = computed(
 const diffDetailsFile2Label = computed(
   () => diffDetailsMeta.value.file2Label || savedOutput.value?.file2Label || file2SystemLabel.value || 'File 2',
 )
+const runSourceFiles = computed<RunSourceFileView[]>(() =>
+  (runSourceDetails.value?.files ?? [])
+    .map((sourceFile, index) => normalizeRunSourceFile(sourceFile, index))
+    .filter((sourceFile): sourceFile is RunSourceFileView => sourceFile !== null),
+)
+const isApiRunSource = computed(() => {
+  const mode = normalizeDiffToken(runSourceDetails.value?.mode)
+  return mode.includes('api') || Boolean(runSourceDetails.value?.dateRange?.start || runSourceDetails.value?.dateRange?.end)
+})
+const runSourceModeLabel = computed(() => isApiRunSource.value ? 'API date range' : 'Source files')
+const runSourceDateRangeLabel = computed(() => formatRunSourceDateRange(runSourceDetails.value?.dateRange?.start, runSourceDetails.value?.dateRange?.end))
+const runSourceFilesLabel = computed(() => isApiRunSource.value ? 'Files compared' : 'Source files')
+const showRunSourceDetails = computed(() =>
+  runSourceFiles.value.length > 0 || Boolean(runSourceDateRangeLabel.value),
+)
 const activeDiffBuckets = computed<DiffBucketKey[]>(() =>
   DIFF_BUCKET_ORDER.filter((bucket) => selectedDiffBuckets.value.includes(bucket)),
 )
-const overviewDiffDetailBuckets = computed<DiffDetailBucketCard[]>(() => [
-  {
-    key: 'file-1',
-    bucketKey: 'file-1',
-    label: `Missing from ${diffDetailsFile1Label.value}`,
-    count:
-      diffDetailsSummary.value.onlyInFile2Count ??
-      diffDetailRows.value.filter((row) => row.bucket === 'file-1').length,
-    testId: 'diff-bucket-file-1',
-  },
-  {
-    key: 'file-2',
-    bucketKey: 'file-2',
-    label: `Missing from ${diffDetailsFile2Label.value}`,
-    count:
-      diffDetailsSummary.value.onlyInFile1Count ??
-      diffDetailRows.value.filter((row) => row.bucket === 'file-2').length,
-    testId: 'diff-bucket-file-2',
-  },
-  {
-    key: 'rule',
-    bucketKey: 'rule',
-    label: 'Rule differences',
-    count:
-      diffDetailsSummary.value.ruleDifferenceCount ??
-      diffDetailRows.value.filter((row) => row.bucket === 'rule').length,
-    testId: 'diff-bucket-rule',
-  },
-])
+const overviewDiffDetailBuckets = computed<DiffDetailBucketCard[]>(() => {
+  const ruleDifferenceCount =
+    diffDetailsSummary.value.ruleDifferenceCount ??
+    diffDetailRows.value.filter((row) => row.bucket === 'rule').length
+
+  return [
+    {
+      key: 'file-1',
+      bucketKey: 'file-1',
+      label: `Missing from ${diffDetailsFile1Label.value}`,
+      count:
+        diffDetailsSummary.value.onlyInFile2Count ??
+        diffDetailRows.value.filter((row) => row.bucket === 'file-1').length,
+      testId: 'diff-bucket-file-1',
+    },
+    {
+      key: 'file-2',
+      bucketKey: 'file-2',
+      label: `Missing from ${diffDetailsFile2Label.value}`,
+      count:
+        diffDetailsSummary.value.onlyInFile1Count ??
+        diffDetailRows.value.filter((row) => row.bucket === 'file-2').length,
+      testId: 'diff-bucket-file-2',
+    },
+    ...(ruleDifferenceCount > 0
+      ? [{
+          key: 'rule',
+          bucketKey: 'rule' as const,
+          label: 'Rule differences',
+          count: ruleDifferenceCount,
+          testId: 'diff-bucket-rule',
+        }]
+      : []),
+  ]
+})
 const ruleSelectorOptions = computed<RuleSelectorOption[]>(() => {
   const baseRows = diffDetailRows.value.filter((row) => row.ruleFilterKey === BASE_RULE_FILTER_KEY)
   const ruleEntries = new Map<string, {
@@ -551,11 +631,8 @@ const diffDetailsEmptyMessage = computed(() => {
   }
   return 'No diff detail records are available.'
 })
-const diffDetailsPageCount = computed(() => Math.max(1, Math.ceil(filteredDiffDetailRows.value.length / DIFF_DETAILS_PAGE_SIZE)))
-const pagedDiffDetailRows = computed(() => {
-  const start = diffDetailsPageIndex.value * DIFF_DETAILS_PAGE_SIZE
-  return filteredDiffDetailRows.value.slice(start, start + DIFF_DETAILS_PAGE_SIZE)
-})
+const diffDetailsPageCount = computed(() => getListPageCount(filteredDiffDetailRows.value.length, DIFF_DETAILS_PAGE_SIZE))
+const pagedDiffDetailRows = computed(() => paginateListItems(filteredDiffDetailRows.value, diffDetailsPageIndex.value, DIFF_DETAILS_PAGE_SIZE))
 const pagedDiffDetailRowsAsRows = computed(() => pagedDiffDetailRows.value as Array<Record<string, unknown>>)
 
 function normalizeDiffLabel(value: unknown): string {
@@ -567,6 +644,51 @@ function normalizeDiffToken(value: unknown): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
+}
+
+function fileNameFromPath(value: string): string {
+  const normalizedValue = normalizeDiffLabel(value)
+  if (!normalizedValue) return ''
+  return normalizedValue.split(/[\\/]/).filter(Boolean).pop() ?? normalizedValue
+}
+
+function normalizeRunSourceFile(sourceFile: GeneratedOutputSourceFile, index: number): RunSourceFileView | null {
+  const filePath = normalizeDiffLabel(sourceFile.filePath)
+  const fileName =
+    normalizeDiffLabel(sourceFile.fileName) ||
+    normalizeDiffLabel(sourceFile.downloadFileName) ||
+    fileNameFromPath(filePath)
+  if (!fileName && !filePath) return null
+
+  const label = normalizeDiffLabel(sourceFile.label) || (index === 0 ? diffDetailsFile1Label.value : diffDetailsFile2Label.value)
+  const sourceFormat = normalizeDiffLabel(sourceFile.sourceFormat) || fileNameFromPath(fileName).split('.').pop()?.toLowerCase() || 'json'
+  return {
+    key: `${sourceFile.side || index}-${filePath || fileName}`,
+    label,
+    fileName: fileName || filePath,
+    filePath,
+    sourceFormat,
+    downloadFileName: normalizeDiffLabel(sourceFile.downloadFileName) || fileName || filePath,
+    canDownload: sourceFile.canDownload !== false && Boolean(filePath),
+  }
+}
+
+function formatRunSourceDate(value: string | undefined): string {
+  const normalizedValue = normalizeDiffLabel(value)
+  const dateMatch = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!dateMatch) return normalizedValue
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const monthIndex = Number(dateMatch[2]) - 1
+  const monthName = monthNames[monthIndex] ?? dateMatch[2]
+  return `${monthName} ${Number(dateMatch[3])}, ${dateMatch[1]}`
+}
+
+function formatRunSourceDateRange(start: string | undefined, end: string | undefined): string {
+  const formattedStart = formatRunSourceDate(start)
+  const formattedEnd = formatRunSourceDate(end)
+  if (formattedStart && formattedEnd && formattedStart !== formattedEnd) return `${formattedStart} to ${formattedEnd}`
+  return formattedStart || formattedEnd
 }
 
 function humanizeRuleIdentifier(ruleId: string): string {
@@ -609,6 +731,9 @@ function normalizeDiffBucketSelection(buckets: DiffBucketKey[]): DiffBucketKey[]
 function resetDiffDetailsState(): void {
   savedOutput.value = null
   downloadableOutputFile.value = null
+  runSourceDetails.value = null
+  sourceDownloadError.value = null
+  downloadingSourceFilePath.value = ''
   editableRunName.value = routeRunName.value
   persistedRunName.value = routeRunName.value
   savingRunName.value = false
@@ -881,6 +1006,7 @@ async function loadSavedResult(): Promise<void> {
 
     savedOutput.value = descriptor
     downloadableOutputFile.value = response.outputFile ?? null
+    runSourceDetails.value = response.outputFile?.sourceDetails ?? null
     editableRunName.value = descriptor.savedRunName || routeRunName.value
     persistedRunName.value = editableRunName.value
     diffDetailsMeta.value = {
@@ -940,6 +1066,32 @@ function selectRuleFilter(nextRuleFilterKey: string): void {
   }
 
   diffDetailsPageIndex.value = 0
+}
+
+async function downloadRunSourceFile(sourceFile: RunSourceFileView): Promise<void> {
+  if (!sourceFile.filePath || downloadingSourceFilePath.value) return
+
+  downloadingSourceFilePath.value = sourceFile.filePath
+  sourceDownloadError.value = null
+
+  try {
+    const response = await reconciliationFacade.getGeneratedOutput({
+      fileName: sourceFile.filePath,
+      format: sourceFile.sourceFormat || 'json',
+    })
+    const outputFile = response.outputFile
+    if (!outputFile?.contentText) throw new Error('Unable to download source file.')
+
+    downloadTextFile(
+      outputFile.downloadFileName || sourceFile.downloadFileName || sourceFile.fileName,
+      outputFile.contentText,
+      outputFile.contentType || (sourceFile.sourceFormat === 'csv' ? 'text/csv; charset=UTF-8' : 'application/json; charset=UTF-8'),
+    )
+  } catch (error) {
+    sourceDownloadError.value = error instanceof ApiCallError ? error.message : 'Unable to download source file.'
+  } finally {
+    downloadingSourceFilePath.value = ''
+  }
 }
 
 function downloadSavedResult(): void {
@@ -1094,6 +1246,94 @@ watch([savedRunId, outputFileName], () => {
   gap: var(--space-3);
 }
 
+.run-result-source-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--surface-2) 92%, white);
+}
+
+.run-result-source-details__summary {
+  display: grid;
+  gap: 0.15rem;
+  min-width: min(100%, 11rem);
+}
+
+.run-result-source-details__eyebrow,
+.run-result-source-details__files-label,
+.run-result-source-file__label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.run-result-source-details__summary strong {
+  font-size: 0.94rem;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
+.run-result-source-details__files {
+  display: flex;
+  flex: 1 1 22rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.run-result-source-file {
+  display: inline-grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(100%, 25rem);
+  min-height: 2.15rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.6rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.run-result-source-file__name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-result-source-file__download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  min-height: 1.85rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.run-result-source-file__download:hover {
+  border-color: color-mix(in oklab, var(--accent) 42%, var(--border));
+  background: color-mix(in oklab, var(--surface-2) 84%, var(--accent));
+  color: var(--text);
+}
+
+.run-result-source-file__download svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 .reconciliation-diff-details__bucket-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1149,7 +1389,8 @@ watch([savedRunId, outputFileName], () => {
 }
 
 .reconciliation-diff-details__search {
-  min-width: min(100%, 22rem);
+  width: 100%;
+  min-width: 0;
 }
 
 .reconciliation-diff-details__search-field {
@@ -1240,6 +1481,21 @@ watch([savedRunId, outputFileName], () => {
   .run-result-rule-selector__panel {
     width: auto;
     flex: 1 1 auto;
+  }
+
+  .run-result-source-details,
+  .run-result-source-details__files {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .run-result-source-details {
+    display: grid;
+  }
+
+  .run-result-source-file {
+    width: 100%;
+    max-width: none;
   }
 
   .reconciliation-diff-details__pagination {

@@ -1,13 +1,17 @@
 import { reactive } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { ApiCallError, clearAuthToken, setAuthTokenContract } from './api/client'
-import { authFacade } from './api/facade'
+import { authFacade, settingsFacade } from './api/facade'
 import type {
+  ChangeOwnPasswordResponse,
   LoginSessionResponse,
   SaveActiveTenantResponse,
+  SaveTenantSettingsResponse,
+  SaveUserSettingsResponse,
   SessionTenantOption,
   SessionInfo,
   SessionInfoResponse,
+  VerifyOwnPasswordResponse,
 } from './api/types'
 import { resolveInternalRedirectTarget } from './navigation'
 
@@ -15,6 +19,7 @@ export type AuthStatus = 'authenticated' | 'unauthenticated' | 'verification-fai
 
 export interface UiPermissionPolicy {
   canViewTenantSettings: boolean
+  canRunActiveTenantReconciliation: boolean
   canEditTenantSettings: boolean
   canManageGlobalSettings: boolean
 }
@@ -106,6 +111,8 @@ function normalizeSessionInfo(sessionInfo: SessionInfo | null | undefined): Sess
     ...sessionInfo,
     userId: normalizedUserId,
     username: sessionInfo?.username?.toString()?.trim() || normalizedUserId,
+    displayName: sessionInfo?.displayName?.toString()?.trim() || sessionInfo?.username?.toString()?.trim() || normalizedUserId,
+    timeZone: sessionInfo?.timeZone?.toString()?.trim() || undefined,
     customerScopeId: sessionInfo?.customerScopeId?.toString()?.trim() || null,
     activeTenantUserGroupId,
     activeTenantLabel:
@@ -119,12 +126,20 @@ function normalizeSessionInfo(sessionInfo: SessionInfo | null | undefined): Sess
 export function buildUiPermissionPolicy(sessionInfo: SessionInfo | null | undefined): UiPermissionPolicy {
   const isAuthenticated = Boolean(sessionInfo?.userId)
   const isSuperAdmin = sessionInfo?.isSuperAdmin === true
+  const canViewActiveTenantData = sessionInfo?.canViewActiveTenantData !== false
+  const canRunActiveTenantReconciliation = isAuthenticated && (
+    sessionInfo?.canRunActiveTenantReconciliation === true ||
+    sessionInfo?.canEditActiveTenantData === true ||
+    isSuperAdmin
+  )
   const canEditActiveTenantData = sessionInfo?.canEditActiveTenantData === true
+  const canManageDarpanCore = isAuthenticated && (sessionInfo?.canManageDarpanCore === true || isSuperAdmin)
 
   return {
-    canViewTenantSettings: isAuthenticated,
+    canViewTenantSettings: isAuthenticated && (canViewActiveTenantData || isSuperAdmin),
+    canRunActiveTenantReconciliation,
     canEditTenantSettings: canEditActiveTenantData || isSuperAdmin,
-    canManageGlobalSettings: isSuperAdmin,
+    canManageGlobalSettings: canManageDarpanCore,
   }
 }
 
@@ -315,6 +330,191 @@ export async function saveActiveTenant(activeTenantUserGroupId: string): Promise
   }
 }
 
+export async function saveUserSettings(payload: { displayName?: string }): Promise<boolean> {
+  if (authBypass) {
+    applyAuthState({
+      status: 'authenticated',
+      sessionInfo: {
+        ...authState.sessionInfo,
+        userId: authState.sessionInfo?.userId ?? 'local-dev',
+        username: authState.sessionInfo?.username ?? 'local-dev',
+        displayName: payload.displayName?.toString()?.trim() || authState.sessionInfo?.username || 'local-dev',
+      },
+    })
+    return true
+  }
+
+  try {
+    const response: SaveUserSettingsResponse = await authFacade.saveUserSettings(payload)
+    if (response.authenticated) {
+      const errorMessage = response.ok ? null : response.errors?.[0] ?? 'Unable to save user settings.'
+      applyAuthenticatedSession(response.sessionInfo, errorMessage)
+      return response.ok
+    }
+
+    clearAuthToken()
+    applyAuthState({
+      status: 'unauthenticated',
+      error: response.errors?.[0] ?? 'Authentication required to save user settings.',
+    })
+    return false
+  } catch (error) {
+    if (error instanceof ApiCallError && error.status === 401) {
+      clearAuthToken()
+      applyAuthState({
+        status: 'unauthenticated',
+        error: error.message,
+      })
+      return false
+    }
+
+    applyAuthState({
+      status: authState.authenticated ? 'authenticated' : 'verification-failed',
+      error: error instanceof ApiCallError ? formatApiError(error) : buildContractViolationError(error),
+      sessionInfo: authState.sessionInfo,
+    })
+    return false
+  }
+}
+
+export async function saveTenantSettings(payload: { timeZone?: string }): Promise<SaveTenantSettingsResponse | null> {
+  if (authBypass) {
+    const timeZone = payload.timeZone?.toString()?.trim() || authState.sessionInfo?.timeZone || 'UTC'
+    applyAuthState({
+      status: 'authenticated',
+      sessionInfo: {
+        ...authState.sessionInfo,
+        userId: authState.sessionInfo?.userId ?? 'local-dev',
+        username: authState.sessionInfo?.username ?? 'local-dev',
+        timeZone,
+      },
+    })
+    return {
+      ok: true,
+      messages: ['Saved tenant settings.'],
+      errors: [],
+      tenantSettings: {
+        companyUserGroupId: authState.sessionInfo?.activeTenantUserGroupId,
+        companyLabel: authState.sessionInfo?.activeTenantLabel,
+        timeZone,
+      },
+    }
+  }
+
+  try {
+    const response = await settingsFacade.saveTenantSettings(payload)
+    if (response.ok && response.tenantSettings?.timeZone && authState.sessionInfo) {
+      applyAuthenticatedSession({
+        ...authState.sessionInfo,
+        timeZone: response.tenantSettings.timeZone,
+      })
+    } else if (!response.ok) {
+      applyAuthState({
+        status: authState.authenticated ? 'authenticated' : 'verification-failed',
+        error: response.errors?.[0] ?? 'Unable to save tenant settings.',
+        sessionInfo: authState.sessionInfo,
+      })
+    }
+    return response
+  } catch (error) {
+    if (error instanceof ApiCallError && error.status === 401) {
+      clearAuthToken()
+      applyAuthState({
+        status: 'unauthenticated',
+        error: error.message,
+      })
+      return null
+    }
+
+    applyAuthState({
+      status: authState.authenticated ? 'authenticated' : 'verification-failed',
+      error: error instanceof ApiCallError ? formatApiError(error) : buildContractViolationError(error),
+      sessionInfo: authState.sessionInfo,
+    })
+    return null
+  }
+}
+
+export async function changeOwnPassword(payload: {
+  currentPassword: string
+  newPassword: string
+  newPasswordVerify: string
+}): Promise<boolean> {
+  if (authBypass) {
+    return true
+  }
+
+  try {
+    const response: ChangeOwnPasswordResponse = await authFacade.changeOwnPassword(payload)
+    if (response.authenticated) {
+      const errorMessage = response.ok ? null : response.errors?.[0] ?? 'Unable to change password.'
+      applyAuthenticatedSession(response.sessionInfo, errorMessage)
+      return response.ok && response.passwordUpdated === true
+    }
+
+    clearAuthToken()
+    applyAuthState({
+      status: 'unauthenticated',
+      error: response.errors?.[0] ?? 'Authentication required to change password.',
+    })
+    return false
+  } catch (error) {
+    if (error instanceof ApiCallError && error.status === 401) {
+      clearAuthToken()
+      applyAuthState({
+        status: 'unauthenticated',
+        error: error.message,
+      })
+      return false
+    }
+
+    applyAuthState({
+      status: authState.authenticated ? 'authenticated' : 'verification-failed',
+      error: error instanceof ApiCallError ? formatApiError(error) : buildContractViolationError(error),
+      sessionInfo: authState.sessionInfo,
+    })
+    return false
+  }
+}
+
+export async function verifyOwnPassword(currentPassword: string): Promise<boolean> {
+  if (authBypass) {
+    return true
+  }
+
+  try {
+    const response: VerifyOwnPasswordResponse = await authFacade.verifyOwnPassword({ currentPassword })
+    if (response.authenticated) {
+      const errorMessage = response.ok && response.passwordVerified === true ? null : response.errors?.[0] ?? 'Password incorrect.'
+      applyAuthenticatedSession(response.sessionInfo, errorMessage)
+      return response.ok && response.passwordVerified === true
+    }
+
+    clearAuthToken()
+    applyAuthState({
+      status: 'unauthenticated',
+      error: response.errors?.[0] ?? 'Authentication required to verify password.',
+    })
+    return false
+  } catch (error) {
+    if (error instanceof ApiCallError && error.status === 401) {
+      clearAuthToken()
+      applyAuthState({
+        status: 'unauthenticated',
+        error: error.message,
+      })
+      return false
+    }
+
+    applyAuthState({
+      status: authState.authenticated ? 'authenticated' : 'verification-failed',
+      error: error instanceof ApiCallError ? formatApiError(error) : buildContractViolationError(error),
+      sessionInfo: authState.sessionInfo,
+    })
+    return false
+  }
+}
+
 export function useAuthState() {
   return authState
 }
@@ -323,6 +523,9 @@ export function useUiPermissions(): UiPermissionPolicy {
   return {
     get canViewTenantSettings() {
       return buildUiPermissionPolicy(authState.sessionInfo).canViewTenantSettings
+    },
+    get canRunActiveTenantReconciliation() {
+      return buildUiPermissionPolicy(authState.sessionInfo).canRunActiveTenantReconciliation
     },
     get canEditTenantSettings() {
       return buildUiPermissionPolicy(authState.sessionInfo).canEditTenantSettings

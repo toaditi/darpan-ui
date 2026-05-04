@@ -14,4 +14,12 @@ describe('date utilities', () => {
   it('formats valid timestamps consistently with the requested locale', () => {
     expect(formatDateTime('2026-04-25T10:30:00.000Z', { locale: 'en-US' })).toContain('2026')
   })
+
+  it('formats epoch millisecond timestamps from facade responses', () => {
+    expect(formatDateTime(1777740540000, { locale: 'en-US' })).toContain('2026')
+  })
+
+  it('formats timestamps in the requested timezone', () => {
+    expect(formatDateTime('2026-05-02T06:00:00.000Z', { locale: 'en-US', timeZone: 'America/Los_Angeles' })).toBe('May 1, 2026, 11:00 PM')
+  })
 })

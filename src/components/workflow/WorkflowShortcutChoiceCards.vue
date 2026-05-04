@@ -18,6 +18,7 @@
         <span class="workflow-shortcut-choice-card__key">{{ option.shortcutKey }}</span>
         <span class="workflow-shortcut-choice-card__label">{{ option.label }}</span>
       </div>
+      <span v-if="option.description" class="workflow-shortcut-choice-card__description">{{ option.description }}</span>
     </button>
   </div>
 </template>
@@ -27,6 +28,7 @@ export interface WorkflowShortcutChoiceOption {
   value: string
   label: string
   shortcutKey: string
+  description?: string
 }
 
 withDefaults(
@@ -65,6 +67,7 @@ const emit = defineEmits<{
   background: var(--surface-2);
   color: var(--text);
   text-align: left;
+  cursor: pointer;
 }
 
 .workflow-shortcut-choice-card--active {
@@ -95,5 +98,12 @@ const emit = defineEmits<{
 .workflow-shortcut-choice-card__label {
   font-size: 1rem;
   font-weight: 400;
+}
+
+.workflow-shortcut-choice-card__description {
+  padding-left: 2.4rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.25;
 }
 </style>

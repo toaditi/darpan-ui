@@ -33,51 +33,125 @@
       </label>
 
       <div class="workflow-form-grid workflow-form-grid--two" data-testid="run-source-1-row">
-        <label class="wizard-input-shell">
-          <span class="workflow-context-label">Source 1 Schema</span>
-          <AppSelect
-            v-model="form.source1.schemaId"
-            :disabled="!canEditTenantSettings || loading"
-            :options="schemaOptions"
-            placeholder="Select source 1 schema"
-            test-id="run-schema-1"
-          />
-        </label>
+        <template v-if="source1UsesApi">
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 1 API Config</span>
+            <AppSelect
+              v-model="source1ApiConfigValue"
+              :disabled="!canEditTenantSettings || loading"
+              :options="source1ApiConfigOptions"
+              placeholder="Select source 1 API config"
+              test-id="run-api-config-1"
+            />
+          </label>
 
-        <label class="wizard-input-shell">
-          <span class="workflow-context-label">Source 1 Field</span>
-          <AppSelect
-            v-model="form.source1.fieldPath"
-            :disabled="!canEditTenantSettings || loading || fieldOptions1.length === 0"
-            :options="fieldOptions1"
-            :placeholder="form.source1.schemaId ? 'Select source 1 field' : 'Choose a schema first'"
-            test-id="run-field-1"
-          />
-        </label>
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 1 Endpoint</span>
+            <AppSelect
+              v-model="source1ApiEndpointValue"
+              :disabled="!canEditTenantSettings || loading || source1ApiEndpointOptions.length === 0"
+              :options="source1ApiEndpointOptions"
+              :placeholder="form.source1.sourceConfigId ? 'Select source 1 endpoint' : 'Choose an API config first'"
+              test-id="run-api-endpoint-1"
+            />
+          </label>
+
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 1 Primary ID</span>
+            <AppSelect
+              v-model="form.source1.fieldPath"
+              :disabled="!canEditTenantSettings || loading || source1ApiFieldOptions.length === 0"
+              :options="source1ApiFieldOptions"
+              :placeholder="source1ApiEndpointValue ? 'Select source 1 primary ID' : 'Choose an endpoint first'"
+              test-id="run-api-field-1"
+            />
+          </label>
+        </template>
+
+        <template v-else>
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 1 Schema</span>
+            <AppSelect
+              v-model="form.source1.schemaId"
+              :disabled="!canEditTenantSettings || loading"
+              :options="schemaOptions"
+              placeholder="Select source 1 schema"
+              test-id="run-schema-1"
+            />
+          </label>
+
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 1 Field</span>
+            <AppSelect
+              v-model="form.source1.fieldPath"
+              :disabled="!canEditTenantSettings || loading || fieldOptions1.length === 0"
+              :options="fieldOptions1"
+              :placeholder="form.source1.schemaId ? 'Select source 1 field' : 'Choose a schema first'"
+              test-id="run-field-1"
+            />
+          </label>
+        </template>
       </div>
 
       <div class="workflow-form-grid workflow-form-grid--two" data-testid="run-source-2-row">
-        <label class="wizard-input-shell">
-          <span class="workflow-context-label">Source 2 Schema</span>
-          <AppSelect
-            v-model="form.source2.schemaId"
-            :disabled="!canEditTenantSettings || loading"
-            :options="schemaOptions"
-            placeholder="Select source 2 schema"
-            test-id="run-schema-2"
-          />
-        </label>
+        <template v-if="source2UsesApi">
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 2 API Config</span>
+            <AppSelect
+              v-model="source2ApiConfigValue"
+              :disabled="!canEditTenantSettings || loading"
+              :options="source2ApiConfigOptions"
+              placeholder="Select source 2 API config"
+              test-id="run-api-config-2"
+            />
+          </label>
 
-        <label class="wizard-input-shell">
-          <span class="workflow-context-label">Source 2 Field</span>
-          <AppSelect
-            v-model="form.source2.fieldPath"
-            :disabled="!canEditTenantSettings || loading || fieldOptions2.length === 0"
-            :options="fieldOptions2"
-            :placeholder="form.source2.schemaId ? 'Select source 2 field' : 'Choose a schema first'"
-            test-id="run-field-2"
-          />
-        </label>
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 2 Endpoint</span>
+            <AppSelect
+              v-model="source2ApiEndpointValue"
+              :disabled="!canEditTenantSettings || loading || source2ApiEndpointOptions.length === 0"
+              :options="source2ApiEndpointOptions"
+              :placeholder="form.source2.sourceConfigId ? 'Select source 2 endpoint' : 'Choose an API config first'"
+              test-id="run-api-endpoint-2"
+            />
+          </label>
+
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 2 Primary ID</span>
+            <AppSelect
+              v-model="form.source2.fieldPath"
+              :disabled="!canEditTenantSettings || loading || source2ApiFieldOptions.length === 0"
+              :options="source2ApiFieldOptions"
+              :placeholder="source2ApiEndpointValue ? 'Select source 2 primary ID' : 'Choose an endpoint first'"
+              test-id="run-api-field-2"
+            />
+          </label>
+        </template>
+
+        <template v-else>
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 2 Schema</span>
+            <AppSelect
+              v-model="form.source2.schemaId"
+              :disabled="!canEditTenantSettings || loading"
+              :options="schemaOptions"
+              placeholder="Select source 2 schema"
+              test-id="run-schema-2"
+            />
+          </label>
+
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Source 2 Field</span>
+            <AppSelect
+              v-model="form.source2.fieldPath"
+              :disabled="!canEditTenantSettings || loading || fieldOptions2.length === 0"
+              :options="fieldOptions2"
+              :placeholder="form.source2.schemaId ? 'Select source 2 field' : 'Choose a schema first'"
+              test-id="run-field-2"
+            />
+          </label>
+        </template>
       </div>
     </WorkflowStepForm>
   </WorkflowPage>
@@ -92,7 +166,14 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, reconciliationFacade } from '../../lib/api/facade'
-import type { JsonSchemaField, JsonSchemaSummary } from '../../lib/api/types'
+import type {
+  AutomationNsRestletOption,
+  AutomationPrimaryIdOption,
+  AutomationSourceConfigOption,
+  AutomationSystemRemoteOption,
+  JsonSchemaField,
+  JsonSchemaSummary,
+} from '../../lib/api/types'
 import { useUiPermissions } from '../../lib/auth'
 import {
   buildReconciliationRuleSetDraftState,
@@ -106,6 +187,10 @@ import { readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 interface RunSourceForm {
   schemaId: string
   fieldPath: string
+  sourceConfigId: string
+  sourceConfigType: string
+  nsRestletConfigId: string
+  systemMessageRemoteId: string
 }
 
 interface RunForm {
@@ -117,8 +202,12 @@ interface RunForm {
 const route = useRoute()
 const router = useRouter()
 const permissions = useUiPermissions()
+const SOURCE_TYPE_API = 'AUT_SRC_API'
 
 const schemas = ref<JsonSchemaSummary[]>([])
+const sourceConfigs = ref<AutomationSourceConfigOption[]>([])
+const nsRestletConfigs = ref<AutomationNsRestletOption[]>([])
+const systemRemotes = ref<AutomationSystemRemoteOption[]>([])
 const flattenedFields = ref<Record<string, JsonSchemaField[]>>({})
 const ruleSetDraft = ref<ReconciliationRuleSetDraft | null>(null)
 const loading = ref(false)
@@ -127,14 +216,16 @@ const success = ref<string | null>(null)
 
 const form = reactive<RunForm>({
   mappingName: '',
-  source1: { schemaId: '', fieldPath: '' },
-  source2: { schemaId: '', fieldPath: '' },
+  source1: { schemaId: '', fieldPath: '', sourceConfigId: '', sourceConfigType: '', nsRestletConfigId: '', systemMessageRemoteId: '' },
+  source2: { schemaId: '', fieldPath: '', sourceConfigId: '', sourceConfigType: '', nsRestletConfigId: '', systemMessageRemoteId: '' },
 })
 
 const activeMappingId = computed(() => String(route.params.reconciliationMappingId ?? '').trim())
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 const source1Schema = computed(() => schemas.value.find((schema) => schema.jsonSchemaId === form.source1.schemaId) ?? null)
 const source2Schema = computed(() => schemas.value.find((schema) => schema.jsonSchemaId === form.source2.schemaId) ?? null)
+const source1UsesApi = computed(() => sourceUsesApi('source1'))
+const source2UsesApi = computed(() => sourceUsesApi('source2'))
 const schemaOptions = computed<AppSelectOption[]>(() => (
   schemas.value.map((schema) => ({
     value: schema.jsonSchemaId,
@@ -143,21 +234,42 @@ const schemaOptions = computed<AppSelectOption[]>(() => (
 ))
 const fieldOptions1 = computed<AppSelectOption[]>(() => buildFieldOptions(form.source1.schemaId))
 const fieldOptions2 = computed<AppSelectOption[]>(() => buildFieldOptions(form.source2.schemaId))
+const source1ApiConfigOptions = computed<AppSelectOption[]>(() => apiSourceConfigOptionsForSource('source1'))
+const source2ApiConfigOptions = computed<AppSelectOption[]>(() => apiSourceConfigOptionsForSource('source2'))
+const source1ApiEndpointOptions = computed<AppSelectOption[]>(() => apiEndpointOptionsForSource('source1'))
+const source2ApiEndpointOptions = computed<AppSelectOption[]>(() => apiEndpointOptionsForSource('source2'))
+const source1ApiFieldOptions = computed<AppSelectOption[]>(() => apiPrimaryIdOptionsForSource('source1'))
+const source2ApiFieldOptions = computed<AppSelectOption[]>(() => apiPrimaryIdOptionsForSource('source2'))
+const source1ApiConfigValue = computed({
+  get: () => form.source1.sourceConfigId,
+  set: (value: string) => updateApiSourceConfig('source1', value),
+})
+const source2ApiConfigValue = computed({
+  get: () => form.source2.sourceConfigId,
+  set: (value: string) => updateApiSourceConfig('source2', value),
+})
+const source1ApiEndpointValue = computed({
+  get: () => selectedApiEndpointValue('source1'),
+  set: (value: string) => updateApiEndpoint('source1', value),
+})
+const source2ApiEndpointValue = computed({
+  get: () => selectedApiEndpointValue('source2'),
+  set: (value: string) => updateApiEndpoint('source2', value),
+})
 const validationMessage = computed(() => {
   if (!activeMappingId.value) return 'Run ID is missing.'
   if (form.mappingName.trim().length === 0) return 'Run name is required.'
-  if (!form.source1.schemaId || !form.source2.schemaId) return 'Choose schemas for both sources.'
-  if (form.source1.schemaId === form.source2.schemaId) return 'Choose two different schemas.'
-  if (!source1Schema.value?.systemEnumId || !source2Schema.value?.systemEnumId) {
-    return 'Both schemas need an assigned reconciliation system.'
-  }
-  if (source1Schema.value.systemEnumId === source2Schema.value.systemEnumId) {
-    return 'Source 2 must use a schema with a different system than source 1.'
-  }
-  if (!form.source1.fieldPath || !form.source2.fieldPath) return 'Choose an ID field for both sources.'
+  const source1Validation = validateSource('source1')
+  if (source1Validation) return source1Validation
+  const source2Validation = validateSource('source2')
+  if (source2Validation) return source2Validation
+  if (!sourceSystemEnumId('source1') || !sourceSystemEnumId('source2')) return 'Both sources need an assigned reconciliation system.'
+  if (sourceSystemEnumId('source1') === sourceSystemEnumId('source2')) return 'Source 2 must use a different system than source 1.'
   return null
 })
 const submitDisabled = computed(() => !canEditTenantSettings.value || loading.value || !!validationMessage.value)
+
+type SourceKey = 'source1' | 'source2'
 
 function formatSchemaLabel(schema: JsonSchemaSummary): string {
   const schemaLabel = resolveRecordLabel({
@@ -167,6 +279,214 @@ function formatSchemaLabel(schema: JsonSchemaSummary): string {
   const systemLabel = schema.systemLabel?.trim() || schema.systemEnumId?.trim() || ''
 
   return systemLabel ? `${schemaLabel} - ${systemLabel}` : schemaLabel
+}
+
+function sourceUsesApi(sourceKey: SourceKey): boolean {
+  const sourceTypeEnumId = sourceKey === 'source1'
+    ? ruleSetDraft.value?.file1SourceTypeEnumId
+    : ruleSetDraft.value?.file2SourceTypeEnumId
+  return sourceTypeEnumId?.trim() === SOURCE_TYPE_API
+}
+
+function sourceForm(sourceKey: SourceKey): RunSourceForm {
+  return sourceKey === 'source1' ? form.source1 : form.source2
+}
+
+function sourceSystemEnumId(sourceKey: SourceKey): string {
+  if (sourceUsesApi(sourceKey)) {
+    return sourceKey === 'source1'
+      ? ruleSetDraft.value?.file1SystemEnumId ?? ''
+      : ruleSetDraft.value?.file2SystemEnumId ?? ''
+  }
+
+  return sourceKey === 'source1'
+    ? source1Schema.value?.systemEnumId ?? ''
+    : source2Schema.value?.systemEnumId ?? ''
+}
+
+function endpointMatchesSystem(endpointSystemEnumId: string | undefined, selectedSystemEnumId: string): boolean {
+  return Boolean(endpointSystemEnumId?.trim() && selectedSystemEnumId.trim() && endpointSystemEnumId.trim() === selectedSystemEnumId.trim())
+}
+
+function sourceConfigMatches(candidate: string | undefined, selected: string): boolean {
+  return Boolean(candidate?.trim() && selected.trim() && candidate.trim() === selected.trim())
+}
+
+function apiSourceConfigOptionsForSource(sourceKey: SourceKey): AppSelectOption[] {
+  const systemEnumId = sourceSystemEnumId(sourceKey)
+  return sourceConfigs.value
+    .filter((config) => endpointMatchesSystem(config.systemEnumId, systemEnumId))
+    .map((config) => ({
+      value: config.sourceConfigId,
+      label: config.label || config.description || config.sourceConfigId,
+    }))
+}
+
+function apiEndpointOptionsForSource(sourceKey: SourceKey): AppSelectOption[] {
+  const source = sourceForm(sourceKey)
+  const systemEnumId = sourceSystemEnumId(sourceKey)
+  if (!source.sourceConfigId) return []
+
+  return [
+    ...nsRestletConfigs.value
+      .filter((config) => endpointMatchesSystem(config.systemEnumId, systemEnumId))
+      .filter((config) => sourceConfigMatches(config.sourceConfigId || config.nsAuthConfigId, source.sourceConfigId))
+      .map((config) => ({
+        value: `ns:${config.nsRestletConfigId}`,
+        label: config.label || config.description || config.nsRestletConfigId,
+      })),
+    ...systemRemotes.value
+      .filter((remote) => endpointMatchesSystem(remote.systemEnumId, systemEnumId))
+      .filter((remote) => sourceConfigMatches(remote.sourceConfigId || remote.optionKey, source.sourceConfigId))
+      .map((remote) => ({
+        value: remoteSelectValue(remote),
+        label: remote.label || remote.description || remote.systemMessageRemoteId,
+      })),
+  ]
+}
+
+function remoteSelectValue(remote: AutomationSystemRemoteOption): string {
+  const optionKey = remote.optionKey || remote.sourceConfigId
+  return optionKey ? `remote:${remote.systemMessageRemoteId}:${optionKey}` : `remote:${remote.systemMessageRemoteId}`
+}
+
+function selectedApiEndpointValue(sourceKey: SourceKey): string {
+  const source = sourceForm(sourceKey)
+  if (source.nsRestletConfigId) return `ns:${source.nsRestletConfigId}`
+  if (source.systemMessageRemoteId) {
+    const selectedRemote = selectedRemoteOptionForSource(sourceKey)
+    return selectedRemote ? remoteSelectValue(selectedRemote) : `remote:${source.systemMessageRemoteId}`
+  }
+  return ''
+}
+
+function selectedApiSourceOption(sourceKey: SourceKey): AutomationNsRestletOption | AutomationSystemRemoteOption | null {
+  const selectedValue = selectedApiEndpointValue(sourceKey)
+  if (selectedValue.startsWith('ns:')) {
+    const configId = selectedValue.slice(3)
+    return nsRestletConfigs.value.find((config) => config.nsRestletConfigId === configId) ?? null
+  }
+  if (selectedValue.startsWith('remote:')) return selectedRemoteOptionForSource(sourceKey)
+  return null
+}
+
+function selectedApiSourceLabel(sourceKey: SourceKey): string {
+  const option = selectedApiSourceOption(sourceKey)
+  return option?.label || option?.description || ''
+}
+
+function selectedRemoteOptionForSource(sourceKey: SourceKey): AutomationSystemRemoteOption | null {
+  const source = sourceForm(sourceKey)
+  if (!source.systemMessageRemoteId) return null
+
+  return systemRemotes.value.find((remote) =>
+    remote.systemMessageRemoteId === source.systemMessageRemoteId &&
+    (!source.sourceConfigId || sourceConfigMatches(remote.sourceConfigId || remote.optionKey, source.sourceConfigId)),
+  ) ?? null
+}
+
+function apiPrimaryIdOptionsForSource(sourceKey: SourceKey): AppSelectOption[] {
+  const rawOptions = selectedApiSourceOption(sourceKey)?.primaryIdOptions ?? []
+  return rawOptions.flatMap((option: AutomationPrimaryIdOption) => {
+    const fieldPath = option.fieldPath?.trim()
+    if (!fieldPath) return []
+    return [{
+      value: fieldPath,
+      label: option.label || fieldPath,
+    }]
+  })
+}
+
+function updateApiSourceConfig(sourceKey: SourceKey, value: string): void {
+  const source = sourceForm(sourceKey)
+  const selectedConfig = sourceConfigs.value.find((config) => config.sourceConfigId === value) ?? null
+  source.sourceConfigId = selectedConfig?.sourceConfigId ?? ''
+  source.sourceConfigType = selectedConfig?.sourceConfigType ?? ''
+  clearApiEndpoint(sourceKey)
+}
+
+function updateApiEndpoint(sourceKey: SourceKey, value: string): void {
+  const source = sourceForm(sourceKey)
+  source.fieldPath = ''
+
+  if (value.startsWith('ns:')) {
+    source.nsRestletConfigId = value.slice(3)
+    source.systemMessageRemoteId = ''
+    return
+  }
+
+  if (value.startsWith('remote:')) {
+    const [, remoteId = ''] = value.split(':')
+    source.systemMessageRemoteId = remoteId
+    source.nsRestletConfigId = ''
+    return
+  }
+
+  clearApiEndpoint(sourceKey)
+}
+
+function clearApiEndpoint(sourceKey: SourceKey): void {
+  const source = sourceForm(sourceKey)
+  source.nsRestletConfigId = ''
+  source.systemMessageRemoteId = ''
+  source.fieldPath = ''
+}
+
+function resolveSelectedSourceConfigType(sourceKey: SourceKey): string {
+  const source = sourceForm(sourceKey)
+  if (source.sourceConfigType.trim()) return source.sourceConfigType.trim()
+  return sourceConfigs.value.find((config) => config.sourceConfigId === source.sourceConfigId)?.sourceConfigType ?? ''
+}
+
+function validateSource(sourceKey: SourceKey): string | null {
+  const source = sourceForm(sourceKey)
+  if (sourceUsesApi(sourceKey)) {
+    const sourceLabel = sourceKey === 'source1' ? 'Source 1' : 'Source 2'
+    if (!source.sourceConfigId) return `${sourceLabel} needs an API config.`
+    if (!selectedApiEndpointValue(sourceKey)) return `${sourceLabel} needs an API endpoint.`
+    if (!source.fieldPath) return `${sourceLabel} needs a primary ID field.`
+    return null
+  }
+
+  if (!source.schemaId) return 'Choose schemas for both sources.'
+  if (!source.fieldPath) return 'Choose an ID field for both sources.'
+  return null
+}
+
+function appendRuleSetSourcePayload(payload: Record<string, unknown>, sourceKey: SourceKey): void {
+  const source = sourceForm(sourceKey)
+  const prefix = sourceKey === 'source1' ? 'file1' : 'file2'
+  const originalPrimaryId = sourceKey === 'source1'
+    ? ruleSetDraft.value?.file1PrimaryIdExpression
+    : ruleSetDraft.value?.file2PrimaryIdExpression
+
+  payload[`${prefix}SystemEnumId`] = sourceSystemEnumId(sourceKey)
+  if (sourceUsesApi(sourceKey)) {
+    payload[`${prefix}SourceTypeEnumId`] = SOURCE_TYPE_API
+    if (source.systemMessageRemoteId.trim()) payload[`${prefix}SystemMessageRemoteId`] = source.systemMessageRemoteId.trim()
+    if (source.nsRestletConfigId.trim()) payload[`${prefix}NsRestletConfigId`] = source.nsRestletConfigId.trim()
+    if (source.sourceConfigId.trim()) payload[`${prefix}SourceConfigId`] = source.sourceConfigId.trim()
+    const sourceConfigType = resolveSelectedSourceConfigType(sourceKey)
+    if (sourceConfigType) payload[`${prefix}SourceConfigType`] = sourceConfigType
+    payload[`${prefix}PrimaryIdExpression`] = source.fieldPath.trim()
+    return
+  }
+
+  const selectedSchema = sourceKey === 'source1' ? source1Schema.value : source2Schema.value
+  payload[`${prefix}FileTypeEnumId`] = 'DftJson'
+  payload[`${prefix}SchemaFileName`] = selectedSchema?.schemaName
+  payload[`${prefix}PrimaryIdExpression`] = preserveFieldExpressionSuffix(originalPrimaryId, source.fieldPath)
+}
+
+function buildRuleSetSavePayload(): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    savedRunId: ruleSetDraft.value?.savedRunId ?? activeMappingId.value,
+    runName: form.mappingName.trim(),
+    description: ruleSetDraft.value?.description,
+  }
+  appendRuleSetSourcePayload(payload, 'source1')
+  appendRuleSetSourcePayload(payload, 'source2')
+  return payload
 }
 
 function resolveSchemaId(jsonSchemaId: string | undefined, schemaName: string | undefined): string {
@@ -183,10 +503,18 @@ function resolveSchemaId(jsonSchemaId: string | undefined, schemaName: string | 
 
 function hydrateRuleSetDraftForm(draft: ReconciliationRuleSetDraft): void {
   form.mappingName = draft.runName
-  form.source1.schemaId = resolveSchemaId(draft.file1JsonSchemaId, draft.file1SchemaFileName)
+  form.source1.schemaId = sourceUsesApi('source1') ? '' : resolveSchemaId(draft.file1JsonSchemaId, draft.file1SchemaFileName)
   form.source1.fieldPath = draft.file1PrimaryIdExpression
-  form.source2.schemaId = resolveSchemaId(draft.file2JsonSchemaId, draft.file2SchemaFileName)
+  form.source1.sourceConfigId = draft.file1SourceConfigId ?? ''
+  form.source1.sourceConfigType = draft.file1SourceConfigType ?? resolveSelectedSourceConfigType('source1')
+  form.source1.nsRestletConfigId = draft.file1NsRestletConfigId ?? ''
+  form.source1.systemMessageRemoteId = draft.file1SystemMessageRemoteId ?? ''
+  form.source2.schemaId = sourceUsesApi('source2') ? '' : resolveSchemaId(draft.file2JsonSchemaId, draft.file2SchemaFileName)
   form.source2.fieldPath = draft.file2PrimaryIdExpression
+  form.source2.sourceConfigId = draft.file2SourceConfigId ?? ''
+  form.source2.sourceConfigType = draft.file2SourceConfigType ?? resolveSelectedSourceConfigType('source2')
+  form.source2.nsRestletConfigId = draft.file2NsRestletConfigId ?? ''
+  form.source2.systemMessageRemoteId = draft.file2SystemMessageRemoteId ?? ''
 }
 
 function buildRuleSetDraftFromForm(savedRunName: string): ReconciliationRuleSetDraft {
@@ -207,18 +535,45 @@ function buildRuleSetDraftFromForm(savedRunName: string): ReconciliationRuleSetD
     description: ruleSetDraft.value?.description,
     file1SystemEnumId: source1?.systemEnumId ?? ruleSetDraft.value?.file1SystemEnumId ?? '',
     file1SystemLabel: source1?.systemLabel ?? ruleSetDraft.value?.file1SystemLabel,
-    file1FileTypeEnumId: 'DftJson',
-    file1JsonSchemaId: source1?.jsonSchemaId,
-    file1SchemaLabel: source1 ? resolveSchemaLabel(source1) : ruleSetDraft.value?.file1SchemaLabel,
-    file1SchemaFileName: source1?.schemaName,
+    ...(source1UsesApi.value
+      ? {
+          file1SourceTypeEnumId: SOURCE_TYPE_API,
+          file1SystemMessageRemoteId: form.source1.systemMessageRemoteId || undefined,
+          file1SystemMessageRemoteLabel: form.source1.systemMessageRemoteId ? selectedApiSourceLabel('source1') || undefined : undefined,
+          file1NsRestletConfigId: form.source1.nsRestletConfigId || undefined,
+          file1NsRestletConfigLabel: form.source1.nsRestletConfigId ? selectedApiSourceLabel('source1') || undefined : undefined,
+          file1SourceConfigId: form.source1.sourceConfigId || undefined,
+          file1SourceConfigType: form.source1.sourceConfigType || resolveSelectedSourceConfigType('source1') || undefined,
+          file1FileTypeEnumId: '',
+        }
+      : {
+          file1FileTypeEnumId: 'DftJson',
+          file1JsonSchemaId: source1?.jsonSchemaId,
+          file1SchemaLabel: source1 ? resolveSchemaLabel(source1) : ruleSetDraft.value?.file1SchemaLabel,
+          file1SchemaFileName: source1?.schemaName,
+        }),
     file1PrimaryIdExpression,
     file2SystemEnumId: source2?.systemEnumId ?? ruleSetDraft.value?.file2SystemEnumId ?? '',
     file2SystemLabel: source2?.systemLabel ?? ruleSetDraft.value?.file2SystemLabel,
-    file2FileTypeEnumId: 'DftJson',
-    file2JsonSchemaId: source2?.jsonSchemaId,
-    file2SchemaLabel: source2 ? resolveSchemaLabel(source2) : ruleSetDraft.value?.file2SchemaLabel,
-    file2SchemaFileName: source2?.schemaName,
+    ...(source2UsesApi.value
+      ? {
+          file2SourceTypeEnumId: SOURCE_TYPE_API,
+          file2SystemMessageRemoteId: form.source2.systemMessageRemoteId || undefined,
+          file2SystemMessageRemoteLabel: form.source2.systemMessageRemoteId ? selectedApiSourceLabel('source2') || undefined : undefined,
+          file2NsRestletConfigId: form.source2.nsRestletConfigId || undefined,
+          file2NsRestletConfigLabel: form.source2.nsRestletConfigId ? selectedApiSourceLabel('source2') || undefined : undefined,
+          file2SourceConfigId: form.source2.sourceConfigId || undefined,
+          file2SourceConfigType: form.source2.sourceConfigType || resolveSelectedSourceConfigType('source2') || undefined,
+          file2FileTypeEnumId: '',
+        }
+      : {
+          file2FileTypeEnumId: 'DftJson',
+          file2JsonSchemaId: source2?.jsonSchemaId,
+          file2SchemaLabel: source2 ? resolveSchemaLabel(source2) : ruleSetDraft.value?.file2SchemaLabel,
+          file2SchemaFileName: source2?.schemaName,
+        }),
     file2PrimaryIdExpression,
+    rules: ruleSetDraft.value?.rules,
   }
 }
 
@@ -291,6 +646,8 @@ async function ensureFieldsLoaded(schemaId: string): Promise<void> {
 }
 
 async function syncFieldOptions(sourceKey: 'source1' | 'source2'): Promise<void> {
+  if (sourceUsesApi(sourceKey)) return
+
   const source = form[sourceKey]
   if (!source.schemaId) {
     source.fieldPath = ''
@@ -318,16 +675,27 @@ async function load(): Promise<void> {
   success.value = null
 
   try {
+    const draftState = readReconciliationRuleSetDraftState(typeof window === 'undefined' ? null : window.history.state)
+    const historyDraft = draftState?.draft?.savedRunId === activeMappingId.value ? draftState.draft : null
+    const shouldLoadApiOptions = Boolean(historyDraft && (
+      historyDraft.file1SourceTypeEnumId?.trim() === SOURCE_TYPE_API ||
+      historyDraft.file2SourceTypeEnumId?.trim() === SOURCE_TYPE_API
+    ))
     const schemasResponse = await jsonSchemaFacade.list({
       pageIndex: 0,
       pageSize: 200,
       query: '',
     })
+    const automationSourceOptionsResponse = shouldLoadApiOptions
+      ? await reconciliationFacade.listAutomationSourceOptions()
+      : null
 
     schemas.value = schemasResponse.schemas ?? []
-    const historyDraft = readReconciliationRuleSetDraftState(typeof window === 'undefined' ? null : window.history.state)?.draft ?? null
+    sourceConfigs.value = automationSourceOptionsResponse?.sourceConfigs ?? []
+    nsRestletConfigs.value = automationSourceOptionsResponse?.nsRestletConfigs ?? []
+    systemRemotes.value = automationSourceOptionsResponse?.systemRemotes ?? []
 
-    if (historyDraft?.savedRunId === activeMappingId.value) {
+    if (historyDraft) {
       ruleSetDraft.value = historyDraft
       hydrateRuleSetDraftForm(historyDraft)
       await Promise.all([
@@ -377,25 +745,7 @@ async function save(): Promise<void> {
 
   try {
     if (ruleSetDraft.value) {
-      const response = await reconciliationFacade.saveRuleSetRun({
-        savedRunId: ruleSetDraft.value.savedRunId ?? activeMappingId.value,
-        runName: form.mappingName.trim(),
-        description: ruleSetDraft.value.description,
-        file1SystemEnumId: source1Schema.value?.systemEnumId,
-        file1FileTypeEnumId: 'DftJson',
-        file1SchemaFileName: source1Schema.value?.schemaName,
-        file1PrimaryIdExpression: preserveFieldExpressionSuffix(
-          ruleSetDraft.value.file1PrimaryIdExpression,
-          form.source1.fieldPath,
-        ),
-        file2SystemEnumId: source2Schema.value?.systemEnumId,
-        file2FileTypeEnumId: 'DftJson',
-        file2SchemaFileName: source2Schema.value?.schemaName,
-        file2PrimaryIdExpression: preserveFieldExpressionSuffix(
-          ruleSetDraft.value.file2PrimaryIdExpression,
-          form.source2.fieldPath,
-        ),
-      })
+      const response = await reconciliationFacade.saveRuleSetRun(buildRuleSetSavePayload())
       const savedRunName = response.savedRun?.runName || form.mappingName.trim()
       success.value = response.messages?.[0] ?? 'Saved run.'
       await router.push({

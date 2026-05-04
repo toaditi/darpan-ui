@@ -14,6 +14,7 @@ const flatten = vi.hoisted(() => vi.fn())
 const getMapping = vi.hoisted(() => vi.fn())
 const saveMapping = vi.hoisted(() => vi.fn())
 const saveRuleSetRun = vi.hoisted(() => vi.fn())
+const listAutomationSourceOptions = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'editor',
@@ -38,6 +39,7 @@ vi.mock('../../../lib/api/facade', () => ({
     getMapping,
     saveMapping,
     saveRuleSetRun,
+    listAutomationSourceOptions,
   },
 }))
 
@@ -75,6 +77,7 @@ describe('RunsSettingsWorkflowPage', () => {
     getMapping.mockReset()
     saveMapping.mockReset()
     saveRuleSetRun.mockReset()
+    listAutomationSourceOptions.mockReset()
     authState.sessionInfo = {
       userId: 'editor',
       canEditActiveTenantData: true,
@@ -214,6 +217,73 @@ describe('RunsSettingsWorkflowPage', () => {
         systemOptions: [],
       },
     })
+
+    listAutomationSourceOptions.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      inputModes: [],
+      sourceTypes: [],
+      relativeWindows: [],
+      fileTypes: [],
+      systems: [],
+      savedRuns: [],
+      sftpServers: [],
+      sourceConfigs: [
+        {
+          sourceConfigId: 'KREWE_OMS',
+          sourceConfigType: 'HOTWAX_OMS_REST',
+          label: 'Krewe OMS',
+          systemEnumId: 'OMS',
+        },
+        {
+          sourceConfigId: 'SHOPIFY_MAIN',
+          sourceConfigType: 'SHOPIFY_AUTH',
+          label: 'Krewe Shopify',
+          systemEnumId: 'SHOPIFY',
+        },
+      ],
+      nsRestletConfigs: [],
+      systemRemotes: [
+        {
+          systemMessageRemoteId: 'HOTWAX_ORDERS_API',
+          description: 'Orders API',
+          label: 'Orders API',
+          systemEnumId: 'OMS',
+          optionKey: 'KREWE_OMS',
+          sourceConfigId: 'KREWE_OMS',
+          sourceConfigType: 'HOTWAX_OMS_REST',
+          primaryIdOptions: [
+            { fieldPath: '$.records[*].orderId', label: 'Order ID' },
+            { fieldPath: '$.records[*].orderName', label: 'Order name' },
+          ],
+        },
+        {
+          systemMessageRemoteId: 'HOTWAX_RETURNS_API',
+          description: 'Returns API',
+          label: 'Returns API',
+          systemEnumId: 'OMS',
+          optionKey: 'KREWE_OMS',
+          sourceConfigId: 'KREWE_OMS',
+          sourceConfigType: 'HOTWAX_OMS_REST',
+          primaryIdOptions: [
+            { fieldPath: '$.records[*].returnId', label: 'Return ID' },
+          ],
+        },
+        {
+          systemMessageRemoteId: 'SHOPIFY_REMOTE',
+          description: 'Shopify',
+          label: 'Orders',
+          systemEnumId: 'SHOPIFY',
+          optionKey: 'SHOPIFY_MAIN',
+          sourceConfigId: 'SHOPIFY_MAIN',
+          sourceConfigType: 'SHOPIFY_AUTH',
+          primaryIdOptions: [
+            { fieldPath: '$.records[*].id', label: 'Order ID' },
+          ],
+        },
+      ],
+    })
   })
 
   it('loads an editable two-source run form and saves back to the runs settings page', async () => {
@@ -347,6 +417,111 @@ describe('RunsSettingsWorkflowPage', () => {
           runName: 'Order Sync Revised',
           file1PrimaryIdExpression: '$.return_ref',
           file2PrimaryIdExpression: '$.id',
+        }),
+        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
+      }),
+    })
+  })
+
+  it('edits API run configuration with API config, endpoint, and primary ID controls', async () => {
+    route.params.reconciliationMappingId = 'RS_API_ORDER_SYNC'
+    saveRuleSetRun.mockResolvedValueOnce({
+      ok: true,
+      messages: ['Saved RuleSet run API Order Sync.'],
+      errors: [],
+      savedRun: {
+        savedRunId: 'RS_API_ORDER_SYNC',
+        runName: 'API Order Sync',
+        description: 'API order comparison.',
+        runType: 'ruleset',
+      },
+    })
+    window.history.replaceState(
+      {
+        workflowOriginLabel: 'Run Details',
+        workflowOriginPath: '/reconciliation/ruleset-manager',
+        ...buildReconciliationRuleSetDraftState({
+          savedRunId: 'RS_API_ORDER_SYNC',
+          runName: 'API Order Sync',
+          description: 'API order comparison.',
+          file1SystemEnumId: 'OMS',
+          file1SystemLabel: 'HotWax',
+          file1SourceTypeEnumId: 'AUT_SRC_API',
+          file1SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
+          file1SourceConfigId: 'KREWE_OMS',
+          file1SourceConfigType: 'HOTWAX_OMS_REST',
+          file1FileTypeEnumId: '',
+          file1PrimaryIdExpression: '$.records[*].orderId',
+          file2SystemEnumId: 'SHOPIFY',
+          file2SystemLabel: 'SHOPIFY',
+          file2SourceTypeEnumId: 'AUT_SRC_API',
+          file2SystemMessageRemoteId: 'SHOPIFY_REMOTE',
+          file2SourceConfigId: 'SHOPIFY_MAIN',
+          file2SourceConfigType: 'SHOPIFY_AUTH',
+          file2FileTypeEnumId: '',
+          file2PrimaryIdExpression: '$.records[*].id',
+        }),
+      },
+      '',
+      '/settings/runs/edit/RS_API_ORDER_SYNC',
+    )
+
+    const wrapper = mount(RunsSettingsWorkflowPage)
+    await flushPromises()
+
+    expect(getMapping).not.toHaveBeenCalled()
+    expect(listAutomationSourceOptions).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Source 1 API Config')
+    expect(wrapper.text()).toContain('Source 1 Endpoint')
+    expect(wrapper.text()).toContain('Source 1 Primary ID')
+    expect(wrapper.text()).toContain('Source 2 API Config')
+    expect(wrapper.text()).toContain('Source 2 Endpoint')
+    expect(wrapper.text()).toContain('Source 2 Primary ID')
+    expect(wrapper.find('[data-testid="run-schema-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="run-schema-2"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="run-api-config-1"]').text()).toContain('Krewe OMS')
+    expect(wrapper.get('[data-testid="run-api-endpoint-1"]').text()).toContain('Orders API')
+    expect(wrapper.get('[data-testid="run-api-field-1"]').text()).toContain('Order ID')
+    expect(wrapper.get('[data-testid="run-api-config-2"]').text()).toContain('Krewe Shopify')
+    expect(wrapper.get('[data-testid="run-api-endpoint-2"]').text()).toContain('Orders')
+    expect(wrapper.get('[data-testid="run-api-field-2"]').text()).toContain('Order ID')
+
+    await chooseAppSelectOption(wrapper, 'run-api-endpoint-1', 'remote:HOTWAX_RETURNS_API:KREWE_OMS')
+    await flushPromises()
+    await chooseAppSelectOption(wrapper, 'run-api-field-1', '$.records[*].returnId')
+    await wrapper.get('[data-testid="save-run-settings"]').trigger('click')
+    await flushPromises()
+
+    expect(saveRuleSetRun).toHaveBeenCalledWith({
+      savedRunId: 'RS_API_ORDER_SYNC',
+      runName: 'API Order Sync',
+      description: 'API order comparison.',
+      file1SystemEnumId: 'OMS',
+      file1SourceTypeEnumId: 'AUT_SRC_API',
+      file1SystemMessageRemoteId: 'HOTWAX_RETURNS_API',
+      file1SourceConfigId: 'KREWE_OMS',
+      file1SourceConfigType: 'HOTWAX_OMS_REST',
+      file1PrimaryIdExpression: '$.records[*].returnId',
+      file2SystemEnumId: 'SHOPIFY',
+      file2SourceTypeEnumId: 'AUT_SRC_API',
+      file2SystemMessageRemoteId: 'SHOPIFY_REMOTE',
+      file2SourceConfigId: 'SHOPIFY_MAIN',
+      file2SourceConfigType: 'SHOPIFY_AUTH',
+      file2PrimaryIdExpression: '$.records[*].id',
+    })
+    expect(saveMapping).not.toHaveBeenCalled()
+    expect(push).toHaveBeenCalledWith({
+      name: 'reconciliation-ruleset-manager',
+      state: expect.objectContaining({
+        reconciliationRuleSetDraft: expect.objectContaining({
+          savedRunId: 'RS_API_ORDER_SYNC',
+          runName: 'API Order Sync',
+          file1SourceTypeEnumId: 'AUT_SRC_API',
+          file1SystemMessageRemoteId: 'HOTWAX_RETURNS_API',
+          file1PrimaryIdExpression: '$.records[*].returnId',
+          file2SourceTypeEnumId: 'AUT_SRC_API',
+          file2SystemMessageRemoteId: 'SHOPIFY_REMOTE',
+          file2PrimaryIdExpression: '$.records[*].id',
         }),
         reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
       }),

@@ -303,6 +303,11 @@ button:disabled {
   pointer-events: none;
 }
 
+.workflow-escape-hint--warning {
+  border-color: color-mix(in oklab, var(--warning) 58%, var(--border));
+  color: var(--text);
+}
+
 .theme-toggle {
   position: relative;
   width: 3.45rem;
@@ -694,6 +699,7 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.9rem;
+  align-items: start;
 }
 
 .static-page-summary-card {
@@ -705,11 +711,190 @@ button:disabled {
   background: var(--surface-2);
 }
 
+.static-page-summary-card--wide {
+  grid-column: span 2;
+}
+
+.static-page-summary-card > span:not(.static-page-summary-label) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .static-page-summary-label {
   color: var(--text-soft);
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.static-page-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.static-page-section-edit-action {
+  flex: 0 0 auto;
+  width: 2.2rem;
+  min-height: 2.2rem;
+}
+
+.static-page-section-edit-action svg path {
+  fill: currentColor;
+}
+
+.user-settings-summary-field {
+  width: 100%;
+  cursor: text;
+}
+
+.user-settings-summary-input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.user-settings-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+}
+
+.user-settings-row-main {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.user-settings-control {
+  min-height: 2.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-settings-control--primary {
+  background: var(--static-action-tile-bg);
+  border-color: var(--static-action-tile-border);
+}
+
+.user-settings-password-trigger {
+  min-height: 2.2rem;
+  padding: 0 0.9rem;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.user-settings-account-action-stack {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+
+.user-settings-account-action-stack .static-page-summary-card {
+  min-width: 0;
+}
+
+.user-settings-account-action-stack .user-settings-password-trigger {
+  justify-self: start;
+}
+
+.user-settings-page--popup-open {
+  filter: blur(var(--popup-background-blur));
+  opacity: var(--popup-background-opacity);
+}
+
+.static-page-frame--popup-open {
+  filter: blur(var(--popup-background-blur));
+  opacity: var(--popup-background-opacity);
+}
+
+.user-settings-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.user-settings-preferences-grid {
+  align-items: stretch;
+}
+
+.user-settings-preference-card {
+  height: 100%;
+}
+
+.tenant-settings-list-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-2);
+}
+
+.tenant-settings-list-grid .static-page-list-tile {
+  padding: 0.85rem 1rem;
+}
+
+.tenant-settings-list-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tenant-settings-list-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.tenant-settings-list-status {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.popup-workflow-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in oklab, var(--bg) 38%, transparent);
+}
+
+.popup-workflow-modal.workflow-panel {
+  --popup-workflow-title-size: 0.875rem;
+  --popup-workflow-prompt-size: 1.5rem;
+  width: min(34rem, calc(100vw - 2rem));
+  max-width: min(34rem, calc(100vw - 2rem));
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 20px 60px color-mix(in oklab, var(--bg) 62%, transparent);
+}
+
+.popup-workflow-modal .workflow-panel-header h2 {
+  font-size: var(--popup-workflow-title-size);
+  font-weight: 400;
 }
 
 .static-page-record-tile:hover {
@@ -867,11 +1052,11 @@ button:disabled {
 }
 
 .workflow-form--edit-single-page {
-  --workflow-form-question-size: clamp(1.24rem, 1.5vw, 1.61rem);
-  --workflow-form-question-mobile-size: clamp(1.01rem, 4.5vw, 1.31rem);
+  --workflow-form-question-size: 1.85rem;
+  --workflow-form-question-mobile-size: 1.5rem;
   --workflow-form-answer-size: clamp(0.89rem, 1.05vw, 1.09rem);
   --workflow-form-select-size: var(--workflow-form-answer-size);
-  --workflow-form-context-label-size: 0.62rem;
+  --workflow-form-context-label-size: 0.76rem;
 }
 
 .workflow-form-grid {
@@ -882,6 +1067,32 @@ button:disabled {
 
 .workflow-form-grid--two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workflow-form-grid--notification {
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 11rem);
+  align-items: end;
+  gap: 0.85rem;
+}
+
+.tenant-notification-webhook-field,
+.tenant-notification-status-field {
+  min-width: 0;
+}
+
+.tenant-notification-status-field .app-select-trigger {
+  min-height: 2.35rem;
+  padding-block: 0.52rem;
+  padding-inline: 0.65rem;
+}
+
+.tenant-notification-current-webhook {
+  max-width: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .workflow-form-grid--compact {
@@ -944,7 +1155,7 @@ button:disabled {
   transform: translateY(-1px);
 }
 
-.workflow-choice-option--filter input[type='checkbox'] {
+.workflow-choice-option--filter input[type='checkbox']:not(.app-table__checkbox) {
   width: 1rem;
   height: 1rem;
   min-height: 1rem;
@@ -1533,7 +1744,9 @@ label > span {
   position: absolute;
   right: 0;
   bottom: calc(100% + var(--space-2));
-  width: min(18rem, 82vw);
+  width: fit-content;
+  min-width: max-content;
+  max-width: min(18rem, 82vw);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -1547,6 +1760,8 @@ label > span {
 .user-menu-name {
   margin: 0;
   font-size: 1.02rem;
+  max-width: 14rem;
+  overflow-wrap: anywhere;
 }
 
 .user-menu-tenant {
@@ -1573,7 +1788,20 @@ label > span {
 .user-menu-actions {
   display: flex;
   justify-content: flex-start;
+  gap: var(--space-2);
   padding-top: 0.18rem;
+}
+
+.user-menu-actions .app-icon-action {
+  color: var(--text);
+}
+
+.user-menu-actions .app-icon-action svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .user-menu-logout {
@@ -1754,7 +1982,7 @@ label > span {
   }
 
   .user-menu-card {
-    width: min(19rem, 88vw);
+    max-width: min(19rem, 88vw);
   }
 
   .static-page-tile-grid {
@@ -1796,6 +2024,10 @@ label > span {
     align-items: flex-start;
   }
 
+  .user-settings-row {
+    grid-template-columns: 1fr;
+  }
+
   .page-controls,
   .static-page-pager {
     flex-wrap: wrap;
@@ -1809,6 +2041,18 @@ label > span {
 @media (max-width: 768px) {
   .static-page-panel {
     padding: var(--space-4);
+  }
+
+  .static-page-summary-card--wide {
+    grid-column: auto;
+  }
+
+  .tenant-settings-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-settings-list-status {
+    text-align: left;
   }
 
   .static-page-hero,
@@ -1847,6 +2091,7 @@ label > span {
   }
 
   .workflow-form-grid--two,
+  .workflow-form-grid--notification,
   .workflow-form-grid--compact {
     grid-template-columns: 1fr;
   }

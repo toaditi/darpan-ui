@@ -10,7 +10,7 @@ describe('WorkflowShortcutChoiceCards', () => {
         testIdPrefix: 'filetype-choice',
         options: [
           { value: 'csv', label: 'CSV', shortcutKey: 'A' },
-          { value: 'json', label: 'JSON', shortcutKey: 'B' },
+          { value: 'json', label: 'JSON', shortcutKey: 'B', description: 'Use JSON source data' },
         ],
       },
     })
@@ -23,6 +23,7 @@ describe('WorkflowShortcutChoiceCards', () => {
     expect(jsonChoice.attributes('aria-keyshortcuts')).toBe('b')
     expect(wrapper.text()).toContain('A')
     expect(wrapper.text()).toContain('B')
+    expect(wrapper.text()).toContain('Use JSON source data')
     expect(jsonChoice.classes()).toContain('workflow-shortcut-choice-card--active')
     expect(csvChoice.classes()).not.toContain('workflow-shortcut-choice-card--active')
   })

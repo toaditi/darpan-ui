@@ -25,6 +25,12 @@
           v-for="(row, index) in rows"
           :key="resolveRowKey(row)"
           :data-testid="rowTestId"
+          :class="{ 'app-table__row--action': isRowActionable(row, index) }"
+          :role="isRowActionable(row, index) ? 'link' : undefined"
+          :tabindex="isRowActionable(row, index) ? 0 : undefined"
+          :aria-label="resolveRowActionLabel(row, index) ?? undefined"
+          @click="triggerRowAction(row, index)"
+          @keydown="handleRowActionKeydown($event, row, index)"
         >
           <td v-for="column in columns" :key="column.key" :class="column.cellClass">
             <slot :name="`cell-${column.key}`" :row="row" :column="column" :index="index">
@@ -56,6 +62,10 @@ const props = defineProps<{
   rows: Array<Record<string, unknown>>
   rowKey?: string
   rowTestId?: string
+  rowActionLabel?: (row: Record<string, unknown>, index: number) => string | null | undefined
+}>()
+const emit = defineEmits<{
+  rowAction: [payload: { row: Record<string, unknown>, index: number }]
 }>()
 
 const showColGroup = computed(() => props.columns.some((column) => Boolean(column.colClass || column.colStyle)))
@@ -78,4 +88,40 @@ function resolveRowKey(row: Record<string, unknown>): string {
   fallbackRowKeys.set(row, nextKey)
   return nextKey
 }
+
+function resolveRowActionLabel(row: Record<string, unknown>, index: number): string | null {
+  const label = props.rowActionLabel?.(row, index)?.trim()
+  return label || null
+}
+
+function isRowActionable(row: Record<string, unknown>, index: number): boolean {
+  return Boolean(resolveRowActionLabel(row, index))
+}
+
+function triggerRowAction(row: Record<string, unknown>, index: number): void {
+  if (!isRowActionable(row, index)) return
+  emit('rowAction', { row, index })
+}
+
+function handleRowActionKeydown(event: KeyboardEvent, row: Record<string, unknown>, index: number): void {
+  if (!isRowActionable(row, index)) return
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  triggerRowAction(row, index)
+}
 </script>
+
+<style scoped>
+.app-table__row--action {
+  cursor: pointer;
+}
+
+.app-table__row--action:hover {
+  background: color-mix(in oklab, var(--surface-2) 88%, var(--text) 12%);
+}
+
+.app-table__row--action:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 62%, transparent);
+  outline-offset: -2px;
+}
+</style>

@@ -1,17 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import {
+  buildReconciliationAutomationDraftState,
+  clearPendingReconciliationAutomationDraftState,
+  savePendingReconciliationAutomationDraftState,
+} from '../../../lib/reconciliationAutomationDraft'
 import { buildReconciliationRuleSetDraftState } from '../../../lib/reconciliationRuleSetDraft'
 import { buildWorkflowOriginState } from '../../../lib/workflowOrigin'
 
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const route = vi.hoisted(() => ({
+  query: {} as Record<string, string>,
+}))
 const listEnumOptions = vi.hoisted(() => vi.fn())
 const listJsonSchemas = vi.hoisted(() => vi.fn())
 const flattenJsonSchema = vi.hoisted(() => vi.fn())
 const createRuleSetRun = vi.hoisted(() => vi.fn())
+const listAutomationSourceOptions = vi.hoisted(() => vi.fn())
 const RULESET_MANAGER_HELPER_COPY =
   'Open the Ruleset Manager to pair fields and start with the sketched operator set: =, >, and <. Normalizers stay separate for now.'
 
 vi.mock('vue-router', () => ({
+  useRoute: () => route,
   useRouter: () => ({
     push,
   }),
@@ -27,6 +37,7 @@ vi.mock('../../../lib/api/facade', () => ({
   },
   reconciliationFacade: {
     createRuleSetRun,
+    listAutomationSourceOptions,
   },
 }))
 
@@ -67,6 +78,7 @@ async function advanceToFinalPrimaryIdStep(wrapper: ReturnType<typeof mount>): P
   await chooseWorkflowOption(wrapper, 'file1-system-select', 'OMS')
   await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
+  await chooseWorkflowChoice(wrapper, 'file1-source-choice-file')
   await chooseWorkflowChoice(wrapper, 'file1-filetype-choice-DftJson')
 
   await chooseWorkflowOption(wrapper, 'file1-schema-select', 'schema-oms-orders')
@@ -79,6 +91,7 @@ async function advanceToFinalPrimaryIdStep(wrapper: ReturnType<typeof mount>): P
   await chooseWorkflowOption(wrapper, 'file2-system-select', 'SHOPIFY')
   await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
+  await chooseWorkflowChoice(wrapper, 'file2-source-choice-file')
   await chooseWorkflowChoice(wrapper, 'file2-filetype-choice-DftJson')
 
   await chooseWorkflowOption(wrapper, 'file2-schema-select', 'schema-shopify-orders')
@@ -114,7 +127,10 @@ describe('ReconciliationCreateFlowPage', () => {
     listJsonSchemas.mockReset()
     flattenJsonSchema.mockReset()
     createRuleSetRun.mockReset()
+    listAutomationSourceOptions.mockReset()
+    route.query = {}
     window.history.replaceState({}, '', '/')
+    window.sessionStorage.clear()
 
     listEnumOptions.mockImplementation(async (enumTypeId: string) => {
       if (enumTypeId === 'DarpanSystemSource') {
@@ -209,6 +225,76 @@ describe('ReconciliationCreateFlowPage', () => {
         systemOptions: [],
       },
     })
+
+    listAutomationSourceOptions.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      inputModes: [],
+      sourceTypes: [],
+      relativeWindows: [],
+      fileTypes: [],
+      systems: [],
+      savedRuns: [],
+      sftpServers: [],
+      sourceConfigs: [
+        {
+          sourceConfigId: 'KREWE_OMS',
+          sourceConfigType: 'HOTWAX_OMS_REST',
+          label: 'Krewe HotWax Orders',
+          systemEnumId: 'OMS',
+        },
+        {
+          sourceConfigId: 'SHOPIFY_MAIN',
+          sourceConfigType: 'SHOPIFY_AUTH',
+          label: 'Krewe Shopify',
+          systemEnumId: 'SHOPIFY',
+        },
+        {
+          sourceConfigId: 'NS_AUTH',
+          sourceConfigType: 'NETSUITE_AUTH',
+          label: 'NetSuite Auth',
+          systemEnumId: 'NETSUITE',
+        },
+      ],
+      nsRestletConfigs: [
+        {
+          nsRestletConfigId: 'NS_ORDERS',
+          description: 'NetSuite orders RESTlet',
+          label: 'NetSuite orders RESTlet',
+          systemEnumId: 'NETSUITE',
+          sourceConfigId: 'NS_AUTH',
+          sourceConfigType: 'NETSUITE_AUTH',
+        },
+      ],
+      systemRemotes: [
+        {
+          systemMessageRemoteId: 'HOTWAX_ORDERS_API',
+          description: 'Orders API',
+          label: 'Orders API',
+          systemEnumId: 'OMS',
+          optionKey: 'KREWE_OMS',
+          sourceConfigId: 'KREWE_OMS',
+          sourceConfigType: 'HOTWAX_OMS_REST',
+          primaryIdOptions: [
+            { fieldPath: '$.records[*].orderId', label: 'Order ID' },
+            { fieldPath: '$.records[*].orderName', label: 'Order name' },
+          ],
+        },
+        {
+          systemMessageRemoteId: 'SHOPIFY_REMOTE',
+          description: 'Shopify',
+          label: 'Orders',
+          systemEnumId: 'SHOPIFY',
+          optionKey: 'SHOPIFY_MAIN',
+          sourceConfigId: 'SHOPIFY_MAIN',
+          sourceConfigType: 'SHOPIFY_AUTH',
+          primaryIdOptions: [
+            { fieldPath: '$.records[*].id', label: 'Order ID' },
+          ],
+        },
+      ],
+    })
   })
 
   it('asks for one value per step and creates directly after the basics are defined', async () => {
@@ -267,6 +353,147 @@ describe('ReconciliationCreateFlowPage', () => {
     expect(push).toHaveBeenCalledWith({ name: 'hub' })
   })
 
+  it('creates a run with an API source on one side and a file upload source on the other', async () => {
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    await wrapper.get('input[name="runName"]').setValue('Mixed Source Compare')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await wrapper.get('input[name="description"]').setValue('HotWax API against Shopify upload')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file1-system-select', 'OMS')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-api')
+    await chooseWorkflowOption(wrapper, 'file1-api-config-select', 'KREWE_OMS')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file1-api-select', 'remote:HOTWAX_ORDERS_API:KREWE_OMS')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Which field identifies each record from Orders API?')
+    await chooseWorkflowOption(wrapper, 'file1-field-select', '$.records[*].orderId')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file2-system-select', 'SHOPIFY')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowChoice(wrapper, 'file2-source-choice-file')
+    await chooseWorkflowChoice(wrapper, 'file2-filetype-choice-DftCsv')
+
+    await wrapper.get('input[name="file2PrimaryIdExpression"]').setValue('order_id')
+    await wrapper.get('[data-testid="create-run"]').trigger('click')
+    await flushPromises()
+
+    expect(listAutomationSourceOptions).toHaveBeenCalled()
+    expect(flattenJsonSchema).not.toHaveBeenCalled()
+    expect(createRuleSetRun).toHaveBeenCalledWith({
+      runName: 'Mixed Source Compare',
+      description: 'HotWax API against Shopify upload',
+      file1SystemEnumId: 'OMS',
+      file1SourceTypeEnumId: 'AUT_SRC_API',
+      file1SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
+      file1SourceConfigId: 'KREWE_OMS',
+      file1SourceConfigType: 'HOTWAX_OMS_REST',
+      file1PrimaryIdExpression: '$.records[*].orderId',
+      file2SystemEnumId: 'SHOPIFY',
+      file2FileTypeEnumId: 'DftCsv',
+      file2SchemaFileName: undefined,
+      file2PrimaryIdExpression: 'order_id',
+    })
+  })
+
+  it('filters API endpoint choices to endpoints for the selected system', async () => {
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    await wrapper.get('input[name="runName"]').setValue('Shopify API Compare')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file1-system-select', 'SHOPIFY')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-api')
+    expect(wrapper.text()).toContain('Which Shopify config should this source use?')
+    await chooseWorkflowOption(wrapper, 'file1-api-config-select', 'SHOPIFY_MAIN')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await wrapper.get('[data-testid="file1-api-select"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Orders')
+    expect(wrapper.text()).not.toContain('Shopify orders API')
+    expect(wrapper.text()).not.toContain('Orders API')
+    expect(wrapper.text()).not.toContain('NetSuite orders RESTlet')
+
+    await wrapper.get('[data-testid="workflow-select-option"][data-option-value="remote:SHOPIFY_REMOTE:SHOPIFY_MAIN"]').trigger('click')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    expect(wrapper.find('input[name="file1PrimaryIdExpression"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="file1-field-select"]').trigger('click')
+    expect(wrapper.text()).toContain('Order ID')
+    expect(wrapper.find('[data-testid="workflow-select-option"][data-option-value="$.records[*].id"]').exists()).toBe(true)
+  })
+
+  it('does not fall back to free text when an API endpoint is missing primary ID metadata', async () => {
+    listAutomationSourceOptions.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      inputModes: [],
+      sourceTypes: [],
+      relativeWindows: [],
+      fileTypes: [],
+      systems: [],
+      savedRuns: [],
+      sftpServers: [],
+      sourceConfigs: [
+        {
+          sourceConfigId: 'SHOPIFY_MAIN',
+          sourceConfigType: 'SHOPIFY_AUTH',
+          label: 'Krewe Shopify',
+          systemEnumId: 'SHOPIFY',
+        },
+      ],
+      nsRestletConfigs: [],
+      systemRemotes: [
+        {
+          systemMessageRemoteId: 'SHOPIFY_REMOTE',
+          description: 'Shopify',
+          label: 'Orders',
+          systemEnumId: 'SHOPIFY',
+          optionKey: 'SHOPIFY_MAIN',
+          sourceConfigId: 'SHOPIFY_MAIN',
+          sourceConfigType: 'SHOPIFY_AUTH',
+        },
+      ],
+    })
+
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    await wrapper.get('input[name="runName"]').setValue('Shopify API Compare')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file1-system-select', 'SHOPIFY')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-api')
+    await chooseWorkflowOption(wrapper, 'file1-api-config-select', 'SHOPIFY_MAIN')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file1-api-select', 'remote:SHOPIFY_REMOTE:SHOPIFY_MAIN')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    expect(wrapper.find('input[name="file1PrimaryIdExpression"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="file1-field-select"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('No ID fields are available for Orders.')
+    expect(wrapper.get('[data-testid="wizard-next"]').attributes('disabled')).toBeDefined()
+  })
+
   it('renders file type selection with keyed choice cards and advances on keyboard shortcut', async () => {
     const wrapper = mount(ReconciliationCreateFlowPage, { attachTo: document.body })
     await flushPromises()
@@ -278,6 +505,9 @@ describe('ReconciliationCreateFlowPage', () => {
     await chooseWorkflowOption(wrapper, 'file1-system-select', 'OMS')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
+    expect(wrapper.text()).toContain('How should HotWax provide data?')
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-file')
+
     expect(wrapper.find('[data-testid="file1-filetype-select"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('A')
     expect(wrapper.text()).toContain('B')
@@ -287,7 +517,7 @@ describe('ReconciliationCreateFlowPage', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b' }))
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Which saved schema describes the OMS JSON?')
+    expect(wrapper.text()).toContain('Which saved schema describes the HotWax JSON?')
 
     wrapper.unmount()
   })
@@ -326,6 +556,7 @@ describe('ReconciliationCreateFlowPage', () => {
     await chooseWorkflowOption(wrapper, 'file1-system-select', 'OMS')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-file')
     await chooseWorkflowChoice(wrapper, 'file1-filetype-choice-DftJson')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
@@ -364,6 +595,7 @@ describe('ReconciliationCreateFlowPage', () => {
     await chooseWorkflowOption(wrapper, 'file1-system-select', 'OMS')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-file')
     await chooseWorkflowChoice(wrapper, 'file1-filetype-choice-DftJson')
     await flushPromises()
 
@@ -393,6 +625,7 @@ describe('ReconciliationCreateFlowPage', () => {
 
     await chooseWorkflowOption(wrapper, 'file1-system-select', 'SHOPIFY')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-file')
     await chooseWorkflowChoice(wrapper, 'file1-filetype-choice-DftJson')
     await flushPromises()
 
@@ -411,10 +644,11 @@ describe('ReconciliationCreateFlowPage', () => {
 
     await chooseWorkflowOption(wrapper, 'file2-system-select', 'OMS')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await chooseWorkflowChoice(wrapper, 'file2-source-choice-file')
     await chooseWorkflowChoice(wrapper, 'file2-filetype-choice-DftJson')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Which saved schema describes the OMS JSON?')
+    expect(wrapper.text()).toContain('Which saved schema describes the HotWax JSON?')
   })
 
   it('offers a text action to create a schema when no saved JSON schema exists for the selected system', async () => {
@@ -449,10 +683,11 @@ describe('ReconciliationCreateFlowPage', () => {
     await chooseWorkflowOption(wrapper, 'file1-system-select', 'OMS')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-file')
     await chooseWorkflowChoice(wrapper, 'file1-filetype-choice-DftJson')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('No saved JSON schemas are available for OMS.')
+    expect(wrapper.text()).toContain('No saved JSON schemas are available for HotWax.')
     expect(wrapper.get('[data-testid="create-schema-from-reconciliation"]').text()).toBe('Create New Schema')
 
     await wrapper.get('[data-testid="create-schema-from-reconciliation"]').trigger('click')
@@ -478,6 +713,7 @@ describe('ReconciliationCreateFlowPage', () => {
     await chooseWorkflowOption(wrapper, 'file1-system-select', 'OMS')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-file')
     await chooseWorkflowChoice(wrapper, 'file1-filetype-choice-DftCsv')
 
     await wrapper.get('input[name="file1PrimaryIdExpression"]').setValue('order_id')
@@ -514,5 +750,81 @@ describe('ReconciliationCreateFlowPage', () => {
     await flushPromises()
 
     expect(push).toHaveBeenCalledWith('/settings/runs')
+  })
+
+  it('hands a newly created saved run back to automation setup when launched from automation workflow', async () => {
+    window.history.replaceState(
+      {
+        ...buildWorkflowOriginState('Automation Setup', '/reconciliation/automation/create'),
+        ...buildReconciliationAutomationDraftState({
+          intent: 'new-run',
+        }),
+      },
+      '',
+      '/reconciliation/create?automationFlow=new-run',
+    )
+    route.query = { automationFlow: 'new-run' }
+
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    await advanceToFinalPrimaryIdStep(wrapper)
+    await chooseWorkflowOption(wrapper, 'file2-field-select', '$.data.orders.edges[0].node.id')
+    await wrapper.get('[data-testid="create-run"]').trigger('click')
+    await flushPromises()
+
+    expect(push).toHaveBeenCalledWith({
+      path: '/reconciliation/automation/create',
+      state: expect.objectContaining({
+        workflowOriginLabel: 'Automations',
+        workflowOriginPath: '/reconciliation/automations',
+        reconciliationAutomationDraft: expect.objectContaining({
+          intent: 'new-run',
+          savedRunId: 'RS_JSON_ORDER_COMPARE',
+          savedRunType: 'ruleset',
+          automationName: 'JSON Order Compare Automation',
+          returnLabel: 'Automations',
+          returnPath: '/reconciliation/automations',
+        }),
+        reconciliationAutomationResumeStepId: 'input-mode',
+        reconciliationAutomationSavedRun: expect.objectContaining({
+          savedRunId: 'RS_JSON_ORDER_COMPARE',
+          runName: 'JSON Order Compare',
+          ruleSetId: 'RS_JSON_ORDER_COMPARE',
+          compareScopeId: 'CS_RS_JSON_ORDER_COMPARE',
+        }),
+      }),
+    })
+    expect(window.sessionStorage.getItem('darpan.reconciliationAutomationPendingState')).toBeNull()
+  })
+
+  it('continues automation setup from the pending option-B handoff when history state is lost', async () => {
+    route.query = { automationFlow: 'new-run' }
+    savePendingReconciliationAutomationDraftState({ intent: 'new-run' }, 'input-mode')
+    window.history.replaceState({}, '', '/reconciliation/create?automationFlow=new-run')
+
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    await advanceToFinalPrimaryIdStep(wrapper)
+    await chooseWorkflowOption(wrapper, 'file2-field-select', '$.data.orders.edges[0].node.id')
+    await wrapper.get('[data-testid="create-run"]').trigger('click')
+    await flushPromises()
+
+    expect(push).toHaveBeenCalledWith({
+      path: '/reconciliation/automation/create',
+      state: expect.objectContaining({
+        workflowOriginLabel: 'Automations',
+        workflowOriginPath: '/reconciliation/automations',
+        reconciliationAutomationDraft: expect.objectContaining({
+          intent: 'new-run',
+          savedRunId: 'RS_JSON_ORDER_COMPARE',
+          returnPath: '/reconciliation/automations',
+        }),
+        reconciliationAutomationResumeStepId: 'input-mode',
+      }),
+    })
+    expect(window.sessionStorage.getItem('darpan.reconciliationAutomationPendingState')).toBeNull()
+    clearPendingReconciliationAutomationDraftState()
   })
 })
