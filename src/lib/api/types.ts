@@ -254,6 +254,7 @@ export interface OmsRestSourceConfigRecord {
   companyLabel?: string
   baseUrl: string
   ordersPath: string
+  timeZone: string
   authType: string
   hasUsername?: boolean
   hasPassword?: boolean

@@ -85,6 +85,7 @@ describe('OmsRestSourceDashboardPage', () => {
           baseUrl: 'https://oms.example.com',
           ordersPath: '/rest/s1/oms/orders',
           authType: 'BEARER',
+          timeZone: 'America/Chicago',
           hasUsername: false,
           hasPassword: false,
           hasApiToken: true,
@@ -105,6 +106,8 @@ describe('OmsRestSourceDashboardPage', () => {
     expect(wrapper.text()).toContain('Auth')
     expect(wrapper.text()).toContain('Endpoints')
     expect(wrapper.text()).toContain('https://oms.example.com')
+    expect(wrapper.text()).toContain('Timezone')
+    expect(wrapper.text()).toContain('America/Chicago')
     expect(wrapper.text()).not.toContain('Auth Type')
     expect(wrapper.text()).not.toContain('BEARER')
     expect(wrapper.get('[data-testid="oms-endpoint-tile"]').text()).toContain('Orders API')

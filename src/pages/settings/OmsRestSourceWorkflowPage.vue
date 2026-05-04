@@ -62,13 +62,25 @@
           />
         </label>
 
-        <div class="workflow-form-grid workflow-form-grid--two">
+        <div class="workflow-form-grid workflow-form-grid--compact workflow-form-grid--hotwax-auth">
           <label class="wizard-input-shell">
             <span class="workflow-context-label">Auth Type</span>
             <AppSelect
               v-model="form.authType"
               :options="authTypeOptions"
               test-id="oms-auth-type"
+            />
+          </label>
+
+          <label class="wizard-input-shell">
+            <span class="workflow-context-label">Timezone</span>
+            <AppSelect
+              v-model="form.timeZone"
+              :options="timezoneOptions"
+              :disabled="!canEditTenantSettings || loading"
+              searchable
+              search-placeholder="Search timezones"
+              test-id="oms-timezone-select"
             />
           </label>
 
@@ -164,6 +176,18 @@
           @choose="advanceFromAuthTypeChoice"
         />
 
+        <label v-else-if="currentCreateStep.id === 'timeZone'" class="wizard-input-shell">
+          <AppSelect
+            v-model="form.timeZone"
+            :options="timezoneOptions"
+            :disabled="!canEditTenantSettings || loading"
+            placeholder="Select timezone"
+            searchable
+            search-placeholder="Search timezones"
+            test-id="oms-create-timezone-select"
+          />
+        </label>
+
         <label v-else-if="currentCreateStep.id === 'username'" class="wizard-input-shell">
           <input
             name="username"
@@ -226,11 +250,13 @@ import { settingsFacade } from '../../lib/api/facade'
 import type { OmsRestSourceConfigRecord } from '../../lib/api/types'
 import { useAuthState, useUiPermissions } from '../../lib/auth'
 import { OMS_SWAGGER_BASE_URL } from '../../lib/omsSwagger'
+import { buildTimezoneOptions, normalizeTimezoneId } from '../../lib/timezones'
 import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 import { CONFIG_ID_MAX_LENGTH, deriveConfigIdFromName, exceedsConfigIdMaxLength } from './configId'
 
 type OmsCreateStepId =
   | 'baseUrl'
+  | 'timeZone'
   | 'authType'
   | 'username'
   | 'password'
@@ -247,6 +273,7 @@ interface OmsForm {
   omsRestSourceConfigId: string
   description: string
   baseUrl: string
+  timeZone: string
   authType: string
   username: string
   password: string
@@ -268,6 +295,7 @@ function createDefaultOmsForm(): OmsForm {
     omsRestSourceConfigId: '',
     description: '',
     baseUrl: '',
+    timeZone: 'UTC',
     authType: 'NONE',
     username: '',
     password: '',
@@ -319,6 +347,7 @@ const omsBaseUrlPlaceholder = OMS_SWAGGER_BASE_URL
 const createSteps = computed<OmsCreateStep[]>(() => {
   const steps: OmsCreateStep[] = [
     { id: 'baseUrl', title: 'What HotWax base URL should Darpan use?', kind: 'text' },
+    { id: 'timeZone', title: 'Which timezone should Darpan use for HotWax date windows?', kind: 'select' },
     { id: 'authType', title: 'Which HotWax auth type should Darpan use?', kind: 'choice' },
   ]
 
@@ -374,6 +403,8 @@ const primaryActionVariant = computed<'default' | 'save'>(() => (
 ))
 const showBack = computed(() => !isEditing.value && currentStepIndex.value > 0)
 const isCreateChoiceStep = computed(() => !isEditing.value && currentCreateStep.value.kind === 'choice')
+const selectedTimeZone = computed(() => normalizeTimezoneId(form.timeZone) || 'UTC')
+const timezoneOptions = computed<AppSelectOption[]>(() => buildTimezoneOptions(selectedTimeZone.value))
 const submitDisabled = computed(() => {
   if (!canEditTenantSettings.value) return true
   if (loading.value) return true
@@ -382,6 +413,8 @@ const submitDisabled = computed(() => {
   switch (currentCreateStep.value.id) {
     case 'baseUrl':
       return form.baseUrl.trim().length === 0
+    case 'timeZone':
+      return form.timeZone.trim().length === 0
     case 'username':
       return form.username.trim().length === 0
     case 'password':
@@ -407,6 +440,7 @@ function applyRecord(record: OmsRestSourceConfigRecord): void {
   form.omsRestSourceConfigId = record.omsRestSourceConfigId
   form.description = record.description ?? ''
   form.baseUrl = record.baseUrl ?? ''
+  form.timeZone = normalizeTimezoneId(record.timeZone) || 'UTC'
   form.authType = record.authType ?? 'NONE'
   form.username = ''
   form.password = ''
@@ -509,6 +543,7 @@ async function save(): Promise<void> {
         : deriveConfigIdFromName(form.description, 'oms_source'),
       description: form.description.trim(),
       baseUrl: form.baseUrl.trim(),
+      timeZone: normalizeTimezoneId(form.timeZone) || 'UTC',
       authType: form.authType,
       username: isBasicAuth.value ? form.username.trim() : '',
       password: isBasicAuth.value ? form.password.trim() : '',

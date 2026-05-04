@@ -38,6 +38,10 @@
             <span>{{ config.baseUrl }}</span>
           </article>
           <article class="static-page-summary-card">
+            <span class="static-page-summary-label">Timezone</span>
+            <span>{{ timeZone }}</span>
+          </article>
+          <article class="static-page-summary-card">
             <span class="static-page-summary-label">Active</span>
             <span>{{ activeLabel }}</span>
           </article>
@@ -140,6 +144,7 @@ const heroTitle = computed(() => (
     ? resolveRecordLabel({ description: config.value.description, fallbackId: config.value.omsRestSourceConfigId })
     : 'HotWax'
 ))
+const timeZone = computed(() => config.value?.timeZone?.trim() || 'UTC')
 const activeLabel = computed(() => (config.value?.isActive === 'N' ? 'No' : 'Yes'))
 const availableEndpoints = computed(() => (
   config.value?.canReadOrders === false ? [] : [ordersEndpoint]

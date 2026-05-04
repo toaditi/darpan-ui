@@ -50,6 +50,16 @@ vi.mock('../../../lib/auth', () => ({
 
 import OmsRestSourceWorkflowPage from '../OmsRestSourceWorkflowPage.vue'
 
+async function chooseAppSelectOption(
+  wrapper: ReturnType<typeof mount>,
+  testId: string,
+  value: string,
+): Promise<void> {
+  await wrapper.get(`[data-testid="${testId}"]`).trigger('click')
+  await wrapper.get('[data-testid="app-select-search"]').setValue(value)
+  await wrapper.get(`[data-testid="app-select-option"][data-option-value="${value}"]`).trigger('click')
+}
+
 describe('OmsRestSourceWorkflowPage', () => {
   beforeEach(() => {
     route.params = {}
@@ -87,6 +97,7 @@ describe('OmsRestSourceWorkflowPage', () => {
           customHeaderNames: [],
           connectTimeoutSeconds: 10,
           readTimeoutSeconds: 20,
+          timeZone: 'America/Chicago',
           isActive: 'Y',
         },
       ],
@@ -126,6 +137,7 @@ describe('OmsRestSourceWorkflowPage', () => {
           customHeaderNames: [],
           connectTimeoutSeconds: 10,
           readTimeoutSeconds: 20,
+          timeZone: 'America/Chicago',
           isActive: 'Y',
         },
       ],
@@ -159,6 +171,8 @@ describe('OmsRestSourceWorkflowPage', () => {
 
     await wrapper.get('input[name="baseUrl"]').setValue('https://oms.example.com')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await chooseAppSelectOption(wrapper, 'oms-create-timezone-select', 'America/Chicago')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await wrapper.get('[data-testid="oms-auth-type-choice-API_KEY"]').trigger('click')
     await wrapper.get('input[name="apiToken"]').setValue('oms-api-key')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
@@ -171,6 +185,7 @@ describe('OmsRestSourceWorkflowPage', () => {
       omsRestSourceConfigId: 'krewe_hotwax',
       description: 'Krewe HotWax',
       baseUrl: 'https://oms.example.com',
+      timeZone: 'America/Chicago',
       authType: 'API_KEY',
       username: '',
       password: '',
@@ -189,6 +204,9 @@ describe('OmsRestSourceWorkflowPage', () => {
     await flushPromises()
 
     await wrapper.get('input[name="baseUrl"]').setValue('https://oms.example.com')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    expect(wrapper.get('[data-testid="oms-create-timezone-select"]').text()).toContain('UTC')
+    expect(wrapper.text()).toContain('Which timezone should Darpan use for HotWax date windows?')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
 
     const authChoiceCards = wrapper.findAll('.workflow-shortcut-choice-card')
@@ -242,6 +260,7 @@ describe('OmsRestSourceWorkflowPage', () => {
           customHeaderNames: ['X-Tenant'],
           connectTimeoutSeconds: 10,
           readTimeoutSeconds: 20,
+          timeZone: 'America/Chicago',
           isActive: 'Y',
           canReadOrders: true,
         },
@@ -256,6 +275,8 @@ describe('OmsRestSourceWorkflowPage', () => {
     expect(wrapper.get('input[name="username"]').element).toHaveProperty('value', '')
     expect(wrapper.get('input[name="password"]').element).toHaveProperty('value', '')
     expect(wrapper.get('input[name="password"]').attributes('autocomplete')).toBe('off')
+    expect(wrapper.find('.workflow-form-grid--hotwax-auth').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="oms-timezone-select"]').text()).toContain('America/Chicago')
     const ordersEndpointCheckbox = wrapper.get('[data-testid="oms-endpoint-orders-list"]')
     expect(ordersEndpointCheckbox.attributes('name')).toBe('canReadOrders')
     expect((ordersEndpointCheckbox.element as HTMLInputElement).checked).toBe(true)
@@ -332,6 +353,7 @@ describe('OmsRestSourceWorkflowPage', () => {
           customHeaderNames: [],
           connectTimeoutSeconds: 10,
           readTimeoutSeconds: 20,
+          timeZone: 'America/Chicago',
           isActive: 'Y',
         },
       ],
@@ -350,6 +372,7 @@ describe('OmsRestSourceWorkflowPage', () => {
         authType: 'NONE',
         connectTimeoutSeconds: 10,
         readTimeoutSeconds: 20,
+        timeZone: 'America/Chicago',
         isActive: 'Y',
       },
     })
@@ -364,6 +387,7 @@ describe('OmsRestSourceWorkflowPage', () => {
       omsRestSourceConfigId: 'dev_oms',
       description: 'Dev HotWax',
       baseUrl: 'https://oms.example.com',
+      timeZone: 'America/Chicago',
       authType: 'NONE',
       username: '',
       password: '',
@@ -449,6 +473,7 @@ describe('OmsRestSourceWorkflowPage', () => {
     await flushPromises()
 
     await wrapper.get('input[name="baseUrl"]').setValue('https://oms.example.com')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await wrapper.get('[data-testid="oms-auth-type-choice-NONE"]').trigger('click')
     await wrapper.get('input[name="description"]').setValue('Long HotWax Source Name')

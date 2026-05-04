@@ -1100,6 +1100,15 @@ button:disabled {
   align-items: start;
 }
 
+.workflow-form-grid--hotwax-auth {
+  grid-template-columns: minmax(18rem, 1.45fr) minmax(18rem, 1fr) max-content;
+  column-gap: 1.8rem;
+}
+
+.workflow-form-grid--hotwax-auth .wizard-input-shell {
+  min-width: 0;
+}
+
 .workflow-choice-grid {
   width: 100%;
   display: flex;
