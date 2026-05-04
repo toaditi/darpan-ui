@@ -39,18 +39,44 @@ VITE_DARPAN_AUTH_BYPASS=false
 
 ## Firebase Hosting Deployment
 
-Firebase-hosted builds should use the checked-in `.env.firebase` target and the dedicated build command:
+Firebase uses the `darpan` project alias for project `darpan-fa2aa`.
+
+UAT deploys use target `hosting:uat`, site `hc-darpan-uat`, and the checked-in `.env.firebase` backend mapping:
 
 ```bash
-npm run build:firebase
-firebase deploy --only hosting:dev
+firebase use darpan
+firebase deploy --only hosting:uat
+```
+
+UAT environment:
+
+```bash
+VITE_DARPAN_API_BASE_URL=https://darpan-uat.hotwax.io
+VITE_DARPAN_RPC_URL=https://darpan-uat.hotwax.io/rpc/json
+```
+
+Production deploys use target `hosting:prod`, site `hc-darpan`, and an ignored `.env.production` file copied from `.env.example`:
+
+```bash
+cp .env.example .env.production
+firebase use darpan
+firebase deploy --only hosting:prod
+```
+
+Production environment:
+
+```bash
+VITE_DARPAN_API_BASE_URL=https://darpan.hotwax.io
+VITE_DARPAN_RPC_URL=https://darpan.hotwax.io/rpc/json
 ```
 
 Notes:
 
 - `.env.example` is a template only. Vite does not load it.
-- `.env.firebase` overrides local `.env` values during `npm run build:firebase`.
-- `firebase deploy --only hosting:dev` now runs `npm run build:firebase` automatically through `firebase.json`.
+- `.env.firebase` overrides local `.env` values during `npm run build:firebase` for UAT.
+- `.env.production` is intentionally ignored and must not be committed.
+- `firebase deploy --only hosting:uat` runs `npm run build:firebase` automatically through `firebase.json`.
+- `firebase deploy --only hosting:prod` runs `npm run build` automatically through `firebase.json`.
 
 ## GitHub Pages Deployment
 
