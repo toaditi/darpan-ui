@@ -405,13 +405,11 @@ import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import type { LlmSettings, TenantNotificationSettings, TenantSettings } from '../../lib/api/types'
 import { saveTenantSettings, useAuthState, useUiPermissions } from '../../lib/auth'
+import { buildTimezoneOptions } from '../../lib/timezones'
 
 type LlmProvider = 'OPENAI' | 'GEMINI'
 type AiWorkflowMode = 'create' | 'edit'
 type NotificationWorkflowChoice = 'configure' | 'edit' | 'disable' | 'enable'
-type SupportedIntl = typeof Intl & {
-  supportedValuesOf?: (key: 'timeZone') => string[]
-}
 
 interface ProviderProfile extends LlmSettings {
   activeProvider: LlmProvider
@@ -464,14 +462,6 @@ const yesNoOptions: WorkflowSelectOption[] & AppSelectOption[] = [
   { value: 'Y', label: 'Yes' },
   { value: 'N', label: 'No' },
 ]
-const preservedTimezoneIds = [
-  'UTC',
-  'America/Los_Angeles',
-  'US/Central',
-  'America/Chicago',
-  'America/New_York',
-  'Asia/Kolkata',
-] as const
 const createSteps: CreateStep[] = [
   { id: 'llmProvider', title: 'Which AI provider should Darpan configure?', kind: 'select' },
   { id: 'llmEnabled', title: 'Should this provider be enabled?', kind: 'select' },
@@ -682,43 +672,6 @@ function normalizeProvider(rawProvider: unknown): LlmProvider | null {
   const normalized = normalizeTextValue(rawProvider).toUpperCase()
   if (normalized === 'OPENAI' || normalized === 'GEMINI') return normalized
   return null
-}
-
-function buildTimezoneOptions(selectedTimeZone: string): AppSelectOption[] {
-  const timezoneIds = new Set<string>([...preservedTimezoneIds, ...resolveSupportedTimeZones()])
-  const normalizedSelectedTimezone = selectedTimeZone.trim()
-  if (normalizedSelectedTimezone) timezoneIds.add(normalizedSelectedTimezone)
-
-  return [...timezoneIds]
-    .sort((first, second) => first.localeCompare(second))
-    .map((timezoneId) => ({ value: timezoneId, label: timezoneId }))
-}
-
-function resolveSupportedTimeZones(): string[] {
-  const supportedValuesOf = (Intl as SupportedIntl).supportedValuesOf
-  try {
-    return typeof supportedValuesOf === 'function' ? supportedValuesOf('timeZone') : fallbackTimezoneIds()
-  } catch {
-    return fallbackTimezoneIds()
-  }
-}
-
-function fallbackTimezoneIds(): string[] {
-  return [
-    'Africa/Cairo',
-    'America/Chicago',
-    'America/Los_Angeles',
-    'America/New_York',
-    'America/Sao_Paulo',
-    'Asia/Dubai',
-    'Asia/Kolkata',
-    'Asia/Singapore',
-    'Asia/Tokyo',
-    'Australia/Sydney',
-    'Europe/London',
-    'Europe/Paris',
-    'UTC',
-  ]
 }
 
 function buildProfile(llmProvider: LlmProvider, settings?: LlmSettings | null): ProviderProfile {

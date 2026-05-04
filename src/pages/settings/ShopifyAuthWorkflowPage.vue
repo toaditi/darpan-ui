@@ -62,13 +62,13 @@
           />
         </label>
 
-        <div class="workflow-form-grid workflow-form-grid--compact">
+        <div class="workflow-form-grid workflow-form-grid--compact workflow-form-grid--shopify-compact">
           <label class="wizard-input-shell">
             <span class="workflow-context-label">API Version</span>
             <input
               name="apiVersion"
               v-model="form.apiVersion"
-              class="wizard-answer-control"
+              class="wizard-answer-control shopify-inline-control"
               type="text"
               placeholder="2026-01"
             />
@@ -76,12 +76,13 @@
 
           <label class="wizard-input-shell">
             <span class="workflow-context-label">Timezone</span>
-            <input
-              name="timeZone"
+            <AppSelect
               v-model="form.timeZone"
-              class="wizard-answer-control"
-              type="text"
-              placeholder="America/Chicago"
+              :options="timezoneOptions"
+              :disabled="!canEditTenantSettings || loading"
+              searchable
+              search-placeholder="Search timezones"
+              test-id="shopify-timezone-select"
             />
           </label>
 
@@ -156,12 +157,14 @@
         </label>
 
         <label v-else-if="currentCreateStep.id === 'timeZone'" class="wizard-input-shell">
-          <input
-            name="timeZone"
+          <AppSelect
             v-model="form.timeZone"
-            :class="['wizard-answer-control', { empty: !form.timeZone.trim() }]"
-            type="text"
-            placeholder="America/Chicago"
+            :options="timezoneOptions"
+            :disabled="!canEditTenantSettings || loading"
+            placeholder="Select timezone"
+            searchable
+            search-placeholder="Search timezones"
+            test-id="shopify-create-timezone-select"
           />
         </label>
 
@@ -193,6 +196,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.vue'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -200,6 +204,7 @@ import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import type { ShopifyAuthConfigRecord } from '../../lib/api/types'
 import { useUiPermissions } from '../../lib/auth'
+import { buildTimezoneOptions, normalizeTimezoneId } from '../../lib/timezones'
 import { CONFIG_ID_MAX_LENGTH, deriveConfigIdFromName, exceedsConfigIdMaxLength } from './configId'
 
 type ShopifyCreateStepId =
@@ -298,6 +303,8 @@ const primaryActionVariant = computed<'default' | 'save'>(() => (
     : 'default'
 ))
 const showBack = computed(() => !isEditing.value && currentStepIndex.value > 0)
+const selectedTimeZone = computed(() => normalizeTimezoneId(form.timeZone) || 'UTC')
+const timezoneOptions = computed<AppSelectOption[]>(() => buildTimezoneOptions(selectedTimeZone.value))
 const submitDisabled = computed(() => {
   if (!canEditTenantSettings.value) return true
   if (loading.value) return true
@@ -332,7 +339,7 @@ function applyRecord(record: ShopifyAuthConfigRecord): void {
   form.description = record.description ?? ''
   form.shopApiUrl = record.shopApiUrl ?? ''
   form.apiVersion = record.apiVersion ?? '2026-01'
-  form.timeZone = record.timeZone ?? 'UTC'
+  form.timeZone = normalizeTimezoneId(record.timeZone) || 'UTC'
   form.accessToken = ''
   form.isActive = record.isActive ?? 'Y'
   form.canReadOrders = record.canReadOrders !== false
@@ -421,7 +428,7 @@ async function save(): Promise<void> {
       description: form.description.trim(),
       shopApiUrl: form.shopApiUrl.trim(),
       apiVersion: form.apiVersion.trim(),
-      timeZone: form.timeZone.trim(),
+      timeZone: normalizeTimezoneId(form.timeZone),
       accessToken: form.accessToken.trim(),
       isActive: form.isActive,
       canReadOrders: form.canReadOrders,

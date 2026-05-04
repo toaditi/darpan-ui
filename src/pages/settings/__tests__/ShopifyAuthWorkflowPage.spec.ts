@@ -50,6 +50,16 @@ vi.mock('../../../lib/auth', () => ({
 
 import ShopifyAuthWorkflowPage from '../ShopifyAuthWorkflowPage.vue'
 
+async function chooseAppSelectOption(
+  wrapper: ReturnType<typeof mount>,
+  testId: string,
+  value: string,
+): Promise<void> {
+  await wrapper.get(`[data-testid="${testId}"]`).trigger('click')
+  await wrapper.get('[data-testid="app-select-search"]').setValue(value)
+  await wrapper.get(`[data-testid="app-select-option"][data-option-value="${value}"]`).trigger('click')
+}
+
 describe('ShopifyAuthWorkflowPage', () => {
   beforeEach(() => {
     route.params = {}
@@ -149,7 +159,7 @@ describe('ShopifyAuthWorkflowPage', () => {
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await wrapper.get('input[name="apiVersion"]').setValue('2026-01')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
-    await wrapper.get('input[name="timeZone"]').setValue('America/Chicago')
+    await chooseAppSelectOption(wrapper, 'shopify-create-timezone-select', 'America/Chicago')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await wrapper.get('input[name="accessToken"]').setValue('shpat_secret')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
@@ -200,7 +210,10 @@ describe('ShopifyAuthWorkflowPage', () => {
 
     expect(getShopifyAuthConfig).toHaveBeenCalledWith({ shopifyAuthConfigId: 'krewe-shopify' })
     expect(wrapper.get('input[name="shopifyAuthConfigId"]').element).toHaveProperty('value', 'krewe-shopify')
-    expect(wrapper.get('input[name="timeZone"]').element).toHaveProperty('value', 'America/Chicago')
+    expect(wrapper.get('[data-testid="shopify-timezone-select"]').text()).toContain('America/Chicago')
+    expect(wrapper.find('input[name="timeZone"]').exists()).toBe(false)
+    expect(wrapper.find('.workflow-form-grid--shopify-compact').exists()).toBe(true)
+    expect(wrapper.get('input[name="apiVersion"]').classes()).toContain('shopify-inline-control')
     expect(wrapper.get('input[name="accessToken"]').element).toHaveProperty('value', '')
     expect(wrapper.get('input[name="accessToken"]').attributes('autocomplete')).toBe('off')
     const orderEndpointCheckbox = wrapper.get('[data-testid="shopify-endpoint-SHOPIFY_ORDERS"]')
@@ -271,6 +284,57 @@ describe('ShopifyAuthWorkflowPage', () => {
     })
   })
 
+  it('normalizes legacy PST timezone values before saving an edit', async () => {
+    route.params = { shopifyAuthConfigId: 'gorjana_uat' }
+    route.name = 'settings-shopify-edit'
+    route.fullPath = '/settings/shopify/edit/gorjana_uat'
+    getShopifyAuthConfig.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      shopifyAuthConfig: {
+        shopifyAuthConfigId: 'gorjana_uat',
+        description: 'Gorjana UAT',
+        companyUserGroupId: 'GORJANA',
+        shopApiUrl: 'https://gorjana-sandbox.myshopify.com',
+        apiVersion: '2024-10',
+        timeZone: 'PST',
+        isActive: 'Y',
+        canReadOrders: true,
+        hasAccessToken: true,
+      },
+    })
+    saveShopifyAuthConfig.mockResolvedValue({
+      ok: true,
+      messages: ['Saved Shopify auth config.'],
+      errors: [],
+      savedShopifyAuthConfig: {
+        shopifyAuthConfigId: 'gorjana_uat',
+        description: 'Gorjana UAT',
+        companyUserGroupId: 'GORJANA',
+        shopApiUrl: 'https://gorjana-sandbox.myshopify.com',
+        apiVersion: '2024-10',
+        timeZone: 'America/Los_Angeles',
+        isActive: 'Y',
+        canReadOrders: true,
+        hasAccessToken: true,
+      },
+    })
+
+    const wrapper = mount(ShopifyAuthWorkflowPage)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="shopify-timezone-select"]').text()).toContain('America/Los_Angeles')
+
+    await wrapper.get('[data-testid="save-shopify-auth"]').trigger('click')
+    await flushPromises()
+
+    expect(saveShopifyAuthConfig).toHaveBeenCalledWith(expect.objectContaining({
+      shopifyAuthConfigId: 'gorjana_uat',
+      timeZone: 'America/Los_Angeles',
+    }))
+  })
+
   it('saves disabled Shopify endpoint availability from the edit workflow', async () => {
     route.params = { shopifyAuthConfigId: 'dev_shopify' }
     route.name = 'settings-shopify-edit'
@@ -335,7 +399,7 @@ describe('ShopifyAuthWorkflowPage', () => {
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await wrapper.get('input[name="apiVersion"]').setValue('2026-01')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
-    await wrapper.get('input[name="timeZone"]').setValue('America/Chicago')
+    await chooseAppSelectOption(wrapper, 'shopify-create-timezone-select', 'America/Chicago')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')
     await wrapper.get('input[name="accessToken"]').setValue('shpat_secret')
     await wrapper.get('[data-testid="wizard-next"]').trigger('click')

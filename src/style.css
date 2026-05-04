@@ -1109,6 +1109,45 @@ button:disabled {
   min-width: 0;
 }
 
+.workflow-form-grid--shopify-compact {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) max-content;
+  align-items: start;
+  column-gap: 1.8rem;
+}
+
+.workflow-form-grid--shopify-compact .wizard-input-shell {
+  min-width: 0;
+  grid-template-rows: auto 2.2rem;
+  align-items: end;
+}
+
+.workflow-form-grid--shopify-compact .workflow-context-label {
+  align-self: start;
+}
+
+.workflow-form-grid--shopify-compact .app-select-trigger {
+  min-height: 2.2rem;
+  padding: 0.38rem 0.65rem;
+  font-size: var(--workflow-form-answer-size);
+  line-height: 1.2;
+}
+
+.workflow-form-grid--shopify-compact .wizard-input-shell .wizard-answer-control.shopify-inline-control {
+  min-height: 2.2rem;
+  padding: 0.38rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--workflow-form-answer-size);
+  line-height: 1.2;
+}
+
+.workflow-form-grid--shopify-compact .wizard-answer-control,
+.workflow-form-grid--shopify-compact .app-select,
+.workflow-form-grid--shopify-compact .app-table__checkbox {
+  align-self: end;
+}
+
 .workflow-choice-grid {
   width: 100%;
   display: flex;
