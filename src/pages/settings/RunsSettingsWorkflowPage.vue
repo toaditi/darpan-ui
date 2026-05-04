@@ -180,6 +180,7 @@ import {
   readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
 } from '../../lib/reconciliationRuleSetDraft'
+import { darpanSystemIdsMatch } from '../../lib/utils/darpanSystems'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { resolveSchemaLabel } from '../../lib/utils/schemaLabel'
 import { readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
@@ -264,7 +265,7 @@ const validationMessage = computed(() => {
   const source2Validation = validateSource('source2')
   if (source2Validation) return source2Validation
   if (!sourceSystemEnumId('source1') || !sourceSystemEnumId('source2')) return 'Both sources need an assigned reconciliation system.'
-  if (sourceSystemEnumId('source1') === sourceSystemEnumId('source2')) return 'Source 2 must use a different system than source 1.'
+  if (darpanSystemIdsMatch(sourceSystemEnumId('source1'), sourceSystemEnumId('source2'))) return 'Source 2 must use a different system than source 1.'
   return null
 })
 const submitDisabled = computed(() => !canEditTenantSettings.value || loading.value || !!validationMessage.value)
@@ -305,7 +306,7 @@ function sourceSystemEnumId(sourceKey: SourceKey): string {
 }
 
 function endpointMatchesSystem(endpointSystemEnumId: string | undefined, selectedSystemEnumId: string): boolean {
-  return Boolean(endpointSystemEnumId?.trim() && selectedSystemEnumId.trim() && endpointSystemEnumId.trim() === selectedSystemEnumId.trim())
+  return darpanSystemIdsMatch(endpointSystemEnumId, selectedSystemEnumId)
 }
 
 function sourceConfigMatches(candidate: string | undefined, selected: string): boolean {

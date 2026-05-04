@@ -98,6 +98,11 @@ import {
   readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
 } from '../../lib/reconciliationRuleSetDraft'
+import {
+  canonicalDarpanSystemEnumId,
+  darpanSystemIdsMatch,
+  deduplicateDarpanSystemOptions,
+} from '../../lib/utils/darpanSystems'
 import { resolveSchemaLabel } from '../../lib/utils/schemaLabel'
 import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
@@ -775,7 +780,7 @@ function formatSchemaLabel(schema: JsonSchemaSummary): string {
 
 function buildSchemaOptions(systemEnumId: string): WorkflowSelectOption[] {
   return jsonSchemas.value
-    .filter((schema) => !systemEnumId || schema.systemEnumId === systemEnumId)
+    .filter((schema) => !systemEnumId || darpanSystemIdsMatch(schema.systemEnumId, systemEnumId))
     .map((schema) => ({
       value: schema.jsonSchemaId,
       label: formatSchemaLabel(schema),
@@ -806,7 +811,7 @@ function selectedSystemEnumId(side: SourceSide): string {
 }
 
 function endpointMatchesSystem(endpointSystemEnumId: string | undefined, selectedSystemEnumIdValue: string): boolean {
-  return Boolean(endpointSystemEnumId?.trim() && selectedSystemEnumIdValue.trim() && endpointSystemEnumId.trim() === selectedSystemEnumIdValue.trim())
+  return darpanSystemIdsMatch(endpointSystemEnumId, selectedSystemEnumIdValue)
 }
 
 function selectedSourceConfigId(side: SourceSide): string {
@@ -998,7 +1003,7 @@ function selectedRemoteOptionForSide(side: SourceSide): AutomationSystemRemoteOp
 }
 
 function expectedSourceConfigType(systemEnumId: string): string {
-  switch (systemEnumId) {
+  switch (canonicalDarpanSystemEnumId(systemEnumId)) {
     case 'SHOPIFY':
       return SOURCE_CONFIG_TYPE_SHOPIFY_AUTH
     case 'OMS':
@@ -1156,7 +1161,7 @@ async function loadOptions(): Promise<void> {
       reconciliationFacade.listAutomationSourceOptions(),
     ])
 
-    systemOptions.value = (automationSourceOptionsResponse.systems ?? []).map((option) => ({
+    systemOptions.value = deduplicateDarpanSystemOptions(automationSourceOptionsResponse.systems ?? []).map((option) => ({
       value: option.enumId,
       label: option.label || option.enumId,
     }))

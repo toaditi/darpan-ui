@@ -439,6 +439,7 @@ import {
   type ReconciliationAutomationSourceDraft,
   type ReconciliationAutomationStepId,
 } from '../../lib/reconciliationAutomationDraft'
+import { darpanSystemIdsMatch } from '../../lib/utils/darpanSystems'
 import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
 interface WizardStep {
@@ -1043,7 +1044,7 @@ function systemLabelForCurrentApiStep(): string {
 }
 
 function optionMatchesSystem(optionSystemEnumId: string | undefined, expectedSystemEnumId: string): boolean {
-  return Boolean(expectedSystemEnumId && optionSystemEnumId && optionSystemEnumId === expectedSystemEnumId)
+  return darpanSystemIdsMatch(optionSystemEnumId, expectedSystemEnumId)
 }
 
 function apiSourceOptionsForSide(side: ReconciliationAutomationFileSide): ApiSourceSelectOption[] {
