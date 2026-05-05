@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import {
@@ -8,7 +9,14 @@ import { buildWorkflowOriginState } from '../../../lib/workflowOrigin'
 
 const getJsonSchema = vi.hoisted(() => vi.fn())
 const deleteSavedRun = vi.hoisted(() => vi.fn())
+const listOmsRestSourceConfigs = vi.hoisted(() => vi.fn())
+const getShopifyAuthConfig = vi.hoisted(() => vi.fn())
 const routerPush = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  sessionInfo: {
+    activeTenantUserGroupId: 'tenant-a',
+  },
+}))
 const permissionState = vi.hoisted(() => ({
   canRunActiveTenantReconciliation: true,
   canEditTenantSettings: true,
@@ -38,9 +46,14 @@ vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
     deleteSavedRun,
   },
+  settingsFacade: {
+    listOmsRestSourceConfigs,
+    getShopifyAuthConfig,
+  },
 }))
 
 vi.mock('../../../lib/auth', () => ({
+  useAuthState: () => authState,
   useUiPermissions: () => permissionState,
 }))
 
@@ -133,11 +146,14 @@ describe('ReconciliationRuleSetManagerPage', () => {
   beforeEach(() => {
     getJsonSchema.mockReset()
     deleteSavedRun.mockReset()
+    listOmsRestSourceConfigs.mockReset()
+    getShopifyAuthConfig.mockReset()
     routerPush.mockReset()
     permissionState.canRunActiveTenantReconciliation = true
     permissionState.canEditTenantSettings = true
     permissionState.canManageGlobalSettings = false
     permissionState.canViewTenantSettings = true
+    authState.sessionInfo.activeTenantUserGroupId = 'tenant-a'
     window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     getJsonSchema.mockImplementation(async ({ jsonSchemaId, schemaName }: { jsonSchemaId?: string, schemaName?: string }) => {
@@ -202,6 +218,53 @@ describe('ReconciliationRuleSetManagerPage', () => {
           schemaText: '{}',
         },
       }
+    })
+
+    listOmsRestSourceConfigs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      pagination: {
+        pageIndex: 0,
+        pageSize: 200,
+        totalCount: 1,
+        pageCount: 1,
+      },
+      omsRestSourceConfigs: [
+        {
+          omsRestSourceConfigId: 'dev_oms',
+          description: 'Test OMS',
+          companyUserGroupId: 'tenant-a',
+          baseUrl: 'https://test-maarg.hotwax.io',
+          ordersPath: '/rest/s1/oms/orders',
+          timeZone: 'America/New_York',
+          authType: 'basic',
+          hasUsername: true,
+          hasPassword: true,
+          hasApiToken: false,
+          customHeaderNames: ['X-API-Key'],
+          connectTimeoutSeconds: 30,
+          readTimeoutSeconds: 120,
+          isActive: 'Y',
+          canReadOrders: true,
+        },
+      ],
+    })
+    getShopifyAuthConfig.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      shopifyAuthConfig: {
+        shopifyAuthConfigId: 'dev_shopify',
+        description: 'Dev Shopify',
+        companyUserGroupId: 'tenant-a',
+        shopApiUrl: 'https://test.myshopify.com',
+        apiVersion: '2026-01',
+        timeZone: 'America/New_York',
+        isActive: 'Y',
+        canReadOrders: true,
+        hasAccessToken: true,
+      },
     })
 
   })
@@ -270,8 +333,8 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(schemaRows[1]?.text()).not.toContain('OMS orders')
     const basicCards = wrapper.findAll('.ruleset-manager-basic-card')
     expect(basicCards).toHaveLength(6)
-    expect(wrapper.find('[data-testid="ruleset-manager-system-link-file1"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="ruleset-manager-system-link-file2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ruleset-manager-system-config-file1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ruleset-manager-system-config-file2"]').exists()).toBe(false)
     expect(basicCards[0]?.text()).toContain('System')
     expect(basicCards[0]?.text()).toContain('OMS')
     expect(basicCards[1]?.text()).toContain('Schema')
@@ -357,12 +420,56 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(schemaRows[1]?.text()).not.toContain('CSV source')
     expect(schemaRows[1]?.text()).not.toContain('Shopify orders')
 
-    const file1SystemLink = wrapper.get('[data-testid="ruleset-manager-system-link-file1"]')
-    const file2SystemLink = wrapper.get('[data-testid="ruleset-manager-system-link-file2"]')
-    expect(file1SystemLink.classes()).toContain('ruleset-manager-basic-card')
-    expect(file1SystemLink.classes()).toContain('ruleset-manager-basic-card--link')
-    expect(file1SystemLink.attributes('aria-label')).toBe('Open system config for source 1')
-    expect(JSON.parse(file1SystemLink.attributes('data-to') ?? '{}')).toEqual({
+    const file1SystemConfig = wrapper.get('[data-testid="ruleset-manager-system-config-file1"]')
+    const file2SystemConfig = wrapper.get('[data-testid="ruleset-manager-system-config-file2"]')
+    expect(file1SystemConfig.element.tagName).toBe('BUTTON')
+    expect(file1SystemConfig.classes()).toContain('ruleset-manager-basic-card')
+    expect(file1SystemConfig.classes()).toContain('ruleset-manager-basic-card--button')
+    expect(file1SystemConfig.attributes('aria-label')).toBe('View auth info for source 1')
+    expect(file2SystemConfig.element.tagName).toBe('BUTTON')
+    expect(file2SystemConfig.classes()).toContain('ruleset-manager-basic-card')
+    expect(file2SystemConfig.classes()).toContain('ruleset-manager-basic-card--button')
+    expect(file2SystemConfig.attributes('aria-label')).toBe('View auth info for source 2')
+
+    await file1SystemConfig.trigger('click')
+    await flushPromises()
+
+    expect(listOmsRestSourceConfigs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 })
+    expect(routerPush).not.toHaveBeenCalled()
+    let dialog = wrapper.get('[data-testid="ruleset-manager-auth-popup"]')
+    expect(dialog.attributes('role')).toBe('dialog')
+    expect(wrapper.get('.static-page-frame').classes()).toContain('static-page-frame--popup-open')
+    expect(dialog.text()).toContain('Test OMS')
+    expect(dialog.text()).toContain('Config ID')
+    expect(dialog.text()).toContain('dev_oms')
+    expect(dialog.text()).toContain('Base URL')
+    expect(dialog.text()).toContain('https://test-maarg.hotwax.io')
+    expect(dialog.text()).toContain('Auth Type')
+    expect(dialog.text()).toContain('Basic')
+    expect(dialog.text()).not.toContain('Username')
+    expect(dialog.text()).not.toContain('Password')
+    expect(dialog.text()).not.toContain('API Token')
+    expect(dialog.text()).not.toContain('Custom Headers')
+    expect(dialog.text()).not.toContain('Active')
+    expect(dialog.text()).not.toContain('Timeouts')
+    expect(dialog.text()).not.toContain('Not configured')
+    expect(dialog.text()).not.toContain('None')
+    expect(dialog.text()).not.toContain('30s')
+    expect(dialog.text()).not.toContain('120s')
+    expect(dialog.text()).toContain('Orders API')
+    expect(dialog.text()).toContain('GET /rest/s1/oms/orders')
+    expect(dialog.text()).not.toContain('OrderHeader.default[]')
+    const authPopupHeadings = dialog.findAll('.ruleset-manager-auth-popup-heading')
+    const source = readFileSync('src/pages/reconciliation/ReconciliationRuleSetManagerPage.vue', 'utf8')
+    expect(authPopupHeadings).toHaveLength(2)
+    expect(authPopupHeadings[0]?.text()).toBe('Test OMS')
+    expect(authPopupHeadings[1]?.text()).toBe('Endpoints')
+    expect(source).toContain('--ruleset-manager-auth-popup-gap: 0.7rem;')
+    expect(source).toContain('gap: var(--ruleset-manager-auth-popup-gap);')
+    expect(dialog.find('form').exists()).toBe(false)
+    expect(dialog.find('input').exists()).toBe(false)
+    expect(dialog.find('[data-testid="oms-auth-edit-action"]').exists()).toBe(false)
+    expect(JSON.parse(wrapper.get('[data-testid="ruleset-manager-auth-popup-dashboard"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'settings-oms-auth',
       params: { omsRestSourceConfigId: 'dev_oms' },
       state: {
@@ -370,10 +477,27 @@ describe('ReconciliationRuleSetManagerPage', () => {
         workflowOriginPath: '/reconciliation/ruleset-manager',
       },
     })
-    expect(file2SystemLink.classes()).toContain('ruleset-manager-basic-card')
-    expect(file2SystemLink.classes()).toContain('ruleset-manager-basic-card--link')
-    expect(file2SystemLink.attributes('aria-label')).toBe('Open system config for source 2')
-    expect(JSON.parse(file2SystemLink.attributes('data-to') ?? '{}')).toEqual({
+
+    await file2SystemConfig.trigger('click')
+    await flushPromises()
+
+    expect(getShopifyAuthConfig).toHaveBeenCalledWith({ shopifyAuthConfigId: 'dev_shopify' })
+    expect(routerPush).not.toHaveBeenCalled()
+    dialog = wrapper.get('[data-testid="ruleset-manager-auth-popup"]')
+    expect(dialog.text()).toContain('Dev Shopify')
+    expect(dialog.text()).toContain('Config ID')
+    expect(dialog.text()).toContain('dev_shopify')
+    expect(dialog.text()).toContain('Shop/API URL')
+    expect(dialog.text()).toContain('https://test.myshopify.com')
+    expect(dialog.text()).not.toContain('Access Token')
+    expect(dialog.text()).not.toContain('Active')
+    expect(dialog.text()).toContain('Admin GraphQL Orders')
+    expect(dialog.text()).toContain('POST /admin/api/2026-01/graphql.json')
+    expect(dialog.text()).not.toContain('OrderConnection')
+    expect(dialog.find('form').exists()).toBe(false)
+    expect(dialog.find('input').exists()).toBe(false)
+    expect(dialog.find('[data-testid="shopify-auth-edit-action"]').exists()).toBe(false)
+    expect(JSON.parse(wrapper.get('[data-testid="ruleset-manager-auth-popup-dashboard"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'settings-shopify-auth',
       params: { shopifyAuthConfigId: 'dev_shopify' },
       state: {

@@ -1,5 +1,5 @@
 <template>
-  <StaticPageFrame>
+  <StaticPageFrame :class="{ 'static-page-frame--popup-open': isAuthInfoPopupOpen }">
     <template #hero>
       <div class="ruleset-manager-hero">
         <h1>{{ heroTitle }}</h1>
@@ -32,16 +32,17 @@
 
       <div class="ruleset-manager-basics-grid">
         <div class="ruleset-manager-schema-row" data-testid="ruleset-manager-schema-row-file1">
-          <RouterLink
-            v-if="file1SystemRoute"
-            class="ruleset-manager-basic-card ruleset-manager-basic-card--link"
-            data-testid="ruleset-manager-system-link-file1"
-            aria-label="Open system config for source 1"
-            :to="file1SystemRoute"
+          <button
+            v-if="file1SystemConfig"
+            type="button"
+            class="ruleset-manager-basic-card ruleset-manager-basic-card--button"
+            data-testid="ruleset-manager-system-config-file1"
+            aria-label="View auth info for source 1"
+            @click="openAuthInfoPopupForSide('file1')"
           >
             <span class="static-page-summary-label">System</span>
             <strong>{{ file1Title }}</strong>
-          </RouterLink>
+          </button>
           <article v-else class="ruleset-manager-basic-card">
             <span class="static-page-summary-label">System</span>
             <strong>{{ file1Title }}</strong>
@@ -57,16 +58,17 @@
         </div>
 
         <div class="ruleset-manager-schema-row" data-testid="ruleset-manager-schema-row-file2">
-          <RouterLink
-            v-if="file2SystemRoute"
-            class="ruleset-manager-basic-card ruleset-manager-basic-card--link"
-            data-testid="ruleset-manager-system-link-file2"
-            aria-label="Open system config for source 2"
-            :to="file2SystemRoute"
+          <button
+            v-if="file2SystemConfig"
+            type="button"
+            class="ruleset-manager-basic-card ruleset-manager-basic-card--button"
+            data-testid="ruleset-manager-system-config-file2"
+            aria-label="View auth info for source 2"
+            @click="openAuthInfoPopupForSide('file2')"
           >
             <span class="static-page-summary-label">System</span>
             <strong>{{ file2Title }}</strong>
-          </RouterLink>
+          </button>
           <article v-else class="ruleset-manager-basic-card">
             <span class="static-page-summary-label">System</span>
             <strong>{{ file2Title }}</strong>
@@ -177,6 +179,64 @@
       </div>
     </template>
   </StaticPageFrame>
+
+  <div
+    v-if="authInfoPopup"
+    class="popup-workflow-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="ruleset-manager-auth-popup-title"
+    data-testid="ruleset-manager-auth-popup"
+    @click.self="closeAuthInfoPopup"
+  >
+    <section class="popup-workflow-modal workflow-panel ruleset-manager-auth-popup">
+      <header class="workflow-panel-header ruleset-manager-auth-popup-header">
+        <h2 id="ruleset-manager-auth-popup-title" class="ruleset-manager-auth-popup-heading">{{ authInfoPopup.title }}</h2>
+        <RouterLink
+          class="app-icon-action ruleset-manager-auth-popup-dashboard"
+          data-testid="ruleset-manager-auth-popup-dashboard"
+          aria-label="Open full config dashboard"
+          title="Open full config dashboard"
+          :to="authInfoPopup.dashboardRoute"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path :d="ellipsisIconPath" fill="currentColor" />
+          </svg>
+        </RouterLink>
+      </header>
+
+      <p v-if="authInfoPopup.loading" class="section-note">Loading auth info...</p>
+      <InlineValidation v-else-if="authInfoPopup.error" tone="error" :message="authInfoPopup.error" />
+
+      <template v-else>
+        <div class="ruleset-manager-auth-popup-grid" data-testid="ruleset-manager-auth-popup-fields">
+          <article
+            v-for="field in authInfoPopup.fields"
+            :key="field.label"
+            class="static-page-summary-card"
+          >
+            <span class="static-page-summary-label">{{ field.label }}</span>
+            <span>{{ field.value }}</span>
+          </article>
+        </div>
+
+        <div v-if="authInfoPopup.endpoints.length" class="ruleset-manager-auth-popup-endpoints">
+          <h3 class="ruleset-manager-auth-popup-heading">Endpoints</h3>
+          <div class="static-page-tile-grid static-page-record-grid static-page-record-grid--fixed">
+            <article
+              v-for="endpoint in authInfoPopup.endpoints"
+              :key="endpoint.id"
+              class="static-page-tile static-page-list-tile static-page-record-tile"
+              data-testid="ruleset-manager-auth-popup-endpoint"
+            >
+              <span class="static-page-list-tile__title">{{ endpoint.label }}</span>
+              <span class="static-page-list-tile__meta">{{ endpoint.meta }}</span>
+            </article>
+          </div>
+        </div>
+      </template>
+    </section>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -187,8 +247,10 @@ import InlineValidation from '../../components/ui/InlineValidation.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { jsonSchemaFacade, reconciliationFacade } from '../../lib/api/facade'
-import { useUiPermissions } from '../../lib/auth'
+import { jsonSchemaFacade, reconciliationFacade, settingsFacade } from '../../lib/api/facade'
+import type { OmsRestSourceConfigRecord, ShopifyAuthConfigRecord } from '../../lib/api/types'
+import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { OMS_ORDERS_ENDPOINT_DOC } from '../../lib/omsSwagger'
 import {
   buildReconciliationRuleSetDraftState,
   readReconciliationRuleSetDraftState,
@@ -197,14 +259,48 @@ import {
 } from '../../lib/reconciliationRuleSetDraft'
 import { buildReconciliationDiffRoute, buildReconciliationRunHistoryRoute } from '../../lib/reconciliationRoutes'
 import { resolveSchemaLabel } from '../../lib/utils/schemaLabel'
+import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
+import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
 const router = useRouter()
+const authState = useAuthState()
 const permissions = useUiPermissions()
 const schemaLabels = ref<Record<string, string>>({})
 const deletingSavedRun = ref(false)
 const deleteError = ref<string | null>(null)
+type SourceSide = 'file1' | 'file2'
+type AuthInfoKind = 'oms' | 'shopify'
+
+interface SourceConfigSummary {
+  kind: AuthInfoKind
+  side: SourceSide
+  configId: string
+  label: string
+}
+
+interface AuthInfoField {
+  label: string
+  value: string
+}
+
+interface AuthInfoEndpoint {
+  id: string
+  label: string
+  meta: string
+}
+
+interface AuthInfoPopupState {
+  source: SourceConfigSummary
+  title: string
+  fields: AuthInfoField[]
+  endpoints: AuthInfoEndpoint[]
+  dashboardRoute: RouteLocationRaw
+  loading: boolean
+  error: string | null
+}
+
 const SOURCE_TYPE_API = 'AUT_SRC_API'
 const editIconPath =
   'M14.73 2.73a1.75 1.75 0 0 1 2.48 2.48l-1.2 1.2-2.48-2.48 1.2-1.2ZM12.47 4.99 4.8 12.66l-1.18 3.72 3.72-1.18 7.67-7.67-2.54-2.54Z'
@@ -216,6 +312,13 @@ const listIconPath =
 const trashIconPath =
   'M7.5 3.5A1.5 1.5 0 0 1 9 2h2a1.5 1.5 0 0 1 1.5 1.5V4H15a.75.75 0 0 1 0 1.5h-.57l-.58 9.17A1.75 1.75 0 0 1 12.1 16.5H7.9a1.75 1.75 0 0 1-1.75-1.33L5.57 5.5H5a.75.75 0 0 1 0-1.5h2.5v-.5ZM11 3.5h-2V4h2v-.5ZM7.07 5.5l.56 8.89c.02.19.13.31.27.31h4.2c.14 0 .25-.12.27-.31l.56-8.89H7.07Zm1.68 1.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Zm2.5 0a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Z'
 const trashIconTransform = 'translate(0 0.75)'
+const ellipsisIconPath =
+  'M5 8.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Z'
+const shopifyOrdersEndpoint = {
+  id: 'SHOPIFY_ORDERS',
+  label: 'Admin GraphQL Orders',
+  method: 'POST',
+}
 
 const draftState = computed(() => readReconciliationRuleSetDraftState(typeof window === 'undefined' ? null : window.history.state))
 const draft = computed<ReconciliationRuleSetDraft | null>(() => draftState.value?.draft ?? null)
@@ -225,13 +328,15 @@ const file1Title = computed(() => systemTitle(draft.value, 'file1'))
 const file2Title = computed(() => systemTitle(draft.value, 'file2'))
 const file1SourceLabel = computed(() => summarizeSource(draft.value, 'file1'))
 const file2SourceLabel = computed(() => summarizeSource(draft.value, 'file2'))
-const file1SystemRoute = computed<RouteLocationRaw | null>(() => buildSourceConfigRoute(draft.value, 'file1'))
-const file2SystemRoute = computed<RouteLocationRaw | null>(() => buildSourceConfigRoute(draft.value, 'file2'))
+const file1SystemConfig = computed<SourceConfigSummary | null>(() => buildSourceConfigSummary(draft.value, 'file1'))
+const file2SystemConfig = computed<SourceConfigSummary | null>(() => buildSourceConfigSummary(draft.value, 'file2'))
 const file1PrimaryId = computed(() => formatFieldKey(draft.value?.file1PrimaryIdExpression))
 const file2PrimaryId = computed(() => formatFieldKey(draft.value?.file2PrimaryIdExpression))
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
 const canViewRunHistory = computed(() => Boolean(savedRunId.value))
+const authInfoPopup = ref<AuthInfoPopupState | null>(null)
+const isAuthInfoPopupOpen = computed(() => Boolean(authInfoPopup.value))
 const runHistoryRoute = computed(() => buildReconciliationRunHistoryRoute({
   savedRunId: savedRunId.value,
   runName: heroTitle.value,
@@ -304,8 +409,9 @@ function summarizeSource(draftValue: ReconciliationRuleSetDraft | null, side: 'f
     : 'CSV source'
 }
 
-function buildSourceConfigRoute(draftValue: ReconciliationRuleSetDraft | null, side: 'file1' | 'file2'): RouteLocationRaw | null {
+function buildSourceConfigSummary(draftValue: ReconciliationRuleSetDraft | null, side: SourceSide): SourceConfigSummary | null {
   if (!draftValue) return null
+  if (!permissions.canViewTenantSettings) return null
 
   const sourceTypeEnumId = side === 'file1' ? draftValue.file1SourceTypeEnumId : draftValue.file2SourceTypeEnumId
   if (sourceTypeEnumId?.trim() !== SOURCE_TYPE_API) return null
@@ -315,21 +421,22 @@ function buildSourceConfigRoute(draftValue: ReconciliationRuleSetDraft | null, s
 
   const sourceConfigType = side === 'file1' ? draftValue.file1SourceConfigType?.trim() : draftValue.file2SourceConfigType?.trim()
   const systemEnumId = side === 'file1' ? draftValue.file1SystemEnumId?.trim() : draftValue.file2SystemEnumId?.trim()
-  const workflowOrigin = buildWorkflowOriginState('Run Details', route.fullPath || '/reconciliation/ruleset-manager')
 
   if (sourceConfigType === 'HOTWAX_OMS_REST' || systemEnumId === 'OMS') {
     return {
-      name: 'settings-oms-auth',
-      params: { omsRestSourceConfigId: sourceConfigId },
-      state: workflowOrigin,
+      kind: 'oms',
+      side,
+      configId: sourceConfigId,
+      label: sourceConfigId,
     }
   }
 
   if (sourceConfigType === 'SHOPIFY_AUTH' || systemEnumId === 'SHOPIFY') {
     return {
-      name: 'settings-shopify-auth',
-      params: { shopifyAuthConfigId: sourceConfigId },
-      state: workflowOrigin,
+      kind: 'shopify',
+      side,
+      configId: sourceConfigId,
+      label: sourceConfigId,
     }
   }
 
@@ -347,6 +454,188 @@ function apiEndpointLabel(draftValue: ReconciliationRuleSetDraft, side: 'file1' 
     || systemMessageRemoteId?.trim()
     || nsRestletConfigId?.trim()
     || 'API'
+}
+
+function sourceConfigForSide(side: SourceSide): SourceConfigSummary | null {
+  return side === 'file1' ? file1SystemConfig.value : file2SystemConfig.value
+}
+
+function closeAuthInfoPopup(): void {
+  authInfoPopup.value = null
+}
+
+function openAuthInfoPopupForSide(side: SourceSide): void {
+  const sourceConfig = sourceConfigForSide(side)
+  if (!sourceConfig) return
+
+  void openAuthInfoPopup(sourceConfig)
+}
+
+async function openAuthInfoPopup(sourceConfig: SourceConfigSummary): Promise<void> {
+  authInfoPopup.value = {
+    source: sourceConfig,
+    title: sourceConfig.label,
+    fields: [{ label: 'Config ID', value: sourceConfig.configId }],
+    endpoints: [],
+    dashboardRoute: buildSourceConfigDashboardRoute(sourceConfig),
+    loading: true,
+    error: null,
+  }
+
+  try {
+    const loadedState = sourceConfig.kind === 'oms'
+      ? await loadOmsAuthInfo(sourceConfig)
+      : await loadShopifyAuthInfo(sourceConfig)
+    if (!isActiveAuthInfoSource(sourceConfig)) return
+    authInfoPopup.value = loadedState
+  } catch (error) {
+    if (!isActiveAuthInfoSource(sourceConfig)) return
+    authInfoPopup.value = {
+      source: sourceConfig,
+      title: sourceConfig.label,
+      fields: [{ label: 'Config ID', value: sourceConfig.configId }],
+      endpoints: [],
+      dashboardRoute: buildSourceConfigDashboardRoute(sourceConfig),
+      loading: false,
+      error: error instanceof ApiCallError || error instanceof Error ? error.message : 'Unable to load auth info.',
+    }
+  }
+}
+
+function buildSourceConfigDashboardRoute(sourceConfig: SourceConfigSummary): RouteLocationRaw {
+  const workflowOrigin = buildWorkflowOriginState('Run Details', route.fullPath || '/reconciliation/ruleset-manager')
+  if (sourceConfig.kind === 'oms') {
+    return {
+      name: 'settings-oms-auth',
+      params: { omsRestSourceConfigId: sourceConfig.configId },
+      state: workflowOrigin,
+    }
+  }
+
+  return {
+    name: 'settings-shopify-auth',
+    params: { shopifyAuthConfigId: sourceConfig.configId },
+    state: workflowOrigin,
+  }
+}
+
+function isActiveAuthInfoSource(sourceConfig: SourceConfigSummary): boolean {
+  return authInfoPopup.value?.source.kind === sourceConfig.kind
+    && authInfoPopup.value.source.side === sourceConfig.side
+    && authInfoPopup.value.source.configId === sourceConfig.configId
+}
+
+async function loadOmsAuthInfo(sourceConfig: SourceConfigSummary): Promise<AuthInfoPopupState> {
+  const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 })
+  const matchingConfig = filterRecordsForActiveTenant(
+    response.omsRestSourceConfigs ?? [],
+    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  ).find((record) => record.omsRestSourceConfigId === sourceConfig.configId)
+
+  if (!matchingConfig) {
+    throw new Error(`Unable to find HotWax auth config "${sourceConfig.configId}".`)
+  }
+
+  return buildOmsAuthInfoPopupState(sourceConfig, matchingConfig)
+}
+
+async function loadShopifyAuthInfo(sourceConfig: SourceConfigSummary): Promise<AuthInfoPopupState> {
+  const response = await settingsFacade.getShopifyAuthConfig({ shopifyAuthConfigId: sourceConfig.configId })
+  const record = response.shopifyAuthConfig ?? null
+  const [matchingConfig] = record
+    ? filterRecordsForActiveTenant([record], authState.sessionInfo?.activeTenantUserGroupId ?? null)
+    : []
+
+  if (!matchingConfig) {
+    throw new Error(`Unable to find Shopify config "${sourceConfig.configId}".`)
+  }
+
+  return buildShopifyAuthInfoPopupState(sourceConfig, matchingConfig)
+}
+
+function buildOmsAuthInfoPopupState(sourceConfig: SourceConfigSummary, config: OmsRestSourceConfigRecord): AuthInfoPopupState {
+  const endpointPath = config.ordersPath?.trim() || OMS_ORDERS_ENDPOINT_DOC.path
+
+  return {
+    source: sourceConfig,
+    title: resolveRecordLabel({
+      description: config.description,
+      fallbackId: config.omsRestSourceConfigId,
+    }),
+    fields: compactAuthInfoFields([
+      authInfoField('Config ID', config.omsRestSourceConfigId),
+      authInfoField('Base URL', config.baseUrl),
+      authInfoField('Auth Type', formatAuthType(config.authType)),
+      authInfoField('Timezone', config.timeZone),
+    ]),
+    endpoints: config.canReadOrders === false
+      ? []
+      : [{
+          id: OMS_ORDERS_ENDPOINT_DOC.id,
+          label: OMS_ORDERS_ENDPOINT_DOC.label,
+          meta: `${OMS_ORDERS_ENDPOINT_DOC.method} ${endpointPath}`,
+        }],
+    dashboardRoute: buildSourceConfigDashboardRoute(sourceConfig),
+    loading: false,
+    error: null,
+  }
+}
+
+function buildShopifyAuthInfoPopupState(sourceConfig: SourceConfigSummary, config: ShopifyAuthConfigRecord): AuthInfoPopupState {
+  const apiVersion = displayValue(config.apiVersion, '2026-01')
+
+  return {
+    source: sourceConfig,
+    title: resolveRecordLabel({
+      description: config.description,
+      fallbackId: config.shopifyAuthConfigId,
+    }),
+    fields: compactAuthInfoFields([
+      authInfoField('Config ID', config.shopifyAuthConfigId),
+      authInfoField('Shop/API URL', config.shopApiUrl),
+      authInfoField('API Version', apiVersion),
+      authInfoField('Timezone', config.timeZone),
+    ]),
+    endpoints: config.canReadOrders
+      ? [{
+          id: shopifyOrdersEndpoint.id,
+          label: shopifyOrdersEndpoint.label,
+          meta: `${shopifyOrdersEndpoint.method} /admin/api/${apiVersion}/graphql.json`,
+        }]
+      : [],
+    dashboardRoute: buildSourceConfigDashboardRoute(sourceConfig),
+    loading: false,
+    error: null,
+  }
+}
+
+function displayValue(value: string | undefined, fallback = 'Not set'): string {
+  return value?.trim() || fallback
+}
+
+function authInfoField(label: string, value: string | undefined): AuthInfoField | null {
+  const trimmedValue = value?.trim()
+  return trimmedValue ? { label, value: trimmedValue } : null
+}
+
+function compactAuthInfoFields(fields: Array<AuthInfoField | null>): AuthInfoField[] {
+  const placeholderValues = new Set(['Not set', 'None', 'Not configured'])
+  return fields.filter((field): field is AuthInfoField => {
+    if (!field) return false
+    return !placeholderValues.has(field.value)
+  })
+}
+
+function formatAuthType(authType: string | undefined): string {
+  const trimmedAuthType = authType?.trim()
+  if (!trimmedAuthType) return ''
+
+  return trimmedAuthType
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part === 'api' ? 'API' : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function resolveDraftSchemaLabel(draftValue: ReconciliationRuleSetDraft, side: 'file1' | 'file2'): string {
@@ -513,16 +802,21 @@ onMounted(() => {
   justify-content: center;
 }
 
-.ruleset-manager-basic-card--link {
+.ruleset-manager-basic-card--button {
+  width: 100%;
   color: inherit;
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
   transition:
     border-color 160ms ease,
     background 160ms ease,
     color 160ms ease;
 }
 
-.ruleset-manager-basic-card--link:hover {
+.ruleset-manager-basic-card--button:hover,
+.ruleset-manager-basic-card--button:focus-visible {
   border-color: color-mix(in oklab, var(--accent) 58%, var(--border));
   background: color-mix(in oklab, var(--surface-2) 82%, var(--accent));
   color: var(--text);
@@ -601,8 +895,62 @@ onMounted(() => {
   color: var(--text-muted);
 }
 
+.ruleset-manager-auth-popup {
+  --ruleset-manager-auth-popup-gap: 0.7rem;
+  display: grid;
+  gap: var(--ruleset-manager-auth-popup-gap);
+  width: min(42rem, calc(100vw - 2rem));
+  max-width: min(42rem, calc(100vw - 2rem));
+}
+
+.ruleset-manager-auth-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ruleset-manager-auth-popup .ruleset-manager-auth-popup-heading {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--popup-workflow-title-size, 0.875rem);
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.ruleset-manager-auth-popup-dashboard {
+  flex: 0 0 auto;
+  width: 2.2rem;
+  min-height: 2.2rem;
+}
+
+.ruleset-manager-auth-popup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.ruleset-manager-auth-popup-grid .static-page-summary-card {
+  min-width: 0;
+}
+
+.ruleset-manager-auth-popup-grid .static-page-summary-card span:last-child {
+  overflow-wrap: anywhere;
+}
+
+.ruleset-manager-auth-popup-endpoints {
+  display: grid;
+  gap: var(--ruleset-manager-auth-popup-gap);
+}
+
 @media (max-width: 980px) {
   .ruleset-manager-schema-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .ruleset-manager-auth-popup-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
