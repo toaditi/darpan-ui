@@ -316,7 +316,7 @@ describe('auth state', () => {
     expect(useAuthState().error).toBe('Password incorrect.')
   })
 
-  it('derives UI permissions for view-only, editor, and super-admin sessions', async () => {
+  it('derives UI permissions for tenant, super-admin, and Darpan-admin sessions', async () => {
     const { buildUiPermissionPolicy } = await import('../auth')
 
     expect(buildUiPermissionPolicy({
@@ -363,12 +363,26 @@ describe('auth state', () => {
       canViewActiveTenantData: true,
       canRunActiveTenantReconciliation: true,
       canEditActiveTenantData: false,
-      canManageDarpanCore: true,
+      canManageDarpanCore: false,
       isSuperAdmin: true,
     })).toMatchObject({
       canViewTenantSettings: true,
       canRunActiveTenantReconciliation: true,
       canEditTenantSettings: true,
+      canManageGlobalSettings: false,
+    })
+
+    expect(buildUiPermissionPolicy({
+      userId: 'darpan-admin',
+      canViewActiveTenantData: false,
+      canRunActiveTenantReconciliation: false,
+      canEditActiveTenantData: false,
+      canManageDarpanCore: true,
+      isSuperAdmin: false,
+    })).toMatchObject({
+      canViewTenantSettings: false,
+      canRunActiveTenantReconciliation: false,
+      canEditTenantSettings: false,
       canManageGlobalSettings: true,
     })
   })

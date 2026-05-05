@@ -108,6 +108,15 @@ describe('OmsRestSourceDashboardPage', () => {
     expect(wrapper.text()).toContain('https://oms.example.com')
     expect(wrapper.text()).toContain('Timezone')
     expect(wrapper.text()).toContain('America/Chicago')
+    const summaryCards = wrapper.findAll('.static-page-summary-card')
+    expect(summaryCards.map((card) => card.find('.static-page-summary-label').text())).toEqual([
+      'Config ID',
+      'Base URL',
+      'Active',
+      'Timezone',
+    ])
+    const timezoneCard = summaryCards.find((card) => card.text().includes('Timezone'))
+    expect(timezoneCard?.classes()).toContain('static-page-summary-card--wide')
     expect(wrapper.text()).not.toContain('Auth Type')
     expect(wrapper.text()).not.toContain('BEARER')
     expect(wrapper.get('[data-testid="oms-endpoint-tile"]').text()).toContain('Orders API')
@@ -124,6 +133,7 @@ describe('OmsRestSourceDashboardPage', () => {
     const footerActions = wrapper.get('.static-page-actions')
     const deleteAction = wrapper.get('[data-testid="delete-oms-rest-source"]')
     const backAction = wrapper.get('[data-testid="back-oms-rest-source"]')
+    const listAction = wrapper.get('[data-testid="list-oms-rest-sources"]')
 
     expect(deleteAction.attributes('aria-label')).toBe('Delete HotWax source')
     expect(deleteAction.classes()).toContain('app-icon-action')
@@ -137,9 +147,17 @@ describe('OmsRestSourceDashboardPage', () => {
     expect(backAction.attributes('data-to')).toBe('/settings/hotwax')
     expect(backAction.element.closest('.static-page-actions')).toBe(footerActions.element)
     expect(backAction.element.closest('.static-page-board')).toBeNull()
+    expect(listAction.attributes('aria-label')).toBe('View HotWax sources')
+    expect(listAction.classes()).toContain('app-icon-action')
+    expect(listAction.classes()).toContain('app-icon-action--large')
+    expect(listAction.attributes('data-to')).toBe('/settings/hotwax')
+    expect(listAction.get('svg').attributes('viewBox')).toBe('0 0 20 20')
+    expect(listAction.element.closest('.static-page-actions')).toBe(footerActions.element)
+    expect(listAction.element.closest('.static-page-board')).toBeNull()
     const footerActionRow = wrapper.get('.settings-dashboard-footer-row')
     expect([...footerActionRow.element.children].map((child) => child.getAttribute('data-testid'))).toEqual([
       'back-oms-rest-source',
+      'list-oms-rest-sources',
       'delete-oms-rest-source',
     ])
   })
@@ -241,5 +259,6 @@ describe('OmsRestSourceDashboardPage', () => {
     expect(wrapper.find('[data-testid="oms-auth-edit-action"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="delete-oms-rest-source"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="back-oms-rest-source"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="list-oms-rest-sources"]').exists()).toBe(true)
   })
 })

@@ -20,6 +20,7 @@ type TestSessionInfo = {
   availableTenants: Array<{ userGroupId: string; label: string }>
   canRunActiveTenantReconciliation?: boolean
   canEditActiveTenantData: boolean
+  canManageDarpanCore?: boolean
   isSuperAdmin: boolean
 }
 
@@ -67,7 +68,7 @@ vi.mock('../../../lib/auth', () => ({
       authState.sessionInfo.canEditActiveTenantData === true ||
       authState.sessionInfo.isSuperAdmin === true,
     canEditTenantSettings: authState.sessionInfo.canEditActiveTenantData === true,
-    canManageGlobalSettings: authState.sessionInfo.isSuperAdmin === true,
+    canManageGlobalSettings: authState.sessionInfo.canManageDarpanCore === true,
   }),
 }))
 

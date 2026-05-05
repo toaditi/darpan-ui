@@ -52,6 +52,7 @@ type AuthSessionInfo = {
   availableTenants?: Array<{ userGroupId: string; label?: string }>
   canRunActiveTenantReconciliation?: boolean
   canEditActiveTenantData?: boolean
+  canManageDarpanCore?: boolean
   isSuperAdmin?: boolean
 }
 const authState = vi.hoisted(() => ({
@@ -63,6 +64,7 @@ const authState = vi.hoisted(() => ({
     username: 'test.customer',
     canRunActiveTenantReconciliation: true,
     canEditActiveTenantData: true,
+    canManageDarpanCore: true,
     isSuperAdmin: true,
   } as AuthSessionInfo | null,
   get authenticated() {
@@ -155,7 +157,7 @@ vi.mock('../lib/auth', () => ({
       return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
     },
     get canManageGlobalSettings() {
-      return authState.sessionInfo?.isSuperAdmin === true
+      return authState.sessionInfo?.canManageDarpanCore === true
     },
     get canViewTenantSettings() {
       return Boolean(authState.sessionInfo?.userId)
@@ -820,6 +822,24 @@ describe('App shell logout', () => {
     await themeToggle.trigger('click')
 
     expect(toggleTheme).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the active tenant below the user name in the user menu', async () => {
+    authState.sessionInfo = {
+      ...authState.sessionInfo!,
+      activeTenantUserGroupId: 'GORJANA',
+      activeTenantLabel: 'Gorjana',
+      availableTenants: [{ userGroupId: 'GORJANA', label: 'Gorjana' }],
+    }
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await wrapper.get('.user-fab').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.user-menu-name').text()).toBe('test.customer')
+    expect(wrapper.get('.user-menu-tenant').text()).toBe('Gorjana')
   })
 
   it('does not render authenticated action errors inside the user menu', async () => {

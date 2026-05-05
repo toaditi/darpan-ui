@@ -133,7 +133,7 @@ export function buildUiPermissionPolicy(sessionInfo: SessionInfo | null | undefi
     isSuperAdmin
   )
   const canEditActiveTenantData = sessionInfo?.canEditActiveTenantData === true
-  const canManageDarpanCore = isAuthenticated && (sessionInfo?.canManageDarpanCore === true || isSuperAdmin)
+  const canManageDarpanCore = isAuthenticated && sessionInfo?.canManageDarpanCore === true
 
   return {
     canViewTenantSettings: isAuthenticated && (canViewActiveTenantData || isSuperAdmin),

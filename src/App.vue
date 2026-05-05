@@ -52,6 +52,9 @@
 
         <section v-if="isUserMenuOpen" class="user-menu-card" role="dialog" aria-label="User details and settings">
           <p class="user-menu-name">{{ userDisplayName }}</p>
+          <p v-if="activeTenantName" class="user-menu-tenant" :aria-label="`Current tenant: ${activeTenantName}`">
+            {{ activeTenantName }}
+          </p>
           <p v-if="userStatusText" class="mono-copy">{{ userStatusText }}</p>
 
           <div class="user-menu-actions">
@@ -165,6 +168,21 @@ const routerViewKey = computed(
 )
 const userDisplayName = computed(() => resolveUserDisplayName(authState.sessionInfo))
 const activeTenantUserGroupId = computed(() => authState.sessionInfo?.activeTenantUserGroupId ?? null)
+const activeTenantName = computed<string | null>(() => {
+  const sessionInfo = authState.sessionInfo
+  const activeTenantId = sessionInfo?.activeTenantUserGroupId?.toString().trim()
+  if (!activeTenantId) return null
+
+  const activeTenantLabel = sessionInfo?.activeTenantLabel?.toString().trim()
+  if (activeTenantLabel) return activeTenantLabel
+
+  const activeTenant = Array.isArray(sessionInfo?.availableTenants)
+    ? sessionInfo.availableTenants.find((tenant) => tenant.userGroupId === activeTenantId)
+    : null
+  const activeTenantOptionLabel = activeTenant?.label?.toString().trim()
+
+  return activeTenantOptionLabel || activeTenantId
+})
 const userStatusText = computed<string | null>(() => {
   if (isLoggingOut.value) return 'Signing out'
   if (authState.authenticated) return null

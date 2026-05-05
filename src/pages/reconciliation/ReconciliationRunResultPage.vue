@@ -80,6 +80,7 @@
       </template>
 
       <StaticPageSection>
+        <InlineValidation v-if="runSettingsError" tone="error" :message="runSettingsError" />
         <p v-if="loading" class="section-note" data-testid="run-result-loading">Loading saved result…</p>
         <InlineValidation v-else-if="loadError" tone="error" :message="loadError" />
 
@@ -228,7 +229,12 @@
             </template>
 
             <template #cell-detailText="{ row }">
-              <pre class="run-result-table__json">{{ row.detailText }}</pre>
+              <JsonCollapseViewer
+                v-if="isJsonCollapseValue(row.detailValue)"
+                class="run-result-table__json"
+                :value="row.detailValue"
+              />
+              <pre v-else class="run-result-table__json">{{ row.detailText }}</pre>
             </template>
 
             <template #cell-actions>
@@ -241,28 +247,56 @@
         </section>
       </StaticPageSection>
 
-      <div v-if="savedOutput" class="run-result-actions">
-        <RouterLink
-          class="reconciliation-run-history-link"
-          data-testid="run-result-view-history"
-          :to="runHistoryRoute"
-        >
-          View all previous runs
-        </RouterLink>
-      </div>
-
-      <template v-if="savedOutput && canRunActiveTenantReconciliation" #actions>
-        <RouterLink
-          class="app-icon-action app-icon-action--large"
-          data-testid="run-result-open-workflow"
-          aria-label="Open run"
-          title="Open run"
-          :to="workflowRoute"
-        >
-          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-            <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
-          </svg>
-        </RouterLink>
+      <template v-if="savedOutput" #actions>
+        <div class="action-row">
+          <RouterLink
+            v-if="canRunActiveTenantReconciliation"
+            class="app-icon-action app-icon-action--large"
+            data-testid="run-result-open-workflow"
+            aria-label="Open run"
+            title="Open run"
+            :to="workflowRoute"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
+            </svg>
+          </RouterLink>
+          <RouterLink
+            class="app-icon-action app-icon-action--large"
+            data-testid="run-result-view-history"
+            aria-label="View previous runs"
+            title="View previous runs"
+            :to="runHistoryRoute"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path :d="listIconPath" fill="currentColor" />
+            </svg>
+          </RouterLink>
+          <button
+            v-if="canOpenRunSettings"
+            type="button"
+            class="app-icon-action app-icon-action--large"
+            data-testid="run-result-open-settings"
+            aria-label="Run settings"
+            title="Run settings"
+            :disabled="openingRunSettings"
+            @click="void openRunSettings()"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path :d="settingsIconPath" />
+            </svg>
+          </button>
+        </div>
       </template>
     </StaticPageFrame>
   </div>
@@ -270,8 +304,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute, type RouteLocationRaw } from 'vue-router'
+import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import AppTableFrame from '../../components/ui/AppTableFrame.vue'
+import JsonCollapseViewer from '../../components/ui/JsonCollapseViewer.vue'
 import StaticEditableTitle from '../../components/ui/StaticEditableTitle.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
@@ -286,6 +321,7 @@ import {
   buildReconciliationRunHistoryRoute,
   type ReconciliationRunRouteContext,
 } from '../../lib/reconciliationRoutes'
+import { resolveSavedRunEditorRoute } from '../../lib/savedRunEditorRoute'
 import { formatSavedResultDateTime } from '../../lib/utils/date'
 import { downloadTextFile } from '../../lib/utils/download'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
@@ -342,6 +378,7 @@ interface NormalizedDiffDetailRow {
   rowKey: string
   recordId: string
   bucket: DiffBucketKey
+  detailValue: unknown
   detailText: string
   ruleFilterKey: string
   ruleId: string
@@ -395,9 +432,12 @@ const diffDetailColumns = [
 ]
 
 const route = useRoute()
+const router = useRouter()
 const permissions = useUiPermissions()
 const loading = ref(false)
 const loadError = ref<string | null>(null)
+const openingRunSettings = ref(false)
+const runSettingsError = ref<string | null>(null)
 const savedOutput = ref<GeneratedOutput | null>(null)
 const downloadableOutputFile = ref<GetGeneratedOutputFile | null>(null)
 const runSourceDetails = ref<GeneratedOutputSourceDetails | null>(null)
@@ -431,6 +471,10 @@ const canRunActiveTenantReconciliation = computed(() => permissions.canRunActive
 const playIconPath =
   'M6.75 4.2c0-.91.99-1.48 1.78-1.01l7.1 4.25a1.18 1.18 0 0 1 0 2.02l-7.1 4.25a1.18 1.18 0 0 1-1.78-1.01V4.2Z'
 const playIconTransform = 'translate(0 1.5)'
+const listIconPath =
+  'M5.5 5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5ZM5.5 10a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5ZM5.5 15a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5Z'
+const settingsIconPath =
+  'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.3a2 2 0 0 1-4 0V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14H2.7a2 2 0 0 1 0-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6v-.3a2 2 0 0 1 4 0V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1A1.7 1.7 0 0 0 21 10h.3a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z'
 const routeRunName = computed(() => (typeof route.query.runName === 'string' && route.query.runName.trim() ? route.query.runName.trim() : 'Selected Run'))
 const runName = computed(() => editableRunName.value || routeRunName.value)
 const file1SystemLabel = computed(() =>
@@ -448,15 +492,23 @@ const reconciliationRunRouteContext = computed<ReconciliationRunRouteContext>(()
   file1SystemLabel: diffDetailsFile1Label.value,
   file2SystemLabel: diffDetailsFile2Label.value,
 }))
+const workflowOriginState = computed(() => buildWorkflowOriginState('Run Result', route.fullPath))
 const workflowRoute = computed<RouteLocationRaw>(() =>
   buildReconciliationDiffRoute(
     reconciliationRunRouteContext.value,
-    buildWorkflowOriginState('Run Result', route.fullPath),
+    workflowOriginState.value,
   ),
 )
 const runHistoryRoute = computed<RouteLocationRaw>(() =>
   buildReconciliationRunHistoryRoute(reconciliationRunRouteContext.value),
 )
+const runSettingsId = computed(() =>
+  savedOutput.value?.reconciliationMappingId?.trim() ||
+  savedOutput.value?.ruleSetId?.trim() ||
+  savedOutput.value?.savedRunId?.trim() ||
+  savedRunId.value,
+)
+const canOpenRunSettings = computed(() => canEditTenantSettings.value && Boolean(runSettingsId.value))
 const diffDetailsFile1Label = computed(
   () => diffDetailsMeta.value.file1Label || savedOutput.value?.file1Label || file1SystemLabel.value || 'File 1',
 )
@@ -639,6 +691,28 @@ function normalizeDiffLabel(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+async function openRunSettings(): Promise<void> {
+  const targetId = runSettingsId.value
+  if (!canOpenRunSettings.value || !targetId || openingRunSettings.value) return
+
+  openingRunSettings.value = true
+  runSettingsError.value = null
+
+  try {
+    const editorRoute = await resolveSavedRunEditorRoute(targetId, workflowOriginState.value)
+    if (!editorRoute) {
+      runSettingsError.value = `Unable to find run "${targetId}".`
+      return
+    }
+
+    await router.push(editorRoute)
+  } catch (error) {
+    runSettingsError.value = error instanceof ApiCallError ? error.message : 'Unable to open run settings.'
+  } finally {
+    openingRunSettings.value = false
+  }
+}
+
 function normalizeDiffToken(value: unknown): string {
   return normalizeDiffLabel(value)
     .toLowerCase()
@@ -798,6 +872,10 @@ function stringifyDiffJson(value: unknown): string {
   }
 }
 
+function isJsonCollapseValue(value: unknown): boolean {
+  return value !== null && typeof value === 'object'
+}
+
 function resolveDiffType(record: DiffDetailsRecord): string {
   return normalizeDiffLabel(record.diffType || record.type)
 }
@@ -936,6 +1014,7 @@ function normalizeDiffDetailRows(
       rowKey: `${bucket}-${recordId}-${index}`,
       recordId,
       bucket,
+      detailValue: detailPayload,
       detailText: stringifyDiffJson(detailPayload),
       ...ruleDescriptor,
     }
@@ -1451,23 +1530,6 @@ watch([savedRunId, outputFileName], () => {
   margin: 0;
   color: var(--text-muted);
   text-align: center;
-}
-
-.run-result-actions {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-3);
-}
-
-.reconciliation-run-history-link {
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 0.9rem;
-}
-
-.reconciliation-run-history-link:hover {
-  color: var(--text);
-  text-decoration: underline;
 }
 
 @media (max-width: 760px) {

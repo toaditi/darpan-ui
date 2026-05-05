@@ -503,6 +503,51 @@ describe('ReconciliationDiffPage', () => {
     expect(window.localStorage.getItem('darpan.pendingReconciliationRuns')).toBeNull()
   })
 
+  it('keeps the pending run marker when the submitted request is interrupted after starting', async () => {
+    stubFileReader()
+    route.query = {
+      savedRunId: 'RS_ORDER_CSV',
+      runName: 'CSV Order Compare',
+      file1SystemLabel: 'OMS',
+      file2SystemLabel: 'SHOPIFY',
+    }
+    runSavedRunDiff.mockRejectedValue(
+      new ApiCallError('Unable to connect to Darpan right now. Try again in a moment.', 503, {
+        failures: [{ url: 'http://localhost:8080/rpc/json', error: new TypeError('Failed to fetch') }],
+      }),
+    )
+
+    const wrapper = mount(ReconciliationDiffPage)
+    await flushPromises()
+
+    const file1Input = wrapper.get('[data-testid="file1-input"]')
+    Object.defineProperty(file1Input.element, 'files', {
+      value: [new File(['order_id\n1001\n1002\n'], 'oms-orders.csv', { type: 'text/csv' })],
+      configurable: true,
+    })
+    await file1Input.trigger('change')
+    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
+    await flushPromises()
+
+    const file2Input = wrapper.get('[data-testid="file2-input"]')
+    Object.defineProperty(file2Input.element, 'files', {
+      value: [new File(['order_id\n1002\n1003\n'], 'shopify-orders.csv', { type: 'text/csv' })],
+      configurable: true,
+    })
+    await file2Input.trigger('change')
+    await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to connect to Darpan right now. Try again in a moment.')
+    expect(JSON.parse(window.localStorage.getItem('darpan.pendingReconciliationRuns') ?? '[]')).toEqual([
+      expect.objectContaining({
+        savedRunId: 'RS_ORDER_CSV',
+        runName: 'CSV Order Compare',
+        submittedAt: new Date(2026, 4, 17, 12, 0, 0).toISOString(),
+      }),
+    ])
+  })
+
   it('asks for one API time period instead of file uploads when both saved-run sources are API-backed', async () => {
     route.query = {
       savedRunId: 'RS_API_ORDER_SYNC',

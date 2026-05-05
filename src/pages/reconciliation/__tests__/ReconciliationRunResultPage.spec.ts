@@ -17,7 +17,9 @@ const route = vi.hoisted(() => ({
     '/reconciliation/run-result/RS_ORDER_CSV/CSV-Order-Compare-diff-20260331-063304.json?runName=CSV%20Order%20Compare&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY',
 }))
 const getGeneratedOutput = vi.hoisted(() => vi.fn())
+const listSavedRuns = vi.hoisted(() => vi.fn())
 const saveSavedRunName = vi.hoisted(() => vi.fn())
+const routerPush = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'editor',
@@ -33,11 +35,15 @@ vi.mock('vue-router', () => ({
     template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
   },
   useRoute: () => route,
+  useRouter: () => ({
+    push: routerPush,
+  }),
 }))
 
 vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
     getGeneratedOutput,
+    listSavedRuns,
     saveSavedRunName,
   },
 }))
@@ -114,6 +120,45 @@ const defaultDiffDetails = {
   ],
 }
 
+function buildSavedRunSummary() {
+  return {
+    savedRunId: 'RS_ORDER_CSV',
+    runName: 'CSV Order Compare',
+    description: 'CSV Order Compare',
+    runType: 'ruleset',
+    ruleSetId: 'RS_ORDER_CSV',
+    compareScopeId: 'CS_ORDER_CSV',
+    requiresSystemSelection: false,
+    defaultFile1SystemEnumId: 'OMS',
+    defaultFile2SystemEnumId: 'SHOPIFY',
+    systemOptions: [
+      {
+        fileSide: 'FILE_1',
+        enumId: 'OMS',
+        label: 'OMS',
+        fileTypeEnumId: 'DftCsv',
+        idFieldExpression: 'order_id',
+      },
+      {
+        fileSide: 'FILE_2',
+        enumId: 'SHOPIFY',
+        label: 'SHOPIFY',
+        fileTypeEnumId: 'DftCsv',
+        idFieldExpression: 'id',
+      },
+    ],
+    rules: [
+      {
+        ruleId: 'RS_ORDER_CSV_RULE_1',
+        sequenceNum: 1,
+        file1FieldPath: 'total',
+        file2FieldPath: 'current_total',
+        operator: '=',
+      },
+    ],
+  }
+}
+
 describe('ReconciliationRunResultPage', () => {
   beforeEach(() => {
     authState.sessionInfo = {
@@ -157,6 +202,20 @@ describe('ReconciliationRunResultPage', () => {
       },
     }))
     saveSavedRunName.mockReset()
+    listSavedRuns.mockReset()
+    listSavedRuns.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      pagination: {
+        pageIndex: 0,
+        pageSize: 100,
+        totalCount: 1,
+        pageCount: 1,
+      },
+      savedRuns: [buildSavedRunSummary()],
+    })
+    routerPush.mockReset()
     saveSavedRunName.mockResolvedValue({
       ok: true,
       messages: ['Saved run CSV Order Compare Revised.'],
@@ -199,13 +258,27 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.find('[data-testid="diff-bucket-rule"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Rule differences')
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('"order_id": "1001"')
+    expect(wrapper.text()).toContain('{ ... }')
+    expect(wrapper.text()).toContain('1 key')
     expect(wrapper.get('[data-testid="run-result-download"]').attributes('aria-label')).toBe('Download saved result')
     const tableColumns = wrapper.findAll('.app-table colgroup col')
     expect(tableColumns).toHaveLength(3)
     expect(tableColumns[0]?.attributes('style')).toContain('width: 13rem;')
     expect(tableColumns[2]?.classes()).toContain('app-table__action-column')
-    expect(JSON.parse(wrapper.get('[data-testid="run-result-view-history"]').attributes('data-to') ?? '{}')).toEqual({
+    expect(wrapper.find('.static-page-board [data-testid="run-result-view-history"]').exists()).toBe(false)
+    const footerActions = wrapper.findAll('.static-page-actions .action-row > *')
+    expect(footerActions.map((action) => action.attributes('data-testid'))).toEqual([
+      'run-result-open-workflow',
+      'run-result-view-history',
+      'run-result-open-settings',
+    ])
+    const viewHistoryAction = wrapper.get('.static-page-actions [data-testid="run-result-view-history"]')
+    expect(viewHistoryAction.classes()).toContain('app-icon-action')
+    expect(viewHistoryAction.classes()).toContain('app-icon-action--large')
+    expect(viewHistoryAction.attributes('aria-label')).toBe('View previous runs')
+    expect(viewHistoryAction.text()).not.toContain('View all previous runs')
+    expect(viewHistoryAction.get('svg').attributes('viewBox')).toBe('0 0 20 20')
+    expect(JSON.parse(viewHistoryAction.attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-run-history',
       params: {
         savedRunId: 'RS_ORDER_CSV',
@@ -236,6 +309,45 @@ describe('ReconciliationRunResultPage', () => {
         workflowOriginPath: route.fullPath,
       },
     })
+    expect(wrapper.find('.static-page-board [data-testid="run-result-open-settings"]').exists()).toBe(false)
+    const openSettingsAction = wrapper.get('.static-page-actions [data-testid="run-result-open-settings"]')
+    expect(openSettingsAction.classes()).toContain('app-icon-action')
+    expect(openSettingsAction.classes()).toContain('app-icon-action--large')
+    expect(openSettingsAction.attributes('aria-label')).toBe('Run settings')
+    expect(openSettingsAction.find('svg').exists()).toBe(true)
+    const settingsIcon = openSettingsAction.get('svg')
+    expect(settingsIcon.attributes('viewBox')).toBe('0 0 24 24')
+    expect(settingsIcon.attributes('fill')).toBe('none')
+    expect(settingsIcon.attributes('stroke')).toBe('currentColor')
+    expect(settingsIcon.attributes('stroke-width')).toBe('1.8')
+    expect(openSettingsAction.get('circle').attributes('r')).toBe('3')
+    expect(openSettingsAction.text()).not.toContain('Run settings')
+    expect(openSettingsAction.element.tagName).toBe('BUTTON')
+
+    await openSettingsAction.trigger('click')
+    await flushPromises()
+
+    expect(listSavedRuns).toHaveBeenCalledWith({
+      pageIndex: 0,
+      pageSize: 100,
+      query: '',
+    })
+    expect(routerPush).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'reconciliation-ruleset-manager',
+      state: expect.objectContaining({
+        workflowOriginLabel: 'Run Result',
+        workflowOriginPath: route.fullPath,
+        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
+        reconciliationRuleSetDraft: expect.objectContaining({
+          savedRunId: 'RS_ORDER_CSV',
+          runName: 'CSV Order Compare',
+          file1SystemEnumId: 'OMS',
+          file1PrimaryIdExpression: 'order_id',
+          file2SystemEnumId: 'SHOPIFY',
+          file2PrimaryIdExpression: 'id',
+        }),
+      }),
+    }))
 
     editableTitle.element.textContent = 'CSV Order Compare Revised'
     await editableTitle.trigger('input')
@@ -404,12 +516,94 @@ describe('ReconciliationRunResultPage', () => {
 
     expect(wrapper.text()).toContain('Rule differences')
     expect(wrapper.text()).toContain('6678202450051')
+    expect(wrapper.text()).toContain('{ ... }')
+    expect(wrapper.text()).toContain('8 keys')
+
+    const ruleDetailRow = wrapper.findAll('[data-testid="diff-details-row"]').find((row) => row.text().includes('6678202450051'))
+    const ruleDetailToggle = ruleDetailRow?.find('[data-testid="json-collapse-toggle"]')
+    expect(ruleDetailToggle).toBeTruthy()
+
+    await ruleDetailToggle!.trigger('click')
+
     expect(wrapper.text()).toContain('"diffType": "FIELD_MISMATCH"')
     expect(wrapper.text()).toContain('"field": "grand_total = total_amount"')
     expect(wrapper.text()).toContain('"file1Value": "89.89"')
     expect(wrapper.text()).toContain('"file2Value": "90.32"')
     expect(wrapper.text()).not.toContain('row-3')
     expect(wrapper.text()).not.toContain('{}')
+  })
+
+  it('renders diff JSON collapsed by default with bracket-level expand controls', async () => {
+    getGeneratedOutput.mockResolvedValue(
+      buildGeneratedOutputFile(
+        JSON.stringify({
+          metadata: defaultDiffDetails.metadata,
+          summary: {
+            totalDifferences: 1,
+            onlyInFile1Count: 1,
+            onlyInFile2Count: 0,
+          },
+          differences: [
+            {
+              type: 'missing_in_SHOPIFY',
+              id: '6550852436099',
+              presentIn: 'OMS',
+              missingIn: 'SHOPIFY',
+              data: JSON.stringify({
+                _entity: 'org.apache.ofbiz.order.order.OrderHeader',
+                adjustments: [
+                  {
+                    orderAdjustmentId: 'M263327',
+                    amount: 7.5,
+                  },
+                  {
+                    orderAdjustmentId: 'M263328',
+                    amount: 0.31,
+                  },
+                ],
+              }),
+            },
+          ],
+        }),
+      ),
+    )
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="json-collapse-viewer"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('{ ... }')
+    expect(wrapper.text()).toContain('2 keys')
+    expect(wrapper.text()).not.toContain('"adjustments": [')
+    expect(wrapper.text()).not.toContain('"orderAdjustmentId": "M263327"')
+
+    const rootToggle = wrapper.findAll('[data-testid="json-collapse-toggle"]').find((button) =>
+      button.attributes('aria-label') === 'Expand JSON object'
+    )
+    expect(rootToggle).toBeTruthy()
+    expect(rootToggle?.attributes('aria-expanded')).toBe('false')
+
+    await rootToggle!.trigger('click')
+
+    expect(wrapper.text()).toContain('"adjustments": [')
+    expect(wrapper.text()).toContain('2 items')
+    expect(wrapper.text()).not.toContain('"orderAdjustmentId": "M263327"')
+
+    const collapsedAdjustmentsToggle = wrapper.findAll('[data-testid="json-collapse-toggle"]').find((button) =>
+      button.attributes('aria-label') === 'Expand adjustments array'
+    )
+    expect(collapsedAdjustmentsToggle?.attributes('aria-expanded')).toBe('false')
+
+    await collapsedAdjustmentsToggle!.trigger('click')
+
+    const firstAdjustmentToggle = wrapper.findAll('[data-testid="json-collapse-toggle"]').find((button) =>
+      button.attributes('aria-label') === 'Expand item 1 object'
+    )
+    expect(firstAdjustmentToggle?.attributes('aria-expanded')).toBe('false')
+
+    await firstAdjustmentToggle!.trigger('click')
+
+    expect(wrapper.text()).toContain('"orderAdjustmentId": "M263327"')
   })
 
   it('shows a collapsible rule selector that filters result rows by rule', async () => {
@@ -492,7 +686,8 @@ describe('ReconciliationRunResultPage', () => {
     expect(wrapper.find('[data-testid="diff-bucket-file-2"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="diff-bucket-rule"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('"order_id": "1001"')
+    expect(wrapper.text()).toContain('{ ... }')
+    expect(wrapper.text()).toContain('1 key')
     expect(wrapper.text()).not.toContain('1002')
 
     await selector.get('[data-rule-filter-key="all"]').trigger('click')

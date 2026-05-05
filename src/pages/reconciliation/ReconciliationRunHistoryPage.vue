@@ -13,17 +13,17 @@
       </div>
     </template>
 
-    <StaticPageSection v-if="pendingRuns.length > 0" title="In Progress">
+    <StaticPageSection v-if="runningRuns.length > 0" title="In Progress">
       <div class="static-page-tile-grid run-history-grid" data-testid="run-history-running-results">
         <article
-          v-for="pendingRun in pendingRuns"
-          :key="pendingRun.pendingRunId"
+          v-for="runningRun in runningRuns"
+          :key="runningRun.runningRunId"
           class="static-page-tile run-history-tile run-history-running-tile"
           data-testid="run-history-running-tile"
         >
           <div class="run-history-tile__head run-history-tile__head--status">
-            <span class="static-page-tile-title">{{ formatSavedResultDateTime(pendingRun.submittedAt) }}</span>
-            <StatusBadge label="Running" tone="warning" />
+            <span class="static-page-tile-title">{{ formatSavedResultDateTime(runningRun.submittedAt) }}</span>
+            <StatusBadge :label="runningRun.statusLabel" tone="warning" />
           </div>
           <p class="section-note">Results will appear here when this reconciliation finishes.</p>
         </article>
@@ -57,6 +57,7 @@
     </StaticPageSection>
 
     <StaticPageSection v-if="showHistorySection" title="Previous Results">
+      <InlineValidation v-if="runSettingsError" tone="error" :message="runSettingsError" />
       <p v-if="showLoadingState" class="section-note" data-testid="run-history-loading">Loading saved results…</p>
       <InlineValidation v-else-if="loadError" tone="error" :message="loadError" />
       <div v-else-if="visibleOtherGeneratedOutputs.length > 0" class="static-page-tile-grid run-history-grid" data-testid="run-history-results">
@@ -99,25 +100,52 @@
       <div v-else class="static-page-drop-hint" data-testid="run-history-empty">No saved results yet for this run.</div>
     </StaticPageSection>
 
-    <template v-if="canRunActiveTenantReconciliation" #actions>
-      <RouterLink
-        class="app-icon-action app-icon-action--large"
-        data-testid="run-history-open-workflow"
-        aria-label="Open run"
-        title="Open run"
-        :to="workflowRoute"
-      >
-        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-          <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
-        </svg>
-      </RouterLink>
+    <template v-if="canRunActiveTenantReconciliation || canOpenRunSettings" #actions>
+      <div class="action-row">
+        <RouterLink
+          v-if="canRunActiveTenantReconciliation"
+          class="app-icon-action app-icon-action--large"
+          data-testid="run-history-open-workflow"
+          aria-label="Open run"
+          title="Open run"
+          :to="workflowRoute"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
+          </svg>
+        </RouterLink>
+        <button
+          v-if="canOpenRunSettings"
+          type="button"
+          class="app-icon-action app-icon-action--large"
+          data-testid="run-history-open-settings"
+          aria-label="Run settings"
+          title="Run settings"
+          :disabled="openingRunSettings"
+          @click="void openRunSettings()"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            focusable="false"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path :d="settingsIconPath" />
+          </svg>
+        </button>
+      </div>
     </template>
   </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import StaticEditableTitle from '../../components/ui/StaticEditableTitle.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
@@ -138,17 +166,28 @@ import {
   buildReconciliationRunResultRoute,
   type ReconciliationRunRouteContext,
 } from '../../lib/reconciliationRoutes'
+import { resolveSavedRunEditorRoute } from '../../lib/savedRunEditorRoute'
 import { formatSavedResultDateTime } from '../../lib/utils/date'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 const GENERATED_OUTPUT_FETCH_PAGE_SIZE = 6
 const OTHER_RESULTS_BATCH_SIZE = 5
+const RUNNING_STATUS_IDS = new Set(['AUT_STAT_PENDING', 'AUT_STAT_RUNNING'])
+
+interface RunningRunView {
+  runningRunId: string
+  submittedAt: string
+  statusLabel: string
+}
 
 const route = useRoute()
+const router = useRouter()
 const permissions = useUiPermissions()
 const loading = ref(false)
 const loadingMore = ref(false)
 const loadError = ref<string | null>(null)
+const openingRunSettings = ref(false)
+const runSettingsError = ref<string | null>(null)
 const editableRunName = ref('')
 const persistedRunName = ref('')
 const savingRunName = ref(false)
@@ -167,6 +206,8 @@ const canRunActiveTenantReconciliation = computed(() => permissions.canRunActive
 const playIconPath =
   'M6.75 4.2c0-.91.99-1.48 1.78-1.01l7.1 4.25a1.18 1.18 0 0 1 0 2.02l-7.1 4.25a1.18 1.18 0 0 1-1.78-1.01V4.2Z'
 const playIconTransform = 'translate(0 1.5)'
+const settingsIconPath =
+  'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.3a2 2 0 0 1-4 0V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14H2.7a2 2 0 0 1 0-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6v-.3a2 2 0 0 1 4 0V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1A1.7 1.7 0 0 0 21 10h.3a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z'
 
 const savedRunId = computed(() =>
   typeof route.params.savedRunId === 'string' ? route.params.savedRunId.trim() : '',
@@ -185,17 +226,32 @@ const reconciliationRunRouteContext = computed<ReconciliationRunRouteContext>(()
   file1SystemLabel: file1SystemLabel.value,
   file2SystemLabel: file2SystemLabel.value,
 }))
+const workflowOriginState = computed(() => buildWorkflowOriginState('Run History', route.fullPath))
 const workflowRoute = computed(() =>
   buildReconciliationDiffRoute(
     reconciliationRunRouteContext.value,
-    buildWorkflowOriginState('Run History', route.fullPath),
+    workflowOriginState.value,
   ),
 )
-const featuredOutput = computed(() => generatedOutputs.value[0] ?? null)
-const otherGeneratedOutputs = computed(() => generatedOutputs.value.slice(1))
+const canOpenRunSettings = computed(() => canEditTenantSettings.value && Boolean(savedRunId.value))
+const runningGeneratedOutputs = computed(() => generatedOutputs.value.filter(isRunningGeneratedOutput))
+const completedGeneratedOutputs = computed(() => generatedOutputs.value.filter(isCompletedGeneratedOutput))
+const runningRuns = computed<RunningRunView[]>(() => {
+  const backendRunningRuns = runningGeneratedOutputs.value.map(buildBackendRunningRunView)
+  if (backendRunningRuns.length > 0) return backendRunningRuns
+  return pendingRuns.value.map(buildLocalRunningRunView)
+})
+const featuredOutput = computed(() => completedGeneratedOutputs.value[0] ?? null)
+const otherGeneratedOutputs = computed(() => completedGeneratedOutputs.value.slice(1))
 const visibleOtherGeneratedOutputs = computed(() => otherGeneratedOutputs.value.slice(0, visibleOtherOutputCount.value))
 const showLoadingState = computed(() => loading.value && generatedOutputs.value.length === 0)
-const showHistorySection = computed(() => showLoadingState.value || Boolean(loadError.value) || !featuredOutput.value || otherGeneratedOutputs.value.length > 0)
+const showHistorySection = computed(() =>
+  showLoadingState.value ||
+  Boolean(loadError.value) ||
+  Boolean(runSettingsError.value) ||
+  !featuredOutput.value ||
+  otherGeneratedOutputs.value.length > 0
+)
 const hasMoreLoadedOtherOutputs = computed(() => otherGeneratedOutputs.value.length > visibleOtherOutputCount.value)
 const hasMoreHistoryPages = computed(() => lastLoadedPageIndex.value + 1 < pagination.value.pageCount)
 const hasMoreOtherOutputs = computed(() => hasMoreLoadedOtherOutputs.value || hasMoreHistoryPages.value)
@@ -204,12 +260,72 @@ function buildResultRoute(outputFileName: string) {
   return buildReconciliationRunResultRoute(reconciliationRunRouteContext.value, outputFileName)
 }
 
+async function openRunSettings(): Promise<void> {
+  const targetId = savedRunId.value
+  if (!canOpenRunSettings.value || !targetId || openingRunSettings.value) return
+
+  openingRunSettings.value = true
+  runSettingsError.value = null
+
+  try {
+    const editorRoute = await resolveSavedRunEditorRoute(targetId, workflowOriginState.value)
+    if (!editorRoute) {
+      runSettingsError.value = `Unable to find run "${targetId}".`
+      return
+    }
+
+    await router.push(editorRoute)
+  } catch (error) {
+    runSettingsError.value = error instanceof ApiCallError ? error.message : 'Unable to open run settings.'
+  } finally {
+    openingRunSettings.value = false
+  }
+}
+
+function normalizeText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function generatedOutputKey(output: GeneratedOutput): string {
+  return normalizeText(output.fileName) ||
+    normalizeText(output.reconciliationRunResultId) ||
+    [output.savedRunId, output.statusEnumId, output.createdDate].map((value) => normalizeText(value)).filter(Boolean).join(':')
+}
+
+function isRunningGeneratedOutput(output: GeneratedOutput): boolean {
+  const statusEnumId = normalizeText(output.statusEnumId)
+  return RUNNING_STATUS_IDS.has(statusEnumId)
+}
+
+function isCompletedGeneratedOutput(output: GeneratedOutput): boolean {
+  return !isRunningGeneratedOutput(output) && output.resultAvailable !== false && Boolean(normalizeText(output.fileName))
+}
+
+function buildBackendRunningRunView(output: GeneratedOutput): RunningRunView {
+  const submittedAt = normalizeText(output.startedDate) || normalizeText(output.createdDate) || normalizeText(output.lastUpdatedDate) || new Date().toISOString()
+  const statusLabel = normalizeText(output.statusLabel) || 'Running'
+  return {
+    runningRunId: generatedOutputKey(output) || `${savedRunId.value}:${submittedAt}`,
+    submittedAt,
+    statusLabel,
+  }
+}
+
+function buildLocalRunningRunView(pendingRun: PendingReconciliationRun): RunningRunView {
+  return {
+    runningRunId: pendingRun.pendingRunId,
+    submittedAt: pendingRun.submittedAt,
+    statusLabel: 'Running',
+  }
+}
+
 function refreshPendingRuns(): void {
   pendingRuns.value = listPendingReconciliationRuns(savedRunId.value)
 }
 
 function resetHistoryState(): void {
   loadError.value = null
+  runSettingsError.value = null
   editableRunName.value = routeRunName.value
   persistedRunName.value = routeRunName.value
   savingRunName.value = false
@@ -260,8 +376,13 @@ async function saveRunName(nextRunName: string): Promise<void> {
 }
 
 function appendGeneratedOutputs(nextOutputs: GeneratedOutput[]): void {
-  const existingFileNames = new Set(generatedOutputs.value.map((output) => output.fileName))
-  const dedupedOutputs = nextOutputs.filter((output) => !existingFileNames.has(output.fileName))
+  const existingOutputKeys = new Set(generatedOutputs.value.map(generatedOutputKey))
+  const dedupedOutputs = nextOutputs.filter((output) => {
+    const outputKey = generatedOutputKey(output)
+    if (!outputKey || existingOutputKeys.has(outputKey)) return false
+    existingOutputKeys.add(outputKey)
+    return true
+  })
   generatedOutputs.value = [...generatedOutputs.value, ...dedupedOutputs]
 }
 
@@ -293,7 +414,10 @@ async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promis
     const nextOutputs = response.generatedOutputs ?? []
     if (append) appendGeneratedOutputs(nextOutputs)
     else generatedOutputs.value = nextOutputs
-    pendingRuns.value = resolveCompletedPendingReconciliationRuns(requestedSavedRunId, generatedOutputs.value)
+    pendingRuns.value = resolveCompletedPendingReconciliationRuns(
+      requestedSavedRunId,
+      generatedOutputs.value.filter(isCompletedGeneratedOutput),
+    )
 
     pagination.value = response.pagination ?? pagination.value
     lastLoadedPageIndex.value = targetPageIndex

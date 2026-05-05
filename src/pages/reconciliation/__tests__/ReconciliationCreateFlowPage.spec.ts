@@ -362,7 +362,7 @@ describe('ReconciliationCreateFlowPage', () => {
   })
 
   it('loads create-run setup choices from the reconciliation source-options contract', async () => {
-    listEnumOptions.mockRejectedValue(new Error('Settings are restricted to super-admin users.'))
+    listEnumOptions.mockRejectedValue(new Error('Settings are restricted to Darpan admin users.'))
 
     const wrapper = mount(ReconciliationCreateFlowPage)
     await flushPromises()
@@ -370,7 +370,7 @@ describe('ReconciliationCreateFlowPage', () => {
     expect(listAutomationSourceOptions).toHaveBeenCalledTimes(1)
     expect(listEnumOptions).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('What should this run be called?')
-    expect(wrapper.text()).not.toContain('Settings are restricted to super-admin users.')
+    expect(wrapper.text()).not.toContain('Settings are restricted to Darpan admin users.')
     expect(wrapper.text()).not.toContain('Unable to load reconciliation setup options.')
   })
 
@@ -456,6 +456,111 @@ describe('ReconciliationCreateFlowPage', () => {
     await wrapper.get('[data-testid="file1-field-select"]').trigger('click')
     expect(wrapper.text()).toContain('Order ID')
     expect(wrapper.find('[data-testid="workflow-select-option"][data-option-value="$.records[*].id"]').exists()).toBe(true)
+  })
+
+  it('keeps source config type scoped when Shopify and OMS use the same config id', async () => {
+    listAutomationSourceOptions.mockResolvedValueOnce({
+      ok: true,
+      messages: [],
+      errors: [],
+      inputModes: [],
+      sourceTypes: [],
+      relativeWindows: [],
+      fileTypes: FILE_TYPE_OPTIONS,
+      systems: SYSTEM_OPTIONS,
+      savedRuns: [],
+      sftpServers: [],
+      sourceConfigs: [
+        {
+          sourceConfigId: 'gorjana_prod',
+          sourceConfigType: 'HOTWAX_OMS_REST',
+          label: 'Gorjana HotWax',
+          systemEnumId: 'OMS',
+        },
+        {
+          sourceConfigId: 'gorjana_prod',
+          sourceConfigType: 'SHOPIFY_AUTH',
+          label: 'Gorjana Shopify',
+          systemEnumId: 'SHOPIFY',
+        },
+      ],
+      nsRestletConfigs: [],
+      systemRemotes: [
+        {
+          systemMessageRemoteId: 'HOTWAX_ORDERS_API',
+          description: 'HotWax orders',
+          label: 'HotWax orders',
+          systemEnumId: 'OMS',
+          optionKey: 'gorjana_prod',
+          sourceConfigId: 'gorjana_prod',
+          sourceConfigType: 'HOTWAX_OMS_REST',
+          primaryIdOptions: [
+            { fieldPath: '$.records[*].externalId', label: 'External ID' },
+          ],
+        },
+        {
+          systemMessageRemoteId: 'SHOPIFY_REMOTE',
+          description: 'Shopify orders',
+          label: 'Shopify orders',
+          systemEnumId: 'SHOPIFY',
+          optionKey: 'gorjana_prod',
+          sourceConfigId: 'gorjana_prod',
+          sourceConfigType: 'SHOPIFY_AUTH',
+          primaryIdOptions: [
+            { fieldPath: '$.records[*].id', label: 'Order ID' },
+          ],
+        },
+      ],
+    })
+
+    const wrapper = mount(ReconciliationCreateFlowPage)
+    await flushPromises()
+
+    await wrapper.get('input[name="runName"]').setValue('Production Orders')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file1-system-select', 'SHOPIFY')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowChoice(wrapper, 'file1-source-choice-api')
+    await chooseWorkflowOption(wrapper, 'file1-api-config-select', 'gorjana_prod')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file1-api-select', 'remote:SHOPIFY_REMOTE:gorjana_prod')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await chooseWorkflowOption(wrapper, 'file1-field-select', '$.records[*].id')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file2-system-select', 'OMS')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowChoice(wrapper, 'file2-source-choice-api')
+    await chooseWorkflowOption(wrapper, 'file2-api-config-select', 'gorjana_prod')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+
+    await chooseWorkflowOption(wrapper, 'file2-api-select', 'remote:HOTWAX_ORDERS_API:gorjana_prod')
+    await wrapper.get('[data-testid="wizard-next"]').trigger('click')
+    await chooseWorkflowOption(wrapper, 'file2-field-select', '$.records[*].externalId')
+    await wrapper.get('[data-testid="create-run"]').trigger('click')
+    await flushPromises()
+
+    expect(createRuleSetRun).toHaveBeenCalledWith({
+      runName: 'Production Orders',
+      description: undefined,
+      file1SystemEnumId: 'SHOPIFY',
+      file1SourceTypeEnumId: 'AUT_SRC_API',
+      file1SystemMessageRemoteId: 'SHOPIFY_REMOTE',
+      file1SourceConfigId: 'gorjana_prod',
+      file1SourceConfigType: 'SHOPIFY_AUTH',
+      file1PrimaryIdExpression: '$.records[*].id',
+      file2SystemEnumId: 'OMS',
+      file2SourceTypeEnumId: 'AUT_SRC_API',
+      file2SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
+      file2SourceConfigId: 'gorjana_prod',
+      file2SourceConfigType: 'HOTWAX_OMS_REST',
+      file2PrimaryIdExpression: '$.records[*].externalId',
+    })
   })
 
   it('uses canonical Shopify system options when UAT returns legacy system rows', async () => {

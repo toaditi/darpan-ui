@@ -15,7 +15,9 @@ const route = vi.hoisted(() => ({
   fullPath: '/reconciliation/run-history/RS_ORDER_CSV?runName=CSV%20Order%20Compare&file1SystemLabel=OMS&file2SystemLabel=SHOPIFY',
 }))
 const listGeneratedOutputs = vi.hoisted(() => vi.fn())
+const listSavedRuns = vi.hoisted(() => vi.fn())
 const saveSavedRunName = vi.hoisted(() => vi.fn())
+const routerPush = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   sessionInfo: {
     userId: 'editor',
@@ -31,11 +33,15 @@ vi.mock('vue-router', () => ({
     template: '<a :data-to="typeof to === \'string\' ? to : JSON.stringify(to)"><slot /></a>',
   },
   useRoute: () => route,
+  useRouter: () => ({
+    push: routerPush,
+  }),
 }))
 
 vi.mock('../../../lib/api/facade', () => ({
   reconciliationFacade: {
     listGeneratedOutputs,
+    listSavedRuns,
     saveSavedRunName,
   },
 }))
@@ -91,6 +97,63 @@ function buildGeneratedOutput(day: number) {
   }
 }
 
+function buildRunningGeneratedOutput() {
+  return {
+    fileName: '',
+    reconciliationRunResultId: 'RUN_RESULT_ACTIVE',
+    sourceFormat: '',
+    availableFormats: [],
+    savedRunId: 'RS_ORDER_CSV',
+    savedRunName: 'CSV Order Compare',
+    savedRunType: 'ruleset',
+    ruleSetId: 'RS_ORDER_CSV',
+    compareScopeId: 'CS_ORDER_CSV',
+    statusEnumId: 'AUT_STAT_RUNNING',
+    statusLabel: 'Running',
+    resultAvailable: false,
+    createdDate: '2026-03-31T09:05:00.000Z',
+  }
+}
+
+function buildSavedRunSummary() {
+  return {
+    savedRunId: 'RS_ORDER_CSV',
+    runName: 'CSV Order Compare',
+    description: 'CSV Order Compare',
+    runType: 'ruleset',
+    ruleSetId: 'RS_ORDER_CSV',
+    compareScopeId: 'CS_ORDER_CSV',
+    requiresSystemSelection: false,
+    defaultFile1SystemEnumId: 'OMS',
+    defaultFile2SystemEnumId: 'SHOPIFY',
+    systemOptions: [
+      {
+        fileSide: 'FILE_1',
+        enumId: 'OMS',
+        label: 'OMS',
+        fileTypeEnumId: 'DftCsv',
+        idFieldExpression: 'order_id',
+      },
+      {
+        fileSide: 'FILE_2',
+        enumId: 'SHOPIFY',
+        label: 'SHOPIFY',
+        fileTypeEnumId: 'DftCsv',
+        idFieldExpression: 'id',
+      },
+    ],
+    rules: [
+      {
+        ruleId: 'RS_ORDER_CSV_RULE_1',
+        sequenceNum: 1,
+        file1FieldPath: 'total',
+        file2FieldPath: 'current_total',
+        operator: '=',
+      },
+    ],
+  }
+}
+
 describe('ReconciliationRunHistoryPage', () => {
   beforeEach(() => {
     installLocalStorageStub()
@@ -125,6 +188,20 @@ describe('ReconciliationRunHistoryPage', () => {
       ],
     })
     saveSavedRunName.mockReset()
+    listSavedRuns.mockReset()
+    listSavedRuns.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      pagination: {
+        pageIndex: 0,
+        pageSize: 100,
+        totalCount: 1,
+        pageCount: 1,
+      },
+      savedRuns: [buildSavedRunSummary()],
+    })
+    routerPush.mockReset()
     authState.sessionInfo = {
       userId: 'editor',
       canRunActiveTenantReconciliation: true,
@@ -224,6 +301,45 @@ describe('ReconciliationRunHistoryPage', () => {
         workflowOriginPath: route.fullPath,
       },
     })
+    expect(wrapper.find('.static-page-board [data-testid="run-history-open-settings"]').exists()).toBe(false)
+    const openSettingsAction = wrapper.get('.static-page-actions [data-testid="run-history-open-settings"]')
+    expect(openSettingsAction.classes()).toContain('app-icon-action')
+    expect(openSettingsAction.classes()).toContain('app-icon-action--large')
+    expect(openSettingsAction.attributes('aria-label')).toBe('Run settings')
+    expect(openSettingsAction.find('svg').exists()).toBe(true)
+    const settingsIcon = openSettingsAction.get('svg')
+    expect(settingsIcon.attributes('viewBox')).toBe('0 0 24 24')
+    expect(settingsIcon.attributes('fill')).toBe('none')
+    expect(settingsIcon.attributes('stroke')).toBe('currentColor')
+    expect(settingsIcon.attributes('stroke-width')).toBe('1.8')
+    expect(openSettingsAction.get('circle').attributes('r')).toBe('3')
+    expect(openSettingsAction.text()).not.toContain('Run settings')
+    expect(openSettingsAction.element.tagName).toBe('BUTTON')
+
+    await openSettingsAction.trigger('click')
+    await flushPromises()
+
+    expect(listSavedRuns).toHaveBeenCalledWith({
+      pageIndex: 0,
+      pageSize: 100,
+      query: '',
+    })
+    expect(routerPush).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'reconciliation-ruleset-manager',
+      state: expect.objectContaining({
+        workflowOriginLabel: 'Run History',
+        workflowOriginPath: route.fullPath,
+        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
+        reconciliationRuleSetDraft: expect.objectContaining({
+          savedRunId: 'RS_ORDER_CSV',
+          runName: 'CSV Order Compare',
+          file1SystemEnumId: 'OMS',
+          file1PrimaryIdExpression: 'order_id',
+          file2SystemEnumId: 'SHOPIFY',
+          file2PrimaryIdExpression: 'id',
+        }),
+      }),
+    }))
 
     editableTitle.element.textContent = 'CSV Order Compare Revised'
     await editableTitle.trigger('input')
@@ -255,6 +371,50 @@ describe('ReconciliationRunHistoryPage', () => {
     expect(wrapper.findAll('.static-page-section-heading').map((node) => node.text())).toEqual(['In Progress', 'Most Recent', 'Previous Results'])
     expect(runningTile.text()).toContain('Running')
     expect(runningTile.text()).toContain(formatCreatedDateForExpectation('2026-03-31T09:05:00.000Z'))
+  })
+
+  it('shows backend persisted running runs without making them the featured result', async () => {
+    listGeneratedOutputs.mockResolvedValue({
+      ok: true,
+      messages: [],
+      errors: [],
+      pagination: {
+        pageIndex: 0,
+        pageSize: 6,
+        totalCount: 7,
+        pageCount: 2,
+      },
+      generatedOutputs: [
+        buildRunningGeneratedOutput(),
+        buildGeneratedOutput(31),
+        buildGeneratedOutput(30),
+        buildGeneratedOutput(29),
+        buildGeneratedOutput(28),
+        buildGeneratedOutput(27),
+        buildGeneratedOutput(26),
+      ],
+    })
+
+    const wrapper = mount(ReconciliationRunHistoryPage)
+    await flushPromises()
+
+    const runningTile = wrapper.get('[data-testid="run-history-running-tile"]')
+    expect(wrapper.findAll('.static-page-section-heading').map((node) => node.text())).toEqual(['In Progress', 'Most Recent', 'Previous Results'])
+    expect(runningTile.text()).toContain('Running')
+    expect(runningTile.text()).toContain(formatCreatedDateForExpectation('2026-03-31T09:05:00.000Z'))
+    expect(JSON.parse(wrapper.get('[data-testid="run-history-featured-tile"]').attributes('data-to') ?? '{}')).toEqual({
+      name: 'reconciliation-run-result',
+      params: {
+        savedRunId: 'RS_ORDER_CSV',
+        outputFileName: 'CSV-Order-Compare-diff-20260331-090000.json',
+      },
+      query: {
+        runName: 'CSV Order Compare',
+        file1SystemLabel: 'OMS',
+        file2SystemLabel: 'SHOPIFY',
+      },
+    })
+    expect(wrapper.findAll('[data-testid="run-history-result-tile"]')).toHaveLength(5)
   })
 
   it('clears a pending history marker after a newer saved result is available', async () => {

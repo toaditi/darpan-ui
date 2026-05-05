@@ -821,7 +821,7 @@ function selectedSourceConfigId(side: SourceSide): string {
 function apiSourceConfigOptionsForSide(side: SourceSide): WorkflowSelectOption[] {
   const systemEnumId = selectedSystemEnumId(side)
   return sourceConfigs.value
-    .filter((config) => endpointMatchesSystem(config.systemEnumId, systemEnumId))
+    .filter((config) => sourceConfigBelongsToSystem(config, systemEnumId))
     .map((config) => ({
       value: config.sourceConfigId,
       label: config.label || config.description || config.sourceConfigId,
@@ -853,6 +853,18 @@ function apiSourceOptionsForSide(side: SourceSide): WorkflowSelectOption[] {
 
 function sourceConfigMatches(candidate: string | undefined, selected: string): boolean {
   return Boolean(candidate?.trim() && selected.trim() && candidate.trim() === selected.trim())
+}
+
+function sourceConfigBelongsToSystem(config: AutomationSourceConfigOption, systemEnumId: string): boolean {
+  return !config.systemEnumId || endpointMatchesSystem(config.systemEnumId, systemEnumId)
+}
+
+function selectedSourceConfigOptionForSide(side: SourceSide, sourceConfigId: string): AutomationSourceConfigOption | null {
+  const systemEnumId = selectedSystemEnumId(side)
+  return sourceConfigs.value.find((config) =>
+    sourceConfigMatches(config.sourceConfigId, sourceConfigId) &&
+    sourceConfigBelongsToSystem(config, systemEnumId),
+  ) ?? null
 }
 
 function remoteSelectValue(remote: AutomationSystemRemoteOption): string {
@@ -889,7 +901,7 @@ function selectedApiSourceValue(side: SourceSide): string {
 }
 
 function updateApiSourceConfig(side: SourceSide, value: string): void {
-  const selectedConfig = sourceConfigs.value.find((config) => config.sourceConfigId === value) ?? null
+  const selectedConfig = selectedSourceConfigOptionForSide(side, value)
   if (side === 'file1') {
     file1SourceConfigId.value = selectedConfig?.sourceConfigId ?? ''
     file1SourceConfigType.value = selectedConfig?.sourceConfigType || expectedSourceConfigType(file1SystemEnumId.value)
@@ -994,10 +1006,12 @@ function selectedApiSourceOption(side: SourceSide): AutomationNsRestletOption | 
 
 function selectedRemoteOptionForSide(side: SourceSide): AutomationSystemRemoteOption | null {
   const remoteId = side === 'file1' ? file1SystemMessageRemoteId.value : file2SystemMessageRemoteId.value
+  const systemEnumId = selectedSystemEnumId(side)
   const sourceConfigId = selectedSourceConfigId(side)
   if (!remoteId) return null
   return systemRemotes.value.find((remote) =>
     remote.systemMessageRemoteId === remoteId &&
+    endpointMatchesSystem(remote.systemEnumId, systemEnumId) &&
     (!sourceConfigId || sourceConfigMatches(remote.sourceConfigId || remote.optionKey, sourceConfigId)),
   ) ?? null
 }

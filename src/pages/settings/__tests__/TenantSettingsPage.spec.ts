@@ -30,6 +30,7 @@ const authState = vi.hoisted(() => ({
     ],
     canEditActiveTenantData: true,
     isSuperAdmin: true,
+    canManageDarpanCore: true,
   },
 }))
 
@@ -64,7 +65,7 @@ vi.mock('../../../lib/auth', () => ({
       return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
     },
     get canManageGlobalSettings() {
-      return authState.sessionInfo.isSuperAdmin === true
+      return authState.sessionInfo.canManageDarpanCore === true
     },
     get canViewTenantSettings() {
       return Boolean(authState.sessionInfo.userId)
@@ -89,6 +90,7 @@ describe('TenantSettingsPage', () => {
       ],
       canEditActiveTenantData: true,
       isSuperAdmin: true,
+      canManageDarpanCore: true,
     }
     push.mockReset()
     push.mockResolvedValue(undefined)
@@ -393,22 +395,23 @@ describe('TenantSettingsPage', () => {
     expect(wrapper.get('[role="dialog"]').text()).toContain('What do you want to do with Google Chat notifications?')
   })
 
-  it('keeps AI settings visible but locked for non-super-admin tenant users', async () => {
+  it('keeps AI settings visible but locked for super-admins without Darpan-admin access', async () => {
     authState.sessionInfo = {
-      userId: 'editor',
+      userId: 'super-admin',
       activeTenantUserGroupId: 'KREWE',
       activeTenantLabel: 'Krewe',
       timeZone: 'America/Los_Angeles',
       availableTenants: [{ userGroupId: 'KREWE', label: 'Krewe' }],
       canEditActiveTenantData: true,
-      isSuperAdmin: false,
+      isSuperAdmin: true,
+      canManageDarpanCore: false,
     }
 
     const wrapper = mount(TenantSettingsPage)
     await flushPromises()
 
     expect(getLlmSettings).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Super admin only')
+    expect(wrapper.text()).toContain('Darpan admin only')
     expect(wrapper.find('[data-testid="tenant-ai-create-action"]').exists()).toBe(false)
   })
 })

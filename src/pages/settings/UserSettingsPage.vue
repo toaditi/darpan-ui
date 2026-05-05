@@ -186,7 +186,8 @@ const lastRunLabel = computed(() => {
   return lastRun.savedRunId || lastRun.reconciliationRunId || lastRun.reconciliationRunResultId || 'Run available'
 })
 const permissionSummary = computed(() => {
-  if (permissions.canManageGlobalSettings) return 'Super admin'
+  if (permissions.canManageGlobalSettings) return 'Darpan admin'
+  if (sessionInfo.value?.isSuperAdmin === true) return 'Super admin'
   if (permissions.canEditTenantSettings) return 'Tenant admin'
   if (permissions.canRunActiveTenantReconciliation) return 'Tenant user'
   return 'View only membership'

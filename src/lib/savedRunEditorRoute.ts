@@ -1,4 +1,5 @@
 import type { HistoryState, RouteLocationRaw } from 'vue-router'
+import { reconciliationFacade } from './api/facade'
 import type { SavedRunSummary } from './api/types'
 import {
   buildReconciliationRuleSetDraftState,
@@ -9,12 +10,33 @@ import {
 } from './reconciliationRuleSetDraft'
 import { resolveRecordLabel } from './utils/recordLabel'
 
+const SAVED_RUN_EDITOR_LOOKUP_PAGE_SIZE = 100
+
 export function savedRunName(row: SavedRunSummary): string {
   return resolveRecordLabel({
     primary: row.runName,
     description: row.description,
     fallbackId: row.savedRunId,
   })
+}
+
+function normalizeSavedRunIdentifier(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+export function savedRunMatchesEditorTarget(row: SavedRunSummary, targetId: string): boolean {
+  const normalizedTargetId = normalizeSavedRunIdentifier(targetId)
+  if (!normalizedTargetId) return false
+
+  return [
+    row.savedRunId,
+    row.ruleSetId,
+    row.reconciliationMappingId,
+  ].some((value) => normalizeSavedRunIdentifier(value) === normalizedTargetId)
+}
+
+export function findSavedRunEditorTarget(rows: SavedRunSummary[], targetId: string): SavedRunSummary | null {
+  return rows.find((row) => savedRunMatchesEditorTarget(row, targetId)) ?? null
 }
 
 function normalizePreAction(value: unknown): ReconciliationRulePreAction | null {
@@ -153,4 +175,27 @@ export function buildSavedRunEditorRoute(row: SavedRunSummary, workflowOriginSta
     params: { reconciliationMappingId: row.reconciliationMappingId || row.savedRunId },
     state: workflowOriginState,
   }
+}
+
+export async function resolveSavedRunEditorRoute(targetId: string, workflowOriginState: HistoryState): Promise<RouteLocationRaw | null> {
+  const normalizedTargetId = normalizeSavedRunIdentifier(targetId)
+  if (!normalizedTargetId) return null
+
+  let pageIndex = 0
+  let pageCount = 1
+
+  while (pageIndex < pageCount) {
+    const response = await reconciliationFacade.listSavedRuns({
+      pageIndex,
+      pageSize: SAVED_RUN_EDITOR_LOOKUP_PAGE_SIZE,
+      query: '',
+    })
+    const savedRun = findSavedRunEditorTarget(response.savedRuns ?? [], normalizedTargetId)
+    if (savedRun) return buildSavedRunEditorRoute(savedRun, workflowOriginState)
+
+    pageCount = response.pagination?.pageCount ?? pageCount
+    pageIndex += 1
+  }
+
+  return null
 }

@@ -1813,9 +1813,11 @@ label > span {
 }
 
 .user-menu-tenant {
-  display: grid;
-  gap: 0.45rem;
-  width: 100%;
+  margin: calc(var(--space-1) * -0.35) 0 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  max-width: 14rem;
+  overflow-wrap: anywhere;
 }
 
 .user-menu-tenant-active {

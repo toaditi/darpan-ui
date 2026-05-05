@@ -38,12 +38,12 @@
             <span>{{ config.baseUrl }}</span>
           </article>
           <article class="static-page-summary-card">
-            <span class="static-page-summary-label">Timezone</span>
-            <span>{{ timeZone }}</span>
-          </article>
-          <article class="static-page-summary-card">
             <span class="static-page-summary-label">Active</span>
             <span>{{ activeLabel }}</span>
+          </article>
+          <article class="static-page-summary-card static-page-summary-card--wide">
+            <span class="static-page-summary-label">Timezone</span>
+            <span>{{ timeZone }}</span>
           </article>
         </div>
       </StaticPageSection>
@@ -81,6 +81,18 @@
         >
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
             <path :d="backIconPath" fill="currentColor" />
+          </svg>
+        </RouterLink>
+
+        <RouterLink
+          to="/settings/hotwax"
+          class="app-icon-action app-icon-action--large settings-dashboard-footer-action"
+          data-testid="list-oms-rest-sources"
+          aria-label="View HotWax sources"
+          title="View HotWax sources"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path :d="listIconPath" fill="currentColor" />
           </svg>
         </RouterLink>
 
@@ -136,6 +148,8 @@ const trashIconPath =
 const trashIconTransform = 'translate(0 0.75)'
 const backIconPath =
   'M9.53 4.47a.75.75 0 0 1 0 1.06L6.81 8.25H15a.75.75 0 0 1 0 1.5H6.81l2.72 2.72a.75.75 0 1 1-1.06 1.06l-4-4a.75.75 0 0 1 0-1.06l4-4a.75.75 0 0 1 1.06 0Z'
+const listIconPath =
+  'M5.5 5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5ZM5.5 10a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5ZM5.5 15a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm2-.75h8a.75.75 0 0 1 0 1.5h-8a.75.75 0 0 1 0-1.5Z'
 
 const configId = computed(() => String(route.params.omsRestSourceConfigId ?? '').trim())
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)

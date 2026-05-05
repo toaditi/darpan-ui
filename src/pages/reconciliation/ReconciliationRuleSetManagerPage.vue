@@ -32,7 +32,17 @@
 
       <div class="ruleset-manager-basics-grid">
         <div class="ruleset-manager-schema-row" data-testid="ruleset-manager-schema-row-file1">
-          <article class="ruleset-manager-basic-card">
+          <RouterLink
+            v-if="file1SystemRoute"
+            class="ruleset-manager-basic-card ruleset-manager-basic-card--link"
+            data-testid="ruleset-manager-system-link-file1"
+            aria-label="Open system config for source 1"
+            :to="file1SystemRoute"
+          >
+            <span class="static-page-summary-label">System</span>
+            <strong>{{ file1Title }}</strong>
+          </RouterLink>
+          <article v-else class="ruleset-manager-basic-card">
             <span class="static-page-summary-label">System</span>
             <strong>{{ file1Title }}</strong>
           </article>
@@ -47,7 +57,17 @@
         </div>
 
         <div class="ruleset-manager-schema-row" data-testid="ruleset-manager-schema-row-file2">
-          <article class="ruleset-manager-basic-card">
+          <RouterLink
+            v-if="file2SystemRoute"
+            class="ruleset-manager-basic-card ruleset-manager-basic-card--link"
+            data-testid="ruleset-manager-system-link-file2"
+            aria-label="Open system config for source 2"
+            :to="file2SystemRoute"
+          >
+            <span class="static-page-summary-label">System</span>
+            <strong>{{ file2Title }}</strong>
+          </RouterLink>
+          <article v-else class="ruleset-manager-basic-card">
             <span class="static-page-summary-label">System</span>
             <strong>{{ file2Title }}</strong>
           </article>
@@ -161,7 +181,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
@@ -205,6 +225,8 @@ const file1Title = computed(() => systemTitle(draft.value, 'file1'))
 const file2Title = computed(() => systemTitle(draft.value, 'file2'))
 const file1SourceLabel = computed(() => summarizeSource(draft.value, 'file1'))
 const file2SourceLabel = computed(() => summarizeSource(draft.value, 'file2'))
+const file1SystemRoute = computed<RouteLocationRaw | null>(() => buildSourceConfigRoute(draft.value, 'file1'))
+const file2SystemRoute = computed<RouteLocationRaw | null>(() => buildSourceConfigRoute(draft.value, 'file2'))
 const file1PrimaryId = computed(() => formatFieldKey(draft.value?.file1PrimaryIdExpression))
 const file2PrimaryId = computed(() => formatFieldKey(draft.value?.file2PrimaryIdExpression))
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
@@ -280,6 +302,38 @@ function summarizeSource(draftValue: ReconciliationRuleSetDraft | null, side: 'f
   return fileTypeEnumId === 'DftJson'
     ? resolveDraftSchemaLabel(draftValue, side)
     : 'CSV source'
+}
+
+function buildSourceConfigRoute(draftValue: ReconciliationRuleSetDraft | null, side: 'file1' | 'file2'): RouteLocationRaw | null {
+  if (!draftValue) return null
+
+  const sourceTypeEnumId = side === 'file1' ? draftValue.file1SourceTypeEnumId : draftValue.file2SourceTypeEnumId
+  if (sourceTypeEnumId?.trim() !== SOURCE_TYPE_API) return null
+
+  const sourceConfigId = side === 'file1' ? draftValue.file1SourceConfigId?.trim() : draftValue.file2SourceConfigId?.trim()
+  if (!sourceConfigId) return null
+
+  const sourceConfigType = side === 'file1' ? draftValue.file1SourceConfigType?.trim() : draftValue.file2SourceConfigType?.trim()
+  const systemEnumId = side === 'file1' ? draftValue.file1SystemEnumId?.trim() : draftValue.file2SystemEnumId?.trim()
+  const workflowOrigin = buildWorkflowOriginState('Run Details', route.fullPath || '/reconciliation/ruleset-manager')
+
+  if (sourceConfigType === 'HOTWAX_OMS_REST' || systemEnumId === 'OMS') {
+    return {
+      name: 'settings-oms-auth',
+      params: { omsRestSourceConfigId: sourceConfigId },
+      state: workflowOrigin,
+    }
+  }
+
+  if (sourceConfigType === 'SHOPIFY_AUTH' || systemEnumId === 'SHOPIFY') {
+    return {
+      name: 'settings-shopify-auth',
+      params: { shopifyAuthConfigId: sourceConfigId },
+      state: workflowOrigin,
+    }
+  }
+
+  return null
 }
 
 function apiEndpointLabel(draftValue: ReconciliationRuleSetDraft, side: 'file1' | 'file2'): string {
@@ -457,6 +511,21 @@ onMounted(() => {
 .ruleset-manager-footer-row {
   gap: 0.7rem;
   justify-content: center;
+}
+
+.ruleset-manager-basic-card--link {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.ruleset-manager-basic-card--link:hover {
+  border-color: color-mix(in oklab, var(--accent) 58%, var(--border));
+  background: color-mix(in oklab, var(--surface-2) 82%, var(--accent));
+  color: var(--text);
 }
 
 .ruleset-manager-summary-copy {

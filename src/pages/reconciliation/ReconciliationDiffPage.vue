@@ -843,6 +843,17 @@ function readFailedRunFeedback(error: ApiCallError): FailedRunFeedback {
   }
 }
 
+function shouldKeepPendingRunAfterRunError(error: unknown): boolean {
+  if (!(error instanceof ApiCallError)) return false
+  if (error.status !== 503) return false
+
+  const details = (error.details ?? {}) as {
+    failures?: Array<{ status?: number }>
+  }
+  const failures = details.failures
+  return Array.isArray(failures) && failures.length > 0 && failures.every((failure) => failure.status == null)
+}
+
 function focusCurrentStepControl(): void {
   const selector = stepFocusSelectorById[currentStep.value.id]
   const focusTarget = selector ? stepFocusRegion.value?.querySelector<HTMLElement>(selector) : null
@@ -1146,8 +1157,10 @@ async function runDiff(): Promise<void> {
 
     await router.push(resultRoute)
   } catch (error) {
-    clearPendingReconciliationRun(pendingRun?.pendingRunId)
-    pendingSubmittedRun.value = null
+    if (!shouldKeepPendingRunAfterRunError(error)) {
+      clearPendingReconciliationRun(pendingRun?.pendingRunId)
+      pendingSubmittedRun.value = null
+    }
     if (error instanceof ApiCallError) {
       const failedFeedback = readFailedRunFeedback(error)
       validationErrors.value = failedFeedback.validationErrors

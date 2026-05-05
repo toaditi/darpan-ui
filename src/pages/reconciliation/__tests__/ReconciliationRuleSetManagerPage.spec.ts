@@ -99,7 +99,8 @@ function createApiDraftState() {
       file1SourceTypeEnumId: 'AUT_SRC_API',
       file1SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
       file1SystemMessageRemoteLabel: 'Orders API',
-      file1SourceConfigId: 'HOTWAX_ORDERS',
+      file1SourceConfigId: 'dev_oms',
+      file1SourceConfigType: 'HOTWAX_OMS_REST',
       file1FileTypeEnumId: 'DftJson',
       file1JsonSchemaId: 'schema-oms-orders',
       file1SchemaLabel: 'HotWax orders',
@@ -109,7 +110,8 @@ function createApiDraftState() {
       file2SourceTypeEnumId: 'AUT_SRC_API',
       file2SystemMessageRemoteId: 'SHOPIFY_ORDERS_API',
       file2SystemMessageRemoteLabel: 'Shopify Orders Endpoint',
-      file2SourceConfigId: 'SHOPIFY_ORDERS',
+      file2SourceConfigId: 'dev_shopify',
+      file2SourceConfigType: 'SHOPIFY_AUTH',
       file2FileTypeEnumId: 'DftJson',
       file2JsonSchemaId: 'schema-shopify-orders',
       file2SchemaLabel: 'Shopify orders',
@@ -268,6 +270,8 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(schemaRows[1]?.text()).not.toContain('OMS orders')
     const basicCards = wrapper.findAll('.ruleset-manager-basic-card')
     expect(basicCards).toHaveLength(6)
+    expect(wrapper.find('[data-testid="ruleset-manager-system-link-file1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ruleset-manager-system-link-file2"]').exists()).toBe(false)
     expect(basicCards[0]?.text()).toContain('System')
     expect(basicCards[0]?.text()).toContain('OMS')
     expect(basicCards[1]?.text()).toContain('Schema')
@@ -341,17 +345,42 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(wrapper.text()).toContain('API Order Sync')
     const schemaRows = wrapper.findAll('.ruleset-manager-schema-row')
     expect(schemaRows).toHaveLength(2)
-    expect(schemaRows[0]?.text()).toContain('HOTWAX_ORDERS')
+    expect(schemaRows[0]?.text()).toContain('dev_oms')
     expect(schemaRows[0]?.text()).not.toContain('HotWax')
     expect(schemaRows[0]?.text()).toContain('Schema')
     expect(schemaRows[0]?.text()).toContain('Orders API')
     expect(schemaRows[0]?.text()).not.toContain('CSV source')
     expect(schemaRows[0]?.text()).not.toContain('HotWax orders')
-    expect(schemaRows[1]?.text()).toContain('SHOPIFY_ORDERS')
+    expect(schemaRows[1]?.text()).toContain('dev_shopify')
     expect(schemaRows[1]?.text()).toContain('Schema')
     expect(schemaRows[1]?.text()).toContain('Shopify Orders Endpoint')
     expect(schemaRows[1]?.text()).not.toContain('CSV source')
     expect(schemaRows[1]?.text()).not.toContain('Shopify orders')
+
+    const file1SystemLink = wrapper.get('[data-testid="ruleset-manager-system-link-file1"]')
+    const file2SystemLink = wrapper.get('[data-testid="ruleset-manager-system-link-file2"]')
+    expect(file1SystemLink.classes()).toContain('ruleset-manager-basic-card')
+    expect(file1SystemLink.classes()).toContain('ruleset-manager-basic-card--link')
+    expect(file1SystemLink.attributes('aria-label')).toBe('Open system config for source 1')
+    expect(JSON.parse(file1SystemLink.attributes('data-to') ?? '{}')).toEqual({
+      name: 'settings-oms-auth',
+      params: { omsRestSourceConfigId: 'dev_oms' },
+      state: {
+        workflowOriginLabel: 'Run Details',
+        workflowOriginPath: '/reconciliation/ruleset-manager',
+      },
+    })
+    expect(file2SystemLink.classes()).toContain('ruleset-manager-basic-card')
+    expect(file2SystemLink.classes()).toContain('ruleset-manager-basic-card--link')
+    expect(file2SystemLink.attributes('aria-label')).toBe('Open system config for source 2')
+    expect(JSON.parse(file2SystemLink.attributes('data-to') ?? '{}')).toEqual({
+      name: 'settings-shopify-auth',
+      params: { shopifyAuthConfigId: 'dev_shopify' },
+      state: {
+        workflowOriginLabel: 'Run Details',
+        workflowOriginPath: '/reconciliation/ruleset-manager',
+      },
+    })
   })
 
   it('renders a saved run summary and equation without editable rule controls', async () => {

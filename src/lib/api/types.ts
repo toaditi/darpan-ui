@@ -537,6 +537,7 @@ export interface SavedMapping {
 
 export interface GeneratedOutput {
   fileName: string
+  reconciliationRunResultId?: string
   sourceFormat: string
   availableFormats: string[]
   preferredDownloadFormat?: string
@@ -555,6 +556,12 @@ export interface GeneratedOutput {
   onlyInFile2Count?: number
   createdDate?: string
   sizeBytes?: number
+  statusEnumId?: string
+  statusLabel?: string
+  resultAvailable?: boolean
+  startedDate?: string
+  completedDate?: string
+  lastUpdatedDate?: string
 }
 
 export interface RunSavedRunDiffResult {

@@ -10,6 +10,7 @@ const authState = vi.hoisted(() => ({
     username?: string
     canRunActiveTenantReconciliation?: boolean
     canEditActiveTenantData?: boolean
+    canManageDarpanCore?: boolean
     isSuperAdmin?: boolean
   } | null,
   get authenticated() {
@@ -42,7 +43,7 @@ vi.mock('../../lib/auth', () => ({
       return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
     },
     get canManageGlobalSettings() {
-      return authState.sessionInfo?.isSuperAdmin === true
+      return authState.sessionInfo?.canManageDarpanCore === true
     },
     get canViewTenantSettings() {
       return Boolean(authState.sessionInfo?.userId)

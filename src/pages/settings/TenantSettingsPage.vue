@@ -14,7 +14,7 @@
         </div>
       </template>
 
-      <p v-if="!canManageGlobalSettings" class="section-note">Super admin only</p>
+      <p v-if="!canManageGlobalSettings" class="section-note">Darpan admin only</p>
       <p v-else-if="aiLoading" class="section-note">Loading AI provider settings...</p>
       <InlineValidation v-else-if="aiError" tone="error" :message="aiError" />
 
@@ -942,7 +942,7 @@ async function handleAiSubmit(): Promise<void> {
 
 async function saveAiSettings(): Promise<void> {
   if (!canManageGlobalSettings.value) {
-    aiWorkflowError.value = 'Only super admins can update AI settings.'
+    aiWorkflowError.value = 'Only Darpan admins can update AI settings.'
     return
   }
 
