@@ -192,7 +192,9 @@ import {
   type ReconciliationRunRouteContext,
 } from '../../lib/reconciliationRoutes'
 import { useListPagination } from '../../lib/listPagination'
+import { fileNameFromPath, humanizeToken, normalizeDisplayText } from '../../lib/reconciliationDisplay'
 import { buildSavedRunEditorRoute } from '../../lib/savedRunEditorRoute'
+import { backIconPath, editIconPath, trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import { formatDateTime } from '../../lib/utils/date'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
@@ -202,6 +204,10 @@ const columns = [
   { key: 'completed', label: 'Completed', colStyle: { width: '34%' } },
   { key: 'counts', label: 'Differences', colStyle: { width: '16%' } },
 ]
+
+type AutomationExecutionTableRow = Record<string, unknown> & {
+  execution: AutomationExecutionSummary
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -213,13 +219,15 @@ const loading = ref(false)
 const actionInFlight = ref(false)
 const error = ref<string | null>(null)
 const actionError = ref<string | null>(null)
-const editIconPath =
-  'M14.73 2.73a1.75 1.75 0 0 1 2.48 2.48l-1.2 1.2-2.48-2.48 1.2-1.2ZM12.47 4.99 4.8 12.66l-1.18 3.72 3.72-1.18 7.67-7.67-2.54-2.54Z'
-const trashIconPath =
-  'M7.5 3.5A1.5 1.5 0 0 1 9 2h2a1.5 1.5 0 0 1 1.5 1.5V4H15a.75.75 0 0 1 0 1.5h-.57l-.58 9.17A1.75 1.75 0 0 1 12.1 16.5H7.9a1.75 1.75 0 0 1-1.75-1.33L5.57 5.5H5a.75.75 0 0 1 0-1.5h2.5v-.5ZM11 3.5h-2V4h2v-.5ZM7.07 5.5l.56 8.89c.02.19.13.31.27.31h4.2c.14 0 .25-.12.27-.31l.56-8.89H7.07Zm1.68 1.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Zm2.5 0a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Z'
-const trashIconTransform = 'translate(0 0.75)'
-const backIconPath =
-  'M9.53 4.47a.75.75 0 0 1 0 1.06L6.81 8.25H15a.75.75 0 0 1 0 1.5H6.81l2.72 2.72a.75.75 0 1 1-1.06 1.06l-4-4a.75.75 0 0 1 0-1.06l4-4a.75.75 0 0 1 1.06 0Z'
+const weekdayLabels: Record<string, string> = {
+  MON: 'Monday',
+  TUE: 'Tuesday',
+  WED: 'Wednesday',
+  THU: 'Thursday',
+  FRI: 'Friday',
+  SAT: 'Saturday',
+  SUN: 'Sunday',
+}
 
 const automationId = computed(() => (typeof route.params.automationId === 'string' ? route.params.automationId.trim() : ''))
 const heroTitle = computed(() => automation.value?.automationName || 'Automation')
@@ -240,7 +248,7 @@ const windowLabel = computed(() => {
   }
   return windowDisplayLabel(row)
 })
-const tenantTimeZone = computed(() => normalizeText(authState.sessionInfo?.timeZone))
+const tenantTimeZone = computed(() => normalizeDisplayText(authState.sessionInfo?.timeZone))
 const previousRunTime = computed(() => (
   automation.value?.lastExecution?.scheduledDate ||
   automation.value?.lastExecution?.completedDate ||
@@ -260,12 +268,12 @@ const savedRunRoute = computed<RouteLocationRaw | null>(() => {
 })
 const reconciliationRunRouteContext = computed<ReconciliationRunRouteContext | null>(() => {
   const row = automation.value
-  const savedRunId = normalizeText(row?.savedRun?.savedRunId || row?.savedRunId || row?.reconciliationMappingId || row?.ruleSetId)
+  const savedRunId = normalizeDisplayText(row?.savedRun?.savedRunId || row?.savedRunId || row?.reconciliationMappingId || row?.ruleSetId)
   if (!row || !savedRunId) return null
 
   return {
     savedRunId,
-    runName: normalizeText(row.savedRun?.runName || row.savedRunName || row.automationName) || 'Selected Run',
+    runName: normalizeDisplayText(row.savedRun?.runName || row.savedRunName || row.automationName) || 'Selected Run',
     file1SystemLabel: automationSystemLabel('FILE_1', 'System 1'),
     file2SystemLabel: automationSystemLabel('FILE_2', 'System 2'),
   }
@@ -282,14 +290,15 @@ const {
   pagedItems: pagedExecutions,
   resetPage: resetExecutionsPage,
 } = useListPagination(sortedExecutions)
-const tableRows = computed(() => pagedExecutions.value as unknown as Array<Record<string, unknown>>)
+const tableRows = computed<AutomationExecutionTableRow[]>(() =>
+  pagedExecutions.value.map((execution) => ({
+    ...execution,
+    execution,
+  })),
+)
 
 function executionRow(row: Record<string, unknown>): AutomationExecutionSummary {
-  return row as unknown as AutomationExecutionSummary
-}
-
-function normalizeText(value: string | undefined): string {
-  return value?.trim() || ''
+  return (row as AutomationExecutionTableRow).execution
 }
 
 function formatTenantDateTime(value: unknown, fallback = '-'): string {
@@ -349,16 +358,7 @@ function scheduleLabelFromCron(expression: string | undefined): string | null {
 }
 
 function weekdayDisplayLabel(value: string | undefined): string | null {
-  const labels: Record<string, string> = {
-    MON: 'Monday',
-    TUE: 'Tuesday',
-    WED: 'Wednesday',
-    THU: 'Thursday',
-    FRI: 'Friday',
-    SAT: 'Saturday',
-    SUN: 'Sunday',
-  }
-  return value ? labels[value] ?? null : null
+  return value ? weekdayLabels[value] ?? null : null
 }
 
 function windowDisplayLabel(row: AutomationRecord): string {
@@ -394,18 +394,6 @@ function countedWindowLabel(prefix: string, count: number | undefined, unit: str
   return `${prefix} ${count} ${unit}${count === 1 ? '' : 's'}`
 }
 
-function humanizeToken(value: string | undefined): string {
-  if (!value) return ''
-  return value
-    .replace(/^AUT_(IN|WIN)_/, '')
-    .replace(/^API_/, 'API ')
-    .replace(/^SFTP_/, 'SFTP ')
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b(api|sftp|utc)\b/g, (match) => match.toUpperCase())
-    .replace(/\b\w/g, (match) => match.toUpperCase())
-}
-
 function executionTime(execution: AutomationExecutionSummary): number {
   const value = execution.scheduledDate || execution.completedDate || execution.startedDate || execution.createdDate
   if (!value) return 0
@@ -414,10 +402,11 @@ function executionTime(execution: AutomationExecutionSummary): number {
 }
 
 function statusTone(statusEnumId: string | undefined): 'neutral' | 'success' | 'warning' | 'danger' {
-  if (!statusEnumId) return 'neutral'
-  if (statusEnumId.includes('SUCCESS') || statusEnumId.includes('DONE')) return 'success'
-  if (statusEnumId.includes('FAIL') || statusEnumId.includes('CANCEL')) return 'danger'
-  if (statusEnumId.includes('RUN') || statusEnumId.includes('PENDING') || statusEnumId.includes('SCHED')) return 'warning'
+  const normalizedStatus = normalizeDisplayText(statusEnumId).toUpperCase()
+  if (!normalizedStatus) return 'neutral'
+  if (normalizedStatus.includes('SUCCESS') || normalizedStatus.includes('DONE')) return 'success'
+  if (normalizedStatus.includes('FAIL') || normalizedStatus.includes('CANCEL')) return 'danger'
+  if (normalizedStatus.includes('RUN') || normalizedStatus.includes('PENDING') || normalizedStatus.includes('SCHED')) return 'warning'
   return 'neutral'
 }
 
@@ -428,17 +417,11 @@ function isSuccessfulExecution(execution: AutomationExecutionSummary): boolean {
 
 function executionResultPath(execution: AutomationExecutionSummary): string {
   if (!isSuccessfulExecution(execution)) return ''
-  return normalizeText(execution.resultDataManagerPath) || normalizeText(execution.resultFileName)
-}
-
-function fileNameFromPath(value: string | undefined): string {
-  const normalized = normalizeText(value)
-  if (!normalized) return ''
-  return normalized.split('/').filter(Boolean).pop() || normalized
+  return normalizeDisplayText(execution.resultDataManagerPath) || normalizeDisplayText(execution.resultFileName)
 }
 
 function executionResultLabel(execution: AutomationExecutionSummary): string {
-  return normalizeText(execution.resultFileName) || fileNameFromPath(execution.resultDataManagerPath) || 'Open result'
+  return normalizeDisplayText(execution.resultFileName) || fileNameFromPath(execution.resultDataManagerPath) || 'Open result'
 }
 
 function executionResultRoute(execution: AutomationExecutionSummary): RouteLocationRaw | null {

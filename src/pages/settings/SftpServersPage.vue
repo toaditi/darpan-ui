@@ -4,139 +4,77 @@
       <h1>SFTP Servers</h1>
     </template>
 
-    <StaticPageSection title="Saved Servers">
-      <div v-if="pageCount > 1" class="static-page-pager">
-        <button type="button" @click="prevPage" :disabled="pageIndex <= 0">Prev</button>
-        <span>Page {{ pageIndex + 1 }} / {{ pageCount }}</span>
-        <button type="button" @click="nextPage" :disabled="pageIndex + 1 >= pageCount">Next</button>
-      </div>
-
-      <p v-if="loading" class="section-note">Loading servers...</p>
-      <InlineValidation v-else-if="error" tone="error" :message="error" />
-
-      <EmptyState
-        v-else-if="rows.length === 0"
-        title="No SFTP servers"
-      />
-
-      <div
-        v-else
-        class="static-page-tile-grid static-page-record-grid static-page-record-grid--fixed"
-        data-testid="saved-sftp-servers"
-      >
-        <RouterLink
-          v-for="row in rows"
-          :key="row.sftpServerId"
-          :to="buildEditRoute(row.sftpServerId)"
-          class="static-page-tile static-page-record-tile"
-          data-testid="sftp-server-tile"
-        >
-          <span class="static-page-tile-title">{{ savedServerName(row) }}</span>
-        </RouterLink>
-      </div>
-
-      <RouterLink
-        v-if="canEditTenantSettings && rows.length === 0 && !loading && !error"
-        :to="createRoute"
-        class="static-page-action-tile static-page-action-tile--inline"
-        data-testid="sftp-empty-create-action"
-      >
-        Create New Server
-      </RouterLink>
-    </StaticPageSection>
-
-    <RouterLink
-      v-if="canEditTenantSettings && rows.length > 0"
-      :to="createRoute"
-      class="static-page-action-tile static-page-create-action"
-      data-testid="sftp-create-action"
-    >
-      Create New Server
-    </RouterLink>
+    <SettingsRecordListSection
+      title="Saved Servers"
+      :tiles="recordTiles"
+      :page-index="pageIndex"
+      :page-count="pageCount"
+      pager-aria-label="SFTP server pages"
+      previous-test-id="sftp-page-previous"
+      next-test-id="sftp-page-next"
+      :loading="loading"
+      loading-message="Loading servers..."
+      :error="error"
+      empty-title="No SFTP servers"
+      list-test-id="saved-sftp-servers"
+      tile-test-id="sftp-server-tile"
+      :can-create="canEditTenantSettings"
+      :create-route="createRoute"
+      create-label="Create New Server"
+      create-test-id="sftp-create-action"
+      empty-create-test-id="sftp-empty-create-action"
+      @update:page-index="goToPage"
+    />
   </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import EmptyState from '../../components/ui/EmptyState.vue'
-import InlineValidation from '../../components/ui/InlineValidation.vue'
+import { computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
-import StaticPageSection from '../../components/ui/StaticPageSection.vue'
-import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import { useAuthState, useUiPermissions } from '../../lib/auth'
-import type { SftpServerRecord } from '../../lib/api/types'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
+import SettingsRecordListSection from './SettingsRecordListSection.vue'
+import { useSettingsPagedList } from './useSettingsPagedList'
 
 const route = useRoute()
 const authState = useAuthState()
 const permissions = useUiPermissions()
 
-const rows = ref<SftpServerRecord[]>([])
-const pageIndex = ref(0)
-const pageSize = ref(12)
-const pageCount = ref(1)
-
-const loading = ref(false)
-const error = ref<string | null>(null)
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const {
+  rows,
+  pageIndex,
+  pageCount,
+  loading,
+  error,
+  load,
+  goToPage,
+} = useSettingsPagedList({
+  loadPage: (request) => settingsFacade.listSftpServers(request),
+  selectRecords: (response) => response.servers ?? [],
+  activeTenantUserGroupId: () => authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  fallbackErrorMessage: 'Failed to load servers.',
+})
 
 const createRoute = computed(() => ({
   path: '/settings/sftp/create',
   state: buildWorkflowOriginState('SFTP Servers', route.fullPath || '/settings/sftp'),
 }))
-
-function savedServerName(row: SftpServerRecord): string {
-  return resolveRecordLabel({
+const recordTiles = computed(() => rows.value.map((row) => ({
+  key: row.sftpServerId,
+  label: resolveRecordLabel({
     description: row.description,
     fallbackId: row.sftpServerId,
-  })
-}
-
-function buildEditRoute(sftpServerId: string): { name: string; params: { sftpServerId: string }; state: Record<string, string> } {
-  return {
+  }),
+  to: {
     name: 'settings-sftp-edit',
-    params: { sftpServerId },
+    params: { sftpServerId: row.sftpServerId },
     state: buildWorkflowOriginState('SFTP Servers', route.fullPath || '/settings/sftp'),
-  }
-}
-
-async function load(): Promise<void> {
-  loading.value = true
-  error.value = null
-  try {
-    const response = await settingsFacade.listSftpServers({
-      pageIndex: pageIndex.value,
-      pageSize: pageSize.value,
-    })
-    rows.value = filterRecordsForActiveTenant(
-      response.servers ?? [],
-      authState.sessionInfo?.activeTenantUserGroupId ?? null,
-    )
-    pageCount.value = response.pagination?.pageCount ?? 1
-  } catch (loadError) {
-    error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load servers.'
-  } finally {
-    loading.value = false
-  }
-}
-
-function prevPage(): void {
-  if (pageIndex.value > 0) {
-    pageIndex.value -= 1
-    void load()
-  }
-}
-
-function nextPage(): void {
-  if (pageIndex.value + 1 < pageCount.value) {
-    pageIndex.value += 1
-    void load()
-  }
-}
+  },
+})))
 
 onMounted(() => {
   void load()

@@ -161,12 +161,14 @@ import {
   resolveCompletedPendingReconciliationRuns,
   type PendingReconciliationRun,
 } from '../../lib/reconciliationPendingRuns'
+import { normalizeDisplayText } from '../../lib/reconciliationDisplay'
 import {
   buildReconciliationDiffRoute,
   buildReconciliationRunResultRoute,
   type ReconciliationRunRouteContext,
 } from '../../lib/reconciliationRoutes'
 import { resolveSavedRunEditorRoute } from '../../lib/savedRunEditorRoute'
+import { playIconPath, playIconTransform } from '../../lib/iconPaths'
 import { formatSavedResultDateTime } from '../../lib/utils/date'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
@@ -203,9 +205,6 @@ const pagination = ref<PaginationMeta>({
 })
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
-const playIconPath =
-  'M6.75 4.2c0-.91.99-1.48 1.78-1.01l7.1 4.25a1.18 1.18 0 0 1 0 2.02l-7.1 4.25a1.18 1.18 0 0 1-1.78-1.01V4.2Z'
-const playIconTransform = 'translate(0 1.5)'
 const settingsIconPath =
   'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.3a2 2 0 0 1-4 0V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14H2.7a2 2 0 0 1 0-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6v-.3a2 2 0 0 1 4 0V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1A1.7 1.7 0 0 0 21 10h.3a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z'
 
@@ -282,28 +281,27 @@ async function openRunSettings(): Promise<void> {
   }
 }
 
-function normalizeText(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
+function firstText(...values: unknown[]): string {
+  return values.map(normalizeDisplayText).find(Boolean) ?? ''
 }
 
 function generatedOutputKey(output: GeneratedOutput): string {
-  return normalizeText(output.fileName) ||
-    normalizeText(output.reconciliationRunResultId) ||
-    [output.savedRunId, output.statusEnumId, output.createdDate].map((value) => normalizeText(value)).filter(Boolean).join(':')
+  return firstText(output.fileName, output.reconciliationRunResultId) ||
+    [output.savedRunId, output.statusEnumId, output.createdDate].map(normalizeDisplayText).filter(Boolean).join(':')
 }
 
 function isRunningGeneratedOutput(output: GeneratedOutput): boolean {
-  const statusEnumId = normalizeText(output.statusEnumId)
+  const statusEnumId = normalizeDisplayText(output.statusEnumId)
   return RUNNING_STATUS_IDS.has(statusEnumId)
 }
 
 function isCompletedGeneratedOutput(output: GeneratedOutput): boolean {
-  return !isRunningGeneratedOutput(output) && output.resultAvailable !== false && Boolean(normalizeText(output.fileName))
+  return !isRunningGeneratedOutput(output) && output.resultAvailable !== false && Boolean(normalizeDisplayText(output.fileName))
 }
 
 function buildBackendRunningRunView(output: GeneratedOutput): RunningRunView {
-  const submittedAt = normalizeText(output.startedDate) || normalizeText(output.createdDate) || normalizeText(output.lastUpdatedDate) || new Date().toISOString()
-  const statusLabel = normalizeText(output.statusLabel) || 'Running'
+  const submittedAt = firstText(output.startedDate, output.createdDate, output.lastUpdatedDate) || new Date().toISOString()
+  const statusLabel = normalizeDisplayText(output.statusLabel) || 'Running'
   return {
     runningRunId: generatedOutputKey(output) || `${savedRunId.value}:${submittedAt}`,
     submittedAt,
@@ -469,10 +467,6 @@ onUnmounted(() => {
 
 .run-history-hero h1 {
   margin: 0;
-}
-
-.run-history-grid {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .run-history-featured-tile {

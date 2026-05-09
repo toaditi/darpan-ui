@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { ApiCallError, clearAuthToken, setAuthTokenContract } from './api/client'
-import { authFacade, settingsFacade } from './api/facade'
+import { authFacade, clearApiResponseCache, settingsFacade } from './api/facade'
 import type {
   ChangeOwnPasswordResponse,
   LoginSessionResponse,
@@ -174,6 +174,7 @@ function applyAuthResponse(response: SessionInfoResponse | LoginSessionResponse,
   }
 
   clearAuthToken()
+  clearApiResponseCache()
   applyAuthState({
     status: 'unauthenticated',
     error: response.errors?.[0] ?? unauthenticatedMessage,
@@ -212,6 +213,7 @@ export async function ensureAuthenticated(force = false): Promise<boolean> {
   } catch (error) {
     if (error instanceof ApiCallError && error.status === 401) {
       clearAuthToken()
+      clearApiResponseCache()
       applyAuthState({
         status: 'unauthenticated',
         error: error.message,
@@ -248,7 +250,9 @@ export async function loginWithCredentials(username: string, password: string): 
       setAuthTokenContract(response)
     }
 
-    return applyAuthResponse(response, 'Login failed')
+    const authenticated = applyAuthResponse(response, 'Login failed')
+    if (authenticated) clearApiResponseCache()
+    return authenticated
   } catch (error) {
     clearAuthToken()
     applyAuthState({
@@ -261,6 +265,7 @@ export async function loginWithCredentials(username: string, password: string): 
 
 export async function logoutSession(): Promise<boolean> {
   if (authBypass) {
+    clearApiResponseCache()
     applyAuthState({
       status: 'unauthenticated',
     })
@@ -270,6 +275,7 @@ export async function logoutSession(): Promise<boolean> {
   try {
     const response = await authFacade.logoutSession()
     clearAuthToken()
+    clearApiResponseCache()
     if (!response.authenticated) {
       applyAuthState({
         status: 'unauthenticated',
@@ -284,6 +290,7 @@ export async function logoutSession(): Promise<boolean> {
     return false
   } catch (error) {
     clearAuthToken()
+    clearApiResponseCache()
     applyAuthState({
       status: 'unauthenticated',
       error: error instanceof ApiCallError ? formatApiError(error) : 'Logout failed',
@@ -294,6 +301,7 @@ export async function logoutSession(): Promise<boolean> {
 
 export async function saveActiveTenant(activeTenantUserGroupId: string): Promise<boolean> {
   if (authBypass) {
+    clearApiResponseCache()
     return true
   }
 
@@ -301,11 +309,13 @@ export async function saveActiveTenant(activeTenantUserGroupId: string): Promise
     const response: SaveActiveTenantResponse = await authFacade.saveActiveTenant(activeTenantUserGroupId)
     if (response.authenticated) {
       const errorMessage = response.ok ? null : response.errors?.[0] ?? 'Unable to switch tenant.'
+      if (response.ok) clearApiResponseCache()
       applyAuthenticatedSession(response.sessionInfo, errorMessage)
       return response.ok
     }
 
     clearAuthToken()
+    clearApiResponseCache()
     applyAuthState({
       status: 'unauthenticated',
       error: response.errors?.[0] ?? 'Authentication required to change the active tenant.',
@@ -314,6 +324,7 @@ export async function saveActiveTenant(activeTenantUserGroupId: string): Promise
   } catch (error) {
     if (error instanceof ApiCallError && error.status === 401) {
       clearAuthToken()
+      clearApiResponseCache()
       applyAuthState({
         status: 'unauthenticated',
         error: error.message,

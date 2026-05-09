@@ -9,8 +9,10 @@ const saveUserSettingsRpc = vi.hoisted(() => vi.fn())
 const verifyOwnPasswordRpc = vi.hoisted(() => vi.fn())
 const changeOwnPasswordRpc = vi.hoisted(() => vi.fn())
 const logoutSessionRpc = vi.hoisted(() => vi.fn())
+const clearApiResponseCache = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/facade', () => ({
+  clearApiResponseCache,
   authFacade: {
     getSessionInfo,
     loginSession,
@@ -36,6 +38,7 @@ describe('auth state', () => {
     verifyOwnPasswordRpc.mockReset()
     changeOwnPasswordRpc.mockReset()
     logoutSessionRpc.mockReset()
+    clearApiResponseCache.mockReset()
     installLocalStorageStub()
   })
 
@@ -124,6 +127,7 @@ describe('auth state', () => {
     expect(useAuthState().authenticated).toBe(false)
     expect(useAuthState().status).toBe('unauthenticated')
     expect(useAuthState().error).toBeNull()
+    expect(clearApiResponseCache).toHaveBeenCalledTimes(2)
   })
 
   it('updates the authenticated session when the active tenant changes', async () => {
@@ -155,6 +159,7 @@ describe('auth state', () => {
     expect(useAuthState().sessionInfo?.activeTenantUserGroupId).toBe('GORJANA')
     expect(useAuthState().sessionInfo?.activeTenantLabel).toBe('Gorjana')
     expect(useAuthState().error).toBeNull()
+    expect(clearApiResponseCache).toHaveBeenCalledTimes(1)
   })
 
   it('updates the authenticated session when user settings change', async () => {

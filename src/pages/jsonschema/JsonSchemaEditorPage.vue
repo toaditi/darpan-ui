@@ -194,6 +194,7 @@ import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
 import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
 import { useUiPermissions } from '../../lib/auth'
+import { trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import { formatDateTime } from '../../lib/utils/date'
 import { downloadTextFile } from '../../lib/utils/download'
 
@@ -208,9 +209,7 @@ const fieldTypeOptions: AppSelectOption[] = fieldTypes.map((fieldType) => ({ val
 const rowDeleteActionClass = 'app-table__icon-action app-table__icon-action--danger schema-editor-row-delete-action'
 const footerDeleteActionClass =
   'app-icon-action app-icon-action--large app-icon-action--danger schema-editor-footer-action'
-const trashIconPath =
-  'M7.5 3.5A1.5 1.5 0 0 1 9 2h2a1.5 1.5 0 0 1 1.5 1.5V4H15a.75.75 0 0 1 0 1.5h-.57l-.58 9.17A1.75 1.75 0 0 1 12.1 16.5H7.9a1.75 1.75 0 0 1-1.75-1.33L5.57 5.5H5a.75.75 0 0 1 0-1.5h2.5v-.5ZM11 3.5h-2V4h2v-.5ZM7.07 5.5l.56 8.89c.02.19.13.31.27.31h4.2c.14 0 .25-.12.27-.31l.56-8.89H7.07Zm1.68 1.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Zm2.5 0a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Z'
-const footerTrashIconTransform = 'translate(0 0.75)'
+const footerTrashIconTransform = trashIconTransform
 
 const props = defineProps<{
   jsonSchemaId?: string

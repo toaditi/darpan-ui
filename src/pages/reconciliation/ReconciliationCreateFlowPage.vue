@@ -271,39 +271,39 @@ const currentQuestion = computed(() => {
     case 'file1-system':
       return 'Which system provides the first source?'
     case 'file1-source':
-      return `How should ${file1SystemLabel.value || 'source 1'} provide data?`
+      return `How should ${sourceSystemLabel('file1')} provide data?`
     case 'file1-filetype':
-      return `What file type does ${file1SystemLabel.value || 'source 1'} upload use?`
+      return `What file type does ${sourceSystemLabel('file1')} upload use?`
     case 'file1-schema':
-      return `Which saved schema describes the ${file1SystemLabel.value || 'source 1'} JSON?`
+      return `Which saved schema describes the ${sourceSystemLabel('file1')} JSON?`
     case 'file1-primary-id':
       return file1UsesApi.value
-        ? `Which field identifies each record from ${selectedApiSourceLabel('file1') || file1SystemLabel.value || 'source 1'}?`
+        ? `Which field identifies each record from ${apiRecordSourceLabel('file1')}?`
         : (file1UsesJson.value
             ? `Which field identifies each record in ${file1SchemaLabel.value}?`
-            : `What primary ID expression identifies each record in ${file1SystemLabel.value || 'source 1'}?`)
+            : `What primary ID expression identifies each record in ${sourceSystemLabel('file1')}?`)
     case 'file1-api-config':
-      return `Which ${file1SystemLabel.value || 'source 1'} config should this source use?`
+      return `Which ${sourceSystemLabel('file1')} config should this source use?`
     case 'file1-api':
-      return `Which API endpoint should ${file1SystemLabel.value || 'source 1'} use?`
+      return `Which API endpoint should ${sourceSystemLabel('file1')} use?`
     case 'file2-system':
       return 'Which system provides the second source?'
     case 'file2-source':
-      return `How should ${file2SystemLabel.value || 'source 2'} provide data?`
+      return `How should ${sourceSystemLabel('file2')} provide data?`
     case 'file2-filetype':
-      return `What file type does ${file2SystemLabel.value || 'source 2'} upload use?`
+      return `What file type does ${sourceSystemLabel('file2')} upload use?`
     case 'file2-schema':
-      return `Which saved schema describes the ${file2SystemLabel.value || 'source 2'} JSON?`
+      return `Which saved schema describes the ${sourceSystemLabel('file2')} JSON?`
     case 'file2-primary-id':
       return file2UsesApi.value
-        ? `Which field identifies each record from ${selectedApiSourceLabel('file2') || file2SystemLabel.value || 'source 2'}?`
+        ? `Which field identifies each record from ${apiRecordSourceLabel('file2')}?`
         : (file2UsesJson.value
             ? `Which field identifies each record in ${file2SchemaLabel.value}?`
-            : `What primary ID expression identifies each record in ${file2SystemLabel.value || 'source 2'}?`)
+            : `What primary ID expression identifies each record in ${sourceSystemLabel('file2')}?`)
     case 'file2-api-config':
-      return `Which ${file2SystemLabel.value || 'source 2'} config should this source use?`
+      return `Which ${sourceSystemLabel('file2')} config should this source use?`
     case 'file2-api':
-      return `Which API endpoint should ${file2SystemLabel.value || 'source 2'} use?`
+      return `Which API endpoint should ${sourceSystemLabel('file2')} use?`
     default:
       return ''
   }
@@ -639,7 +639,7 @@ const schemaFieldSelectionError = computed(() => {
     case 'file1-primary-id':
       if (file1UsesApi.value) {
         return apiPrimaryIdOptions('file1').length === 0
-          ? `No ID fields are available for ${selectedApiSourceLabel('file1') || file1SystemLabel.value || 'source 1'}.`
+          ? `No ID fields are available for ${apiRecordSourceLabel('file1')}.`
           : ''
       }
       if (!file1UsesJson.value) return ''
@@ -650,7 +650,7 @@ const schemaFieldSelectionError = computed(() => {
     case 'file2-primary-id':
       if (file2UsesApi.value) {
         return apiPrimaryIdOptions('file2').length === 0
-          ? `No ID fields are available for ${selectedApiSourceLabel('file2') || file2SystemLabel.value || 'source 2'}.`
+          ? `No ID fields are available for ${apiRecordSourceLabel('file2')}.`
           : ''
       }
       if (!file2UsesJson.value) return ''
@@ -667,7 +667,7 @@ const apiSourceConfigSelectionError = computed(() => {
   if (currentStep.value.id !== 'file1-api-config' && currentStep.value.id !== 'file2-api-config') return ''
   const side = currentStep.value.id === 'file1-api-config' ? 'file1' : 'file2'
   return apiSourceConfigOptionsForSide(side).length === 0
-    ? `No API configs are available for ${side === 'file1' ? file1SystemLabel.value || 'source 1' : file2SystemLabel.value || 'source 2'}.`
+    ? `No API configs are available for ${sourceSystemLabel(side)}.`
     : ''
 })
 
@@ -677,7 +677,7 @@ const apiSourceSelectionError = computed(() => {
   if (currentStep.value.id !== 'file1-api' && currentStep.value.id !== 'file2-api') return ''
   const side = currentStep.value.id === 'file1-api' ? 'file1' : 'file2'
   return apiSourceOptionsForSide(side).length === 0
-    ? `No API endpoints are available for ${side === 'file1' ? file1SystemLabel.value || 'source 1' : file2SystemLabel.value || 'source 2'}.`
+    ? `No API endpoints are available for ${sourceSystemLabel(side)}.`
     : ''
 })
 
@@ -805,6 +805,16 @@ function resolveSelectedSchemaLabel(schemaId: string): string | undefined {
 }
 
 type SourceSide = 'file1' | 'file2'
+
+function sourceSystemLabel(side: SourceSide): string {
+  return side === 'file1'
+    ? file1SystemLabel.value || 'source 1'
+    : file2SystemLabel.value || 'source 2'
+}
+
+function apiRecordSourceLabel(side: SourceSide): string {
+  return selectedApiSourceLabel(side) || sourceSystemLabel(side)
+}
 
 function selectedSystemEnumId(side: SourceSide): string {
   return side === 'file1' ? file1SystemEnumId.value : file2SystemEnumId.value

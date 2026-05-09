@@ -109,7 +109,7 @@
   </div>
 
   <CommandPalette
-    v-if="!isShelllessRoute"
+    v-if="!isShelllessRoute && isCommandPaletteOpen"
     :open="isCommandPaletteOpen"
     :actions="commandActions"
     :recent-command-ids="recentCommandIds"
@@ -120,9 +120,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import CommandPalette from './components/shell/CommandPalette.vue'
 import { buildAuthRedirect, ensureAuthenticated, logoutSession, useAuthState, useUiPermissions } from './lib/auth'
 import { AUTH_REQUIRED_EVENT } from './lib/api/client'
 import { reconciliationFacade, settingsFacade } from './lib/api/facade'
@@ -142,6 +141,8 @@ import {
 import { useUserDisplayNamePreference } from './lib/userDisplayName'
 import { filterRecordsForActiveTenant } from './lib/utils/tenantRecords'
 import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState, resolveStaticPageLabel, type WorkflowOrigin } from './lib/workflowOrigin'
+
+const CommandPalette = defineAsyncComponent(() => import('./components/shell/CommandPalette.vue').then((module) => module.default))
 
 const route = useRoute()
 const router = useRouter()

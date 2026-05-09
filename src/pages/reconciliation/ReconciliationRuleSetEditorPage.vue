@@ -268,15 +268,20 @@ import type {
   JsonSchemaField,
   SavedRunRule,
 } from '../../lib/api/types'
+import { trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import {
+  buildReconciliationFieldPathAliases,
   buildReconciliationRuleSetDraftState,
   buildSaveRuleSetRunPayload,
+  fieldsReferenceSamePath,
+  formatReconciliationFieldKey,
+  normalizeReconciliationFieldPath,
+  normalizePreActions,
+  readReconciliationRuleExpressionPreActions,
   readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
   type ReconciliationRuleSetDraftRule,
-  type ReconciliationRulePreAction,
   type ReconciliationRulePreActionEntry,
-  type ReconciliationRulePreActionFieldSide,
 } from '../../lib/reconciliationRuleSetDraft'
 import { readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
@@ -353,9 +358,6 @@ const preActionOptions: AppSelectOption[] = [
   { value: 'STRING_TO_NUMBER', label: 'String to number' },
 ]
 const validOperators = new Set(operatorOptions.map((option) => option.value))
-const trashIconPath =
-  'M7.5 3.5A1.5 1.5 0 0 1 9 2h2a1.5 1.5 0 0 1 1.5 1.5V4H15a.75.75 0 0 1 0 1.5h-.57l-.58 9.17A1.75 1.75 0 0 1 12.1 16.5H7.9a1.75 1.75 0 0 1-1.75-1.33L5.57 5.5H5a.75.75 0 0 1 0-1.5h2.5v-.5ZM11 3.5h-2V4h2v-.5ZM7.07 5.5l.56 8.89c.02.19.13.31.27.31h4.2c.14 0 .25-.12.27-.31l.56-8.89H7.07Zm1.68 1.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Zm2.5 0a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4a.75.75 0 0 1 .75-.75Z'
-const trashIconTransform = 'translate(0 0.75)'
 
 const router = useRouter()
 const boardRef = ref<HTMLElement | null>(null)
@@ -420,7 +422,7 @@ function fieldRefKey(side: RuleSide, fieldPath: string): string {
 }
 
 function fieldRefKeys(side: RuleSide, fieldPath: string): string[] {
-  const aliases = buildFieldPathAliases(fieldPath)
+  const aliases = buildReconciliationFieldPathAliases(fieldPath)
   if (aliases.size === 0) return [fieldRefKey(side, fieldPath)]
 
   return [...aliases].map((alias) => fieldRefKey(side, alias))
@@ -439,103 +441,9 @@ function normalizeOperator(value: string | undefined): RuleOperator {
   return validOperators.has(value ?? '') ? value as RuleOperator : '='
 }
 
-function normalizePreAction(value: unknown): ReconciliationRulePreAction | null {
-  if (typeof value !== 'string') return null
-
-  const normalized = value.trim().toUpperCase()
-  if (normalized === 'STRING_TO_INTEGER' || normalized === 'TO_INT' || normalized === 'TO_INTEGER') return 'STRING_TO_INT'
-  if (normalized === 'TO_NUMBER') return 'STRING_TO_NUMBER'
-  return normalized === 'STRING_TO_INT' || normalized === 'STRING_TO_NUMBER' ? normalized : null
-}
-
-function normalizePreActionFieldSide(value: unknown): ReconciliationRulePreActionFieldSide | null {
-  if (typeof value !== 'string') return null
-
-  const normalized = value.trim().toLowerCase()
-  if (normalized === 'file1' || normalized === 'file_1' || normalized === 'left') return 'file1'
-  if (normalized === 'file2' || normalized === 'file_2' || normalized === 'right') return 'file2'
-  return null
-}
-
-function normalizePreActions(value: unknown): ReconciliationRulePreActionEntry[] {
-  const rawValues = Array.isArray(value) ? value : (value ? [value] : [])
-  const normalized = rawValues.flatMap((rawValue): ReconciliationRulePreActionEntry[] => {
-    if (typeof rawValue === 'string') {
-      const action = normalizePreAction(rawValue)
-      return action ? [{ fieldSide: 'file1', action }, { fieldSide: 'file2', action }] : []
-    }
-
-    if (!rawValue || typeof rawValue !== 'object') return []
-
-    const record = rawValue as Record<string, unknown>
-    const action = normalizePreAction(record.action ?? record.preAction)
-    const fieldSide = normalizePreActionFieldSide(record.fieldSide ?? record.field ?? record.side)
-    return action && fieldSide ? [{ fieldSide, action }] : []
-  })
-
-  const seen = new Set<string>()
-  return normalized.filter((entry) => {
-    const key = `${entry.fieldSide}:${entry.action}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-function readExpressionPreActions(expression: string | undefined): ReconciliationRulePreActionEntry[] {
-  if (!expression?.trim()) return []
-
-  try {
-    const parsed = JSON.parse(expression) as Record<string, unknown>
-    return normalizePreActions(parsed.preActions ?? parsed.preAction)
-  } catch {
-    return []
-  }
-}
-
-function normalizeFieldPathValue(rawFieldPath: string | undefined): string {
-  const trimmed = rawFieldPath?.trim()
-  if (!trimmed) return ''
-
-  const withoutSuffix = trimmed.split('|', 1)[0]?.trim() ?? ''
-  if (!withoutSuffix) return ''
-
-  return withoutSuffix
-    .replace(/\[(\d+)\]/g, '[*]')
-    .replace('.[*]', '[*]')
-}
-
-function buildFieldPathAliases(rawFieldPath: string | undefined): Set<string> {
-  const normalized = normalizeFieldPathValue(rawFieldPath)
-  if (!normalized) return new Set()
-
-  const aliases = new Set<string>([normalized])
-  if (normalized.startsWith('$.')) aliases.add(normalized.slice(2))
-  else if (normalized.startsWith('$[')) aliases.add(normalized.slice(1))
-  else if (!normalized.startsWith('$')) aliases.add(normalized.startsWith('[') ? `$${normalized}` : `$.${normalized}`)
-
-  return aliases
-}
-
-function sameField(left: string | undefined, right: string | undefined): boolean {
-  const leftAliases = buildFieldPathAliases(left)
-  const rightAliases = buildFieldPathAliases(right)
-  return [...leftAliases].some((alias) => rightAliases.has(alias))
-}
-
-function formatFieldKey(fieldPath: string | undefined): string {
-  const normalized = normalizeFieldPathValue(fieldPath)
-  if (!normalized) return 'Field pending'
-
-  const pathSegments = normalized
-    .replace(/\[['"]?([A-Za-z_$][\w$-]*)['"]?\]/g, '.$1')
-    .replace(/\[\*\]/g, '')
-    .split('.')
-    .map((segment) => segment.trim())
-    .filter((segment) => segment && segment !== '$')
-
-  return pathSegments.at(-1) || normalized
-}
+const normalizeFieldPathValue = normalizeReconciliationFieldPath
+const sameField = fieldsReferenceSamePath
+const formatFieldKey = formatReconciliationFieldKey
 
 function toRuleField(field: JsonSchemaField): RuleField {
   return {
@@ -1195,15 +1103,16 @@ function savedRunRuleToDraftRule(rule: SavedRunRule, index: number): Reconciliat
   const file2FieldPath = rule.file2FieldPath?.trim()
   if (!file1FieldPath || !file2FieldPath) return null
 
+  const preActions = normalizePreActions(rule.preActions)
   return {
     ruleId: rule.ruleId,
     file1FieldPath,
     file2FieldPath,
     operator: normalizeOperator(rule.operator),
     sequenceNum: rule.sequenceNum ?? index + 1,
-    preActions: normalizePreActions(rule.preActions).length
-      ? normalizePreActions(rule.preActions)
-      : readExpressionPreActions(rule.expression),
+    preActions: preActions.length
+      ? preActions
+      : readReconciliationRuleExpressionPreActions(rule.expression),
     ruleText: rule.ruleText,
     ruleLogic: rule.ruleLogic,
     ruleType: rule.ruleType,

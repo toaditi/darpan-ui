@@ -270,6 +270,7 @@ type FailedRunFeedback = {
 
 type ExpectedFileType = 'CSV' | 'JSON' | null
 type FileStepId = 'file-1' | 'file-2'
+type UploadPayloadKey = 'file1Name' | 'file1Text' | 'file2Name' | 'file2Text'
 type ApiWindowPreset = 'previous-day' | 'previous-week' | 'previous-month' | 'custom'
 type CustomApiWindowSelectionSide = 'start' | 'end'
 
@@ -294,6 +295,14 @@ interface ApiWindowCalendarMonth {
   key: string
   label: string
   cells: ApiWindowCalendarCell[]
+}
+
+interface UploadSourceInput {
+  file: File | null
+  fileNameKey: Extract<UploadPayloadKey, 'file1Name' | 'file2Name'>
+  fileTextKey: Extract<UploadPayloadKey, 'file1Text' | 'file2Text'>
+  systemName: string
+  expectedFileType: ExpectedFileType
 }
 
 const SOURCE_TYPE_API = 'AUT_SRC_API'
@@ -1021,6 +1030,30 @@ function validateSelectedFile(
   return null
 }
 
+async function readUploadSourcePayload(input: UploadSourceInput): Promise<{
+  error: string | null
+  payload: Partial<Record<UploadPayloadKey, string>>
+}> {
+  if (!input.file) return { error: null, payload: {} }
+
+  const fileText = await readFileAsText(input.file)
+  const validationError = validateSelectedFile(
+    input.file,
+    fileText,
+    input.systemName,
+    input.expectedFileType,
+  )
+  if (validationError) return { error: validationError, payload: {} }
+
+  return {
+    error: null,
+    payload: {
+      [input.fileNameKey]: input.file.name,
+      [input.fileTextKey]: fileText,
+    },
+  }
+}
+
 function onFile1Change(event: Event): void {
   const input = event.target as HTMLInputElement
   file1.value = input.files?.[0] ?? null
@@ -1098,37 +1131,32 @@ async function runDiff(): Promise<void> {
       payload.windowEndLocalDate = formatDateInputValue(apiWindowRange.endExclusiveDate)
     }
 
-    if (!file1UsesApi.value && file1.value) {
-      const file1Text = await readFileAsText(file1.value)
-      const file1ValidationError = validateSelectedFile(
-        file1.value,
-        file1Text,
-        file1PromptSystemName.value,
-        file1ExpectedFileType.value,
-      )
-      if (file1ValidationError) {
-        runError.value = file1ValidationError
-        return
-      }
-      payload.file1Name = file1.value.name
-      payload.file1Text = file1Text
+    const uploadSourcePayloads = await Promise.all([
+      file1UsesApi.value
+        ? Promise.resolve({ error: null, payload: {} })
+        : readUploadSourcePayload({
+            file: file1.value,
+            fileNameKey: 'file1Name',
+            fileTextKey: 'file1Text',
+            systemName: file1PromptSystemName.value,
+            expectedFileType: file1ExpectedFileType.value,
+          }),
+      file2UsesApi.value
+        ? Promise.resolve({ error: null, payload: {} })
+        : readUploadSourcePayload({
+            file: file2.value,
+            fileNameKey: 'file2Name',
+            fileTextKey: 'file2Text',
+            systemName: file2PromptSystemName.value,
+            expectedFileType: file2ExpectedFileType.value,
+          }),
+    ])
+    const uploadError = uploadSourcePayloads.find((sourcePayload) => sourcePayload.error)?.error
+    if (uploadError) {
+      runError.value = uploadError
+      return
     }
-
-    if (!file2UsesApi.value && file2.value) {
-      const file2Text = await readFileAsText(file2.value)
-      const file2ValidationError = validateSelectedFile(
-        file2.value,
-        file2Text,
-        file2PromptSystemName.value,
-        file2ExpectedFileType.value,
-      )
-      if (file2ValidationError) {
-        runError.value = file2ValidationError
-        return
-      }
-      payload.file2Name = file2.value.name
-      payload.file2Text = file2Text
-    }
+    uploadSourcePayloads.forEach((sourcePayload) => Object.assign(payload, sourcePayload.payload))
 
     if (reconciliationRunRouteContext.value) {
       pendingRun = recordPendingReconciliationRun(reconciliationRunRouteContext.value)

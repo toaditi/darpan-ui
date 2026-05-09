@@ -430,6 +430,74 @@ describe('ReconciliationRunResultPage', () => {
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:source')
   })
 
+  it('downloads the saved result on demand instead of retaining the loaded payload copy', async () => {
+    const createObjectUrl = vi.fn(() => 'blob:result')
+    const revokeObjectUrl = vi.fn()
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.stubGlobal(
+      'URL',
+      {
+        createObjectURL: createObjectUrl,
+        revokeObjectURL: revokeObjectUrl,
+      } as unknown as typeof URL,
+    )
+    getGeneratedOutput.mockResolvedValueOnce(buildGeneratedOutputFile(JSON.stringify(defaultDiffDetails)))
+    getGeneratedOutput.mockResolvedValueOnce(buildGeneratedOutputFile('{"download":true}', {
+      downloadFileName: 'downloaded-result.json',
+    }))
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="run-result-download"]').trigger('click')
+    await flushPromises()
+
+    expect(getGeneratedOutput).toHaveBeenCalledTimes(2)
+    expect(getGeneratedOutput).toHaveBeenLastCalledWith({
+      fileName: 'CSV-Order-Compare-diff-20260331-063304.json',
+      format: 'json',
+    })
+    expect(createObjectUrl).toHaveBeenCalledTimes(1)
+    expect(anchorClick).toHaveBeenCalledTimes(1)
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:result')
+
+    anchorClick.mockRestore()
+  })
+
+  it('does not stringify every object detail while normalizing large saved results', async () => {
+    const contentText = JSON.stringify({
+      metadata: defaultDiffDetails.metadata,
+      summary: {
+        totalDifferences: 6,
+        onlyInFile1Count: 6,
+        onlyInFile2Count: 0,
+      },
+      differences: Array.from({ length: 6 }, (_item, index) => ({
+        type: 'missing_in_SHOPIFY',
+        id: `30${index}`,
+        presentIn: 'OMS',
+        missingIn: 'SHOPIFY',
+        data: JSON.stringify({ order_id: `30${index}` }),
+      })),
+    })
+    getGeneratedOutput.mockResolvedValue(buildGeneratedOutputFile(contentText))
+    const stringifySpy = vi.spyOn(JSON, 'stringify')
+
+    const wrapper = mount(ReconciliationRunResultPage)
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="diff-details-row"]')).toHaveLength(5)
+    const eagerDetailStringifyCalls = stringifySpy.mock.calls.filter(([value, , space]) =>
+      space === 2 &&
+      value !== null &&
+      typeof value === 'object' &&
+      Object.prototype.hasOwnProperty.call(value, 'order_id'),
+    )
+    expect(eagerDetailStringifyCalls).toHaveLength(0)
+
+    stringifySpy.mockRestore()
+  })
+
   it('filters and paginates saved diff details', async () => {
     getGeneratedOutput.mockResolvedValue(
       buildGeneratedOutputFile(

@@ -513,20 +513,13 @@ const selectedSavedRun = computed(() => {
   return sourceOptions.value.savedRuns.find((savedRun) => savedRun.savedRunId === selectedSavedRunId.value) ?? null
 })
 const savedRunSelectOptions = computed<WorkflowSelectOption[]>(() => {
-  const seen = new Set<string>()
-  const savedRuns = [
+  return uniqueSavedRuns([
     handoffSavedRun.value,
     ...sourceOptions.value.savedRuns,
-  ].filter((savedRun): savedRun is SavedRunSummary => Boolean(savedRun))
-
-  return savedRuns.flatMap((savedRun) => {
-    if (seen.has(savedRun.savedRunId)) return []
-    seen.add(savedRun.savedRunId)
-    return [{
+  ]).map((savedRun) => ({
       value: savedRun.savedRunId,
       label: savedRun.runName,
-    }]
-  })
+  }))
 })
 
 const effectiveInputModeEnumId = computed(() => inputModeEnumId.value || deterministicInputModeEnumId())
@@ -669,6 +662,15 @@ function deterministicInputModeEnumId(): string {
   return inputModeOptions.value.length === 1 ? inputModeOptions.value[0]?.value ?? '' : ''
 }
 
+function uniqueSavedRuns(savedRuns: Array<SavedRunSummary | null>): SavedRunSummary[] {
+  const seen = new Set<string>()
+  return savedRuns.filter((savedRun): savedRun is SavedRunSummary => {
+    if (!savedRun || seen.has(savedRun.savedRunId)) return false
+    seen.add(savedRun.savedRunId)
+    return true
+  })
+}
+
 const relativeWindowOptions = computed<WorkflowSelectOption[]>(() => {
   const options = sourceOptions.value.relativeWindows.length > 0
     ? sourceOptions.value.relativeWindows
@@ -762,10 +764,7 @@ const activeSelectOptions = computed<WorkflowSelectOption[]>(() => {
       return savedRunSelectOptions.value
     case 'file1-sftp':
     case 'file2-sftp':
-      return sourceOptions.value.sftpServers.map((server) => ({
-        value: server.sftpServerId,
-        label: server.label || server.description || server.sftpServerId,
-      }))
+      return sftpServerSelectOptions.value
     case 'file1-api':
     case 'file2-api':
       return apiSourceOptionsForCurrentStep.value

@@ -9,7 +9,7 @@ Use this file as the shared contract reference before migrating or creating sett
 - Add `static-page-record-grid--fixed` only when the page needs a locked dashboard-style column count.
 - Use `static-page-record-tile` for simple saved records.
 - Use `static-page-list-tile`, `static-page-list-tile__title`, and `static-page-list-tile__meta` when the tile has secondary copy or metadata.
-- Use `static-page-module-grid`, `static-page-module-tile`, `static-page-module-tile--active`, and `static-page-module-copy` for in-surface navigation tiles.
+- Use `static-page-module-grid`, `static-page-module-tile`, and `static-page-module-tile--active` for in-surface navigation tiles.
 - Use `static-page-summary-grid`, `static-page-summary-card`, and `static-page-summary-label` for read-only metadata cards.
 - Use `static-page-list-toolbar` and `static-page-pager` for saved-list chrome instead of page-local toolbar classes.
 - Use `static-page-action-tile` and `static-page-create-action` for primary create/open-workflow actions.

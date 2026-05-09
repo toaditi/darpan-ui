@@ -192,11 +192,13 @@ describe('RunsSettingsPage', () => {
 
   it('keeps the runs page on the shared static dashboard contract without page-local styling', () => {
     const pageSource = readFileSync('src/pages/settings/RunsSettingsPage.vue', 'utf8')
+    const recordListSource = readFileSync('src/pages/settings/SettingsRecordListSection.vue', 'utf8')
 
     expect(pageSource).toContain('<StaticPageFrame>')
+    expect(pageSource).toContain('<SettingsRecordListSection')
     expect(pageSource).toContain('title="Saved Runs"')
-    expect(pageSource).toContain('static-page-record-grid static-page-record-grid--fixed')
-    expect(pageSource).toContain('class="static-page-tile static-page-record-tile"')
+    expect(recordListSource).toContain('static-page-record-grid static-page-record-grid--fixed')
+    expect(recordListSource).toContain('class="static-page-tile static-page-record-tile"')
     expect(pageSource).not.toContain('static-page-create-action')
     expect(pageSource).not.toContain('<style scoped>')
   })

@@ -573,6 +573,7 @@ describe('App shell logout', () => {
     const staticFrameSource = readFileSync('src/components/ui/StaticPageFrame.vue', 'utf8')
     const sftpPageSource = readFileSync('src/pages/settings/SftpServersPage.vue', 'utf8')
     const netsuiteSource = readFileSync('src/pages/settings/NetSuiteSettingsPage.vue', 'utf8')
+    const recordListSource = readFileSync('src/pages/settings/SettingsRecordListSection.vue', 'utf8')
 
     expect(source).toContain('--static-board-min-height: 0;')
     expect(staticFrameSource).toContain('<div v-if="$slots.actions" class="static-page-actions">')
@@ -587,8 +588,9 @@ describe('App shell logout', () => {
     expect(source).toContain('width: calc((100% - (var(--static-tile-gap) * 2)) / 3);')
     expect(sftpPageSource).not.toContain('static-page-frame--records')
     expect(sftpPageSource).not.toContain('<style scoped>')
-    expect(netsuiteSource).toContain('static-page-record-grid')
-    expect(netsuiteSource).toContain('static-page-record-tile')
+    expect(netsuiteSource).toContain('<SettingsRecordListSection')
+    expect(recordListSource).toContain('static-page-record-grid')
+    expect(recordListSource).toContain('static-page-record-tile')
   })
 
   it('provides a shared compact workflow-form contract for multi-input settings workflows', () => {
@@ -680,6 +682,7 @@ describe('App shell logout', () => {
     const styleSource = readFileSync('src/style.css', 'utf8')
     const sftpPageSource = readFileSync('src/pages/settings/SftpServersPage.vue', 'utf8')
     const netsuiteSource = readFileSync('src/pages/settings/NetSuiteSettingsPage.vue', 'utf8')
+    const recordListSource = readFileSync('src/pages/settings/SettingsRecordListSection.vue', 'utf8')
     const browseSource = readFileSync('src/pages/jsonschema/JsonSchemaBrowsePage.vue', 'utf8')
     const editorSource = readFileSync('src/pages/jsonschema/JsonSchemaEditorPage.vue', 'utf8')
 
@@ -693,9 +696,10 @@ describe('App shell logout', () => {
     expect(styleSource).toMatch(/\.static-page-summary-grid\s*\{[^}]*align-items: start;/)
     expect(styleSource).toContain('.static-page-summary-card')
     expect(styleSource).toContain('.static-page-summary-label')
-    expect(sftpPageSource).toContain('class="static-page-pager"')
-    expect(netsuiteSource).toContain('class="static-page-pager"')
-    expect(netsuiteSource).toContain('static-page-record-grid--fixed')
+    expect(recordListSource).toContain('<AppListPager')
+    expect(sftpPageSource).toContain('pager-aria-label="SFTP server pages"')
+    expect(netsuiteSource).toContain('pager-aria-label="NetSuite auth pages"')
+    expect(recordListSource).toContain('static-page-record-grid--fixed')
     expect(netsuiteSource).not.toContain('class="static-page-list-toolbar"')
     expect(browseSource).toContain('static-page-list-tile')
     expect(browseSource).not.toContain('<style scoped>')
@@ -796,8 +800,8 @@ describe('App shell logout', () => {
       })
     })
 
-    expect(source).toContain('border: 1px solid color-mix(in oklab, var(--border) 74%, var(--text) 18%);')
-    expect(source).toContain('background: color-mix(in oklab, var(--surface-2) 92%, var(--surface));')
+    expect(source).toContain('border: 1px solid color-mix(in oklab, var(--accent) 34%, var(--border));')
+    expect(source).toContain('background: color-mix(in oklab, var(--accent) 92%, var(--surface));')
     expect(source).not.toContain('#d7a7a7')
     expect(source).not.toContain('#8d4a4a')
     expect(source).not.toContain('#c6ced8')

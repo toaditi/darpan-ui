@@ -9,7 +9,7 @@
       <InlineValidation v-else-if="error" tone="error" :message="error" />
 
       <EmptyState
-        v-else-if="automations.length === 0"
+        v-else-if="!hasAutomations"
         title="No automations"
       />
 
@@ -30,7 +30,7 @@
       </div>
 
       <RouterLink
-        v-if="canEditTenantSettings && automations.length === 0 && !loading && !error"
+        v-if="showInlineCreateAction"
         :to="createRoute"
         class="static-page-action-tile static-page-action-tile--inline"
         data-testid="automation-create-action"
@@ -40,7 +40,7 @@
     </StaticPageSection>
 
     <RouterLink
-      v-if="canEditTenantSettings && automations.length > 0"
+      v-if="showFooterCreateAction"
       :to="createRoute"
       class="static-page-action-tile static-page-create-action"
       data-testid="automation-create-action"
@@ -70,6 +70,9 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const hasAutomations = computed(() => automations.value.length > 0)
+const showInlineCreateAction = computed(() => canEditTenantSettings.value && !hasAutomations.value && !loading.value && !error.value)
+const showFooterCreateAction = computed(() => canEditTenantSettings.value && hasAutomations.value)
 const workflowOriginState = computed(() => buildWorkflowOriginState('Automations', route.fullPath || '/reconciliation/automations'))
 const createRoute = computed<RouteLocationRaw>(() => ({
   name: 'reconciliation-automation-create',

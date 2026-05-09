@@ -255,5 +255,6 @@ watch(
       searchInput.value?.focus()
     })
   },
+  { immediate: true },
 )
 </script>

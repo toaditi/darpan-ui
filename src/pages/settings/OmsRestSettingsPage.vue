@@ -4,142 +4,78 @@
       <h1>HotWax</h1>
     </template>
 
-    <StaticPageSection title="Auth">
-      <div v-if="authPageCount > 1" class="static-page-pager">
-        <button type="button" @click="prevAuthPage" :disabled="authPageIndex <= 0">Prev</button>
-        <span>Page {{ authPageIndex + 1 }} / {{ authPageCount }}</span>
-        <button type="button" @click="nextAuthPage" :disabled="authPageIndex + 1 >= authPageCount">Next</button>
-      </div>
-
-      <p v-if="authLoading" class="section-note">Loading auth configs...</p>
-      <InlineValidation v-else-if="authError" tone="error" :message="authError" />
-
-      <EmptyState
-        v-else-if="authRows.length === 0"
-        title="No auth configs"
-      />
-
-      <div
-        v-else
-        class="static-page-tile-grid static-page-record-grid static-page-record-grid--fixed"
-        data-testid="saved-oms-auth-configs"
-      >
-        <RouterLink
-          v-for="row in authRows"
-          :key="row.omsRestSourceConfigId"
-          :to="buildAuthDashboardRoute(row.omsRestSourceConfigId)"
-          class="static-page-tile static-page-record-tile"
-          data-testid="oms-auth-tile"
-        >
-          <span class="static-page-tile-title">{{ savedAuthConfigName(row) }}</span>
-        </RouterLink>
-      </div>
-
-      <RouterLink
-        v-if="canEditTenantSettings && authRows.length === 0 && !authLoading && !authError"
-        :to="authCreateRoute"
-        class="static-page-action-tile static-page-action-tile--inline"
-        data-testid="oms-auth-create-action"
-      >
-        Create Auth Profile
-      </RouterLink>
-    </StaticPageSection>
-
-    <RouterLink
-      v-if="canEditTenantSettings && authRows.length > 0"
-      :to="authCreateRoute"
-      class="static-page-action-tile static-page-create-action"
-      data-testid="oms-auth-create-action"
-    >
-      Create Auth Profile
-    </RouterLink>
+    <SettingsRecordListSection
+      title="Auth"
+      :tiles="authTiles"
+      :page-index="authPageIndex"
+      :page-count="authPageCount"
+      pager-aria-label="HotWax auth pages"
+      previous-test-id="oms-auth-page-previous"
+      next-test-id="oms-auth-page-next"
+      :loading="authLoading"
+      loading-message="Loading auth configs..."
+      :error="authError"
+      empty-title="No auth configs"
+      list-test-id="saved-oms-auth-configs"
+      tile-test-id="oms-auth-tile"
+      :can-create="canEditTenantSettings"
+      :create-route="authCreateRoute"
+      create-label="Create Auth Profile"
+      create-test-id="oms-auth-create-action"
+      empty-create-test-id="oms-auth-create-action"
+      @update:page-index="goToAuthPage"
+    />
   </StaticPageFrame>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import EmptyState from '../../components/ui/EmptyState.vue'
-import InlineValidation from '../../components/ui/InlineValidation.vue'
+import { computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
-import StaticPageSection from '../../components/ui/StaticPageSection.vue'
-import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
-import type { OmsRestSourceConfigRecord } from '../../lib/api/types'
 import { useAuthState, useUiPermissions } from '../../lib/auth'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
+import SettingsRecordListSection from './SettingsRecordListSection.vue'
+import { useSettingsPagedList } from './useSettingsPagedList'
 
 const route = useRoute()
 const authState = useAuthState()
 const permissions = useUiPermissions()
 
-const authRows = ref<OmsRestSourceConfigRecord[]>([])
-const authPageIndex = ref(0)
-const authPageSize = ref(12)
-const authPageCount = ref(1)
-const authLoading = ref(false)
-const authError = ref<string | null>(null)
-
 const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
 const workflowOriginState = computed(() => buildWorkflowOriginState('HotWax', route.fullPath || '/settings/hotwax'))
+const {
+  rows: authRows,
+  pageIndex: authPageIndex,
+  pageCount: authPageCount,
+  loading: authLoading,
+  error: authError,
+  load,
+  goToPage: goToAuthPage,
+} = useSettingsPagedList({
+  loadPage: (request) => settingsFacade.listOmsRestSourceConfigs(request),
+  selectRecords: (response) => response.omsRestSourceConfigs ?? [],
+  activeTenantUserGroupId: () => authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  fallbackErrorMessage: 'Failed to load HotWax auth configs.',
+})
 
 const authCreateRoute = computed(() => ({
   name: 'settings-oms-create',
   state: workflowOriginState.value,
 }))
-
-function savedAuthConfigName(row: OmsRestSourceConfigRecord): string {
-  return resolveRecordLabel({
+const authTiles = computed(() => authRows.value.map((row) => ({
+  key: row.omsRestSourceConfigId,
+  label: resolveRecordLabel({
     description: row.description,
     fallbackId: row.omsRestSourceConfigId,
-  })
-}
-
-function buildAuthDashboardRoute(
-  omsRestSourceConfigId: string,
-): { name: string; params: { omsRestSourceConfigId: string }; state: Record<string, string> } {
-  return {
+  }),
+  to: {
     name: 'settings-oms-auth',
-    params: { omsRestSourceConfigId },
+    params: { omsRestSourceConfigId: row.omsRestSourceConfigId },
     state: workflowOriginState.value,
-  }
-}
-
-async function load(): Promise<void> {
-  authLoading.value = true
-  authError.value = null
-  try {
-    const response = await settingsFacade.listOmsRestSourceConfigs({
-      pageIndex: authPageIndex.value,
-      pageSize: authPageSize.value,
-    })
-    authRows.value = filterRecordsForActiveTenant(
-      response.omsRestSourceConfigs ?? [],
-      authState.sessionInfo?.activeTenantUserGroupId ?? null,
-    )
-    authPageCount.value = response.pagination?.pageCount ?? 1
-  } catch (loadError) {
-    authError.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load HotWax auth configs.'
-  } finally {
-    authLoading.value = false
-  }
-}
-
-function prevAuthPage(): void {
-  if (authPageIndex.value > 0) {
-    authPageIndex.value -= 1
-    void load()
-  }
-}
-
-function nextAuthPage(): void {
-  if (authPageIndex.value + 1 < authPageCount.value) {
-    authPageIndex.value += 1
-    void load()
-  }
-}
+  },
+})))
 
 onMounted(() => {
   void load()

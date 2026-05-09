@@ -102,7 +102,7 @@ function normalizePreActionFieldSide(value: unknown): ReconciliationRulePreActio
   return null
 }
 
-function normalizePreActions(value: unknown): ReconciliationRulePreActionEntry[] {
+export function normalizePreActions(value: unknown): ReconciliationRulePreActionEntry[] {
   const rawValues = Array.isArray(value) ? value : (value ? [value] : [])
   const normalized = rawValues.flatMap((rawValue): ReconciliationRulePreActionEntry[] => {
     if (typeof rawValue === 'string') {
@@ -174,6 +174,10 @@ function readRuleExpression(value: unknown): Partial<ReconciliationRuleSetDraftR
   } catch {
     return {}
   }
+}
+
+export function readReconciliationRuleExpressionPreActions(expression: string | undefined): ReconciliationRulePreActionEntry[] {
+  return readRuleExpression(expression).preActions ?? []
 }
 
 function readDraft(value: unknown): ReconciliationRuleSetDraft | null {
@@ -482,7 +486,7 @@ function buildViolationExpression(file1ValueExpression: string, file2ValueExpres
   }
 }
 
-function normalizeFieldPathForRule(fieldPath: string | undefined): string {
+export function normalizeReconciliationFieldPath(fieldPath: string | undefined): string {
   const trimmed = fieldPath?.trim()
   if (!trimmed) return ''
 
@@ -494,8 +498,8 @@ function normalizeFieldPathForRule(fieldPath: string | undefined): string {
 }
 
 function fieldPathRelativeToPrimary(fieldPath: string, primaryExpression: string): string {
-  const normalizedField = normalizeFieldPathForRule(fieldPath)
-  const normalizedPrimary = normalizeFieldPathForRule(primaryExpression)
+  const normalizedField = normalizeReconciliationFieldPath(fieldPath)
+  const normalizedPrimary = normalizeReconciliationFieldPath(primaryExpression)
   if (!normalizedField) return ''
 
   const starIndex = normalizedPrimary.indexOf('[*]')
@@ -516,8 +520,25 @@ function stripRootPrefix(fieldPath: string): string {
     .replace(/^\./, '')
 }
 
-function formatFieldKey(fieldPath: string | undefined): string {
-  const normalized = normalizeFieldPathForRule(fieldPath)
+export function buildReconciliationFieldPathAliases(fieldPath: string | undefined): Set<string> {
+  const normalized = normalizeReconciliationFieldPath(fieldPath)
+  if (!normalized) return new Set()
+
+  const aliases = new Set<string>([normalized])
+  if (normalized.startsWith('$.')) aliases.add(normalized.slice(2))
+  else if (normalized.startsWith('$[')) aliases.add(normalized.slice(1))
+  else if (!normalized.startsWith('$')) aliases.add(normalized.startsWith('[') ? `$${normalized}` : `$.${normalized}`)
+
+  return aliases
+}
+
+export function fieldsReferenceSamePath(left: string | undefined, right: string | undefined): boolean {
+  const rightAliases = buildReconciliationFieldPathAliases(right)
+  return [...buildReconciliationFieldPathAliases(left)].some((alias) => rightAliases.has(alias))
+}
+
+export function formatReconciliationFieldKey(fieldPath: string | undefined): string {
+  const normalized = normalizeReconciliationFieldPath(fieldPath)
   if (!normalized) return 'Field pending'
 
   const pathSegments = stripRootPrefix(normalized)
@@ -529,6 +550,8 @@ function formatFieldKey(fieldPath: string | undefined): string {
 
   return pathSegments.at(-1) || normalized
 }
+
+const formatFieldKey = formatReconciliationFieldKey
 
 function escapeDrlString(value: string): string {
   return value

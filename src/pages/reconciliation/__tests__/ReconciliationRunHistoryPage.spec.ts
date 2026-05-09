@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { ApiCallError } from '../../../lib/api/client'
@@ -350,6 +351,36 @@ describe('ReconciliationRunHistoryPage', () => {
       savedRunId: 'RS_ORDER_CSV',
       runName: 'CSV Order Compare Revised',
     })
+  })
+
+  it('keeps a single previous result on the shared one-third tile grid', async () => {
+    listGeneratedOutputs.mockResolvedValueOnce({
+      ok: true,
+      messages: [],
+      errors: [],
+      pagination: {
+        pageIndex: 0,
+        pageSize: 6,
+        totalCount: 2,
+        pageCount: 1,
+      },
+      generatedOutputs: [
+        buildGeneratedOutput(31),
+        buildGeneratedOutput(30),
+      ],
+    })
+
+    const wrapper = mount(ReconciliationRunHistoryPage)
+    await flushPromises()
+
+    const resultsGrid = wrapper.get('[data-testid="run-history-results"]')
+    expect(resultsGrid.classes()).toEqual(expect.arrayContaining(['static-page-tile-grid', 'run-history-grid']))
+    expect(wrapper.findAll('[data-testid="run-history-result-tile"]')).toHaveLength(1)
+
+    const pageSource = readFileSync('src/pages/reconciliation/ReconciliationRunHistoryPage.vue', 'utf8')
+    const globalStyles = readFileSync('src/style.css', 'utf8')
+    expect(pageSource).not.toMatch(/\.run-history-grid\s*\{[^}]*auto-fit/s)
+    expect(globalStyles).toMatch(/\.static-page-tile-grid\s*\{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/s)
   })
 
   it('shows locally submitted unfinished runs as Running in run history', async () => {
