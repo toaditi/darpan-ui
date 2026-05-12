@@ -134,15 +134,33 @@ vi.mock('../components/shell/CommandPalette.vue', () => ({
   },
 }))
 
+const buildAuthRedirectMock = vi.hoisted(() => vi.fn((redirect: unknown) =>
+  redirect === '/' || redirect === '/login' || redirect === '/login?redirect=/login'
+    ? { name: 'login' }
+    : {
+        name: 'login',
+        query: { redirect },
+      },
+))
+
+const draftStoreState = vi.hoisted(() => ({
+  workflowOrigin: null as { label: string, path: string } | null,
+  ruleSetDraftState: null,
+  automationDraftState: null,
+  setWorkflowOrigin: vi.fn(function (this: { workflowOrigin: { label: string, path: string } | null }, label: string, path: string) {
+    this.workflowOrigin = { label, path }
+  }),
+  clearWorkflowOrigin: vi.fn(function (this: { workflowOrigin: unknown }) {
+    this.workflowOrigin = null
+  }),
+  setRuleSetDraft: vi.fn(),
+  clearRuleSetDraft: vi.fn(),
+  setAutomationDraft: vi.fn(),
+  clearAutomationDraft: vi.fn(),
+}))
+
 vi.mock('../lib/auth', () => ({
-  buildAuthRedirect: vi.fn((redirect: unknown) =>
-    redirect === '/' || redirect === '/login' || redirect === '/login?redirect=/login'
-      ? { name: 'login' }
-      : {
-          name: 'login',
-          query: { redirect },
-        },
-  ),
+  buildAuthRedirect: buildAuthRedirectMock,
   ensureAuthenticated,
   logoutSession,
   saveActiveTenant,
@@ -165,6 +183,39 @@ vi.mock('../lib/auth', () => ({
   }),
 }))
 
+vi.mock('../stores/auth', () => ({
+  buildAuthRedirect: buildAuthRedirectMock,
+  useAuthStore: () => ({
+    ...authState,
+    ensureAuthenticated,
+    logoutSession,
+    saveActiveTenant,
+  }),
+}))
+
+vi.mock('../stores/permissions', () => ({
+  usePermissionsStore: () => ({
+    get canRunActiveTenantReconciliation() {
+      return authState.sessionInfo?.canRunActiveTenantReconciliation === true ||
+        authState.sessionInfo?.canEditActiveTenantData === true ||
+        authState.sessionInfo?.isSuperAdmin === true
+    },
+    get canEditTenantSettings() {
+      return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
+    },
+    get canManageGlobalSettings() {
+      return authState.sessionInfo?.canManageDarpanCore === true
+    },
+    get canViewTenantSettings() {
+      return Boolean(authState.sessionInfo?.userId)
+    },
+  }),
+}))
+
+vi.mock('../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => draftStoreState,
+}))
+
 vi.mock('../lib/api/client', () => ({
   AUTH_REQUIRED_EVENT: authRequiredEvent,
 }))
@@ -178,11 +229,13 @@ vi.mock('../lib/api/facade', () => ({
   },
 }))
 
-vi.mock('../lib/theme', () => ({
+vi.mock('../composables/useTheme', () => ({
   useTheme: () => ({
     theme: { value: 'light' },
     toggleTheme,
+    setTheme: vi.fn(),
   }),
+  initTheme: vi.fn(),
 }))
 
 import App from '../App.vue'
@@ -236,6 +289,13 @@ describe('App shell logout', () => {
       isSuperAdmin: true,
     }
     localStorage.removeItem('darpan-ui-display-name:100000')
+    draftStoreState.workflowOrigin = null
+    draftStoreState.ruleSetDraftState = null
+    draftStoreState.automationDraftState = null
+    draftStoreState.setWorkflowOrigin.mockClear()
+    draftStoreState.clearWorkflowOrigin.mockClear()
+    draftStoreState.setRuleSetDraft.mockClear()
+    draftStoreState.setAutomationDraft.mockClear()
   })
 
   afterEach(() => {
@@ -366,13 +426,8 @@ describe('App shell logout', () => {
     await wrapper.get('[data-testid="command-action-data-sftp-server-warehouse"]').trigger('click')
     await flushPromises()
 
-    expect(push).toHaveBeenCalledWith({
-      path: '/settings/sftp/edit/warehouse',
-      state: {
-        workflowOriginLabel: 'SFTP Servers',
-        workflowOriginPath: '/settings/sftp',
-      },
-    })
+    expect(draftStoreState.setWorkflowOrigin).toHaveBeenCalledWith('SFTP Servers', '/settings/sftp')
+    expect(push).toHaveBeenCalledWith('/settings/sftp/edit/warehouse')
   })
 
   it('keeps Ask Darpan schema navigation limited to valid schema entry points', () => {
@@ -941,14 +996,7 @@ describe('App shell logout', () => {
     route.path = '/reconciliation/create'
     route.fullPath = '/reconciliation/create'
     route.meta = { surfaceMode: 'workflow' }
-    window.history.replaceState(
-      {
-        workflowOriginLabel: 'Dashboard',
-        workflowOriginPath: '/',
-      },
-      '',
-      '/reconciliation/create',
-    )
+    draftStoreState.workflowOrigin = { label: 'Dashboard', path: '/' }
 
     const wrapper = mountApp()
     await flushPromises()
@@ -994,14 +1042,7 @@ describe('App shell logout', () => {
     route.path = '/reconciliation/create'
     route.fullPath = '/reconciliation/create'
     route.meta = { surfaceMode: 'workflow' }
-    window.history.replaceState(
-      {
-        workflowOriginLabel: 'Schema Library',
-        workflowOriginPath: '/schemas/library',
-      },
-      '',
-      '/reconciliation/create',
-    )
+    draftStoreState.workflowOrigin = { label: 'Schema Library', path: '/schemas/library' }
 
     mountApp()
     await flushPromises()
@@ -1065,20 +1106,7 @@ describe('App shell logout', () => {
     route.path = '/reconciliation/ruleset-manager/rules'
     route.fullPath = '/reconciliation/ruleset-manager/rules'
     route.meta = { surfaceMode: 'workflow' }
-    const runDetailsState = {
-      reconciliationRuleSetDraft: {
-        runName: 'JSON Order Compare',
-      },
-    }
-    window.history.replaceState(
-      {
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-        workflowOriginRouteState: runDetailsState,
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
 
     mountApp()
     await flushPromises()
@@ -1086,10 +1114,7 @@ describe('App shell logout', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     await flushPromises()
 
-    expect(push).toHaveBeenCalledWith({
-      path: '/reconciliation/ruleset-manager',
-      state: runDetailsState,
-    })
+    expect(push).toHaveBeenCalledWith('/reconciliation/ruleset-manager')
   })
 
   it('clears retained focus after Escape aborts a workflow route', async () => {

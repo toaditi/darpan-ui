@@ -62,13 +62,45 @@ vi.mock('../../../lib/auth', () => ({
   changeOwnPassword,
   saveUserSettings,
   useAuthState: () => authState,
-  useUiPermissions: () => ({
+  useUiPermissions: () => permissionsShape,
+}))
+
+const permissionsShape = {
     canViewTenantSettings: true,
     canRunActiveTenantReconciliation: authState.sessionInfo.canRunActiveTenantReconciliation === true ||
       authState.sessionInfo.canEditActiveTenantData === true ||
       authState.sessionInfo.isSuperAdmin === true,
     canEditTenantSettings: authState.sessionInfo.canEditActiveTenantData === true,
     canManageGlobalSettings: authState.sessionInfo.canManageDarpanCore === true,
+}
+
+vi.mock('../../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    sessionInfo: authState.sessionInfo,
+    saveActiveTenant,
+    saveUserSettings,
+    changeOwnPassword,
+    verifyOwnPassword,
+  }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionsShape,
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
   }),
 }))
 

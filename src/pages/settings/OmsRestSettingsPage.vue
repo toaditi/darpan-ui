@@ -33,18 +33,19 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { settingsFacade } from '../../lib/api/facade'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 import SettingsRecordListSection from './SettingsRecordListSection.vue'
 import { useSettingsPagedList } from './useSettingsPagedList'
 
 const route = useRoute()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
-const workflowOriginState = computed(() => buildWorkflowOriginState('HotWax', route.fullPath || '/settings/hotwax'))
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const {
   rows: authRows,
   pageIndex: authPageIndex,
@@ -56,13 +57,12 @@ const {
 } = useSettingsPagedList({
   loadPage: (request) => settingsFacade.listOmsRestSourceConfigs(request),
   selectRecords: (response) => response.omsRestSourceConfigs ?? [],
-  activeTenantUserGroupId: () => authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  activeTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   fallbackErrorMessage: 'Failed to load HotWax auth configs.',
 })
 
 const authCreateRoute = computed(() => ({
   name: 'settings-oms-create',
-  state: workflowOriginState.value,
 }))
 const authTiles = computed(() => authRows.value.map((row) => ({
   key: row.omsRestSourceConfigId,
@@ -73,11 +73,11 @@ const authTiles = computed(() => authRows.value.map((row) => ({
   to: {
     name: 'settings-oms-auth',
     params: { omsRestSourceConfigId: row.omsRestSourceConfigId },
-    state: workflowOriginState.value,
   },
 })))
 
 onMounted(() => {
+  draftStore.setWorkflowOrigin('HotWax', route.fullPath || '/settings/hotwax')
   void load()
 })
 </script>

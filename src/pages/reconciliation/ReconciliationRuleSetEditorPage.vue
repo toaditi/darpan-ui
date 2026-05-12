@@ -271,19 +271,17 @@ import type {
 import { trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import {
   buildReconciliationFieldPathAliases,
-  buildReconciliationRuleSetDraftState,
   buildSaveRuleSetRunPayload,
   fieldsReferenceSamePath,
   formatReconciliationFieldKey,
   normalizeReconciliationFieldPath,
   normalizePreActions,
   readReconciliationRuleExpressionPreActions,
-  readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
   type ReconciliationRuleSetDraftRule,
   type ReconciliationRulePreActionEntry,
 } from '../../lib/reconciliationRuleSetDraft'
-import { readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 
 type RuleSide = 'file1' | 'file2'
 type RuleOperator = '=' | '!=' | '>' | '<' | '>=' | '<='
@@ -360,6 +358,7 @@ const preActionOptions: AppSelectOption[] = [
 const validOperators = new Set(operatorOptions.map((option) => option.value))
 
 const router = useRouter()
+const draftStore = useReconciliationDraftStore()
 const boardRef = ref<HTMLElement | null>(null)
 const rulePopoverRef = ref<HTMLElement | null>(null)
 const fieldNodeRefs = new Map<string, HTMLElement>()
@@ -385,7 +384,7 @@ let longPressTimer: number | null = null
 let generatedRuleCounter = 0
 let generatedPreActionCounter = 0
 
-const draftState = computed(() => readReconciliationRuleSetDraftState(typeof window === 'undefined' ? null : window.history.state))
+const draftState = computed(() => draftStore.ruleSetDraftState)
 const draft = computed<ReconciliationRuleSetDraft | null>(() => draftState.value?.draft ?? null)
 const file1Title = computed(() => draft.value?.file1SystemLabel || draft.value?.file1SystemEnumId || 'Source 1')
 const file2Title = computed(() => draft.value?.file2SystemLabel || draft.value?.file2SystemEnumId || 'Source 2')
@@ -1154,25 +1153,18 @@ async function finishRuleEdit(): Promise<void> {
     return
   }
 
-  const state = buildReconciliationRuleSetDraftState(persistedDraft, 'ruleset-manager')
-  window.history.replaceState({ ...window.history.state, ...state }, '', window.location.href)
-  const origin = readWorkflowOriginFromHistoryState()
-  await router.push({
-    path: origin?.path ?? '/reconciliation/ruleset-manager',
-    state,
-  })
+  const origin = draftStore.workflowOrigin
+  draftStore.setRuleSetDraft(persistedDraft, 'ruleset-manager')
+  await router.push({ path: origin?.path ?? '/reconciliation/ruleset-manager' })
   loadingFields.value = false
 }
 
 async function cancelRuleEdit(): Promise<void> {
   if (!draft.value) return
 
-  const state = buildReconciliationRuleSetDraftState(draft.value, 'ruleset-manager')
-  const origin = readWorkflowOriginFromHistoryState()
-  await router.push({
-    path: origin?.path ?? '/reconciliation/ruleset-manager',
-    state,
-  })
+  const origin = draftStore.workflowOrigin
+  draftStore.setRuleSetDraft(draft.value, 'ruleset-manager')
+  await router.push({ path: origin?.path ?? '/reconciliation/ruleset-manager' })
 }
 
 watch([orderedRules, file1Fields, file2Fields], () => {

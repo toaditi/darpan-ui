@@ -414,10 +414,8 @@ import type {
   AutomationSystemRemoteOption,
   EnumOption,
   SavedRunSummary,
-  SavedRunSystemOption,
 } from '../../lib/api/types'
 import {
-  AUTOMATION_SOURCE_TYPE_API,
   AUTOMATION_WINDOW_CUSTOM,
   AUTOMATION_WINDOW_LAST_DAYS,
   AUTOMATION_WINDOW_LAST_MONTHS,
@@ -430,17 +428,15 @@ import {
   automationWindowNeedsCount,
   automationWindowUsesCustomRange,
   buildDefaultAutomationName,
-  buildReconciliationAutomationDraftState,
   buildSaveAutomationPayload,
-  readReconciliationAutomationDraftState,
-  savePendingReconciliationAutomationDraftState,
   type ReconciliationAutomationDraft,
   type ReconciliationAutomationFileSide,
   type ReconciliationAutomationSourceDraft,
   type ReconciliationAutomationStepId,
 } from '../../lib/reconciliationAutomationDraft'
-import { darpanSystemIdsMatch } from '../../lib/utils/darpanSystems'
-import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
+import { useCronExpression, SCHEDULE_WEEKDAY_OPTIONS, type SchedulePreset } from '../../composables/useCronExpression'
+import { useAutomationSourceDraft, type ApiSourceSelectOption } from '../../composables/useAutomationSourceDraft'
 
 interface WizardStep {
   id: ReconciliationAutomationStepId
@@ -455,18 +451,9 @@ interface SourceOptions {
   systemRemotes: AutomationSystemRemoteOption[]
 }
 
-interface ApiSourceSelectOption extends WorkflowSelectOption {
-  sourceKind: 'ns' | 'remote'
-  sourceId: string
-  nsRestletConfigId?: string
-  systemMessageRemoteId?: string
-  safeMetadataJson?: string
-}
-
-type SchedulePreset = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom'
-
 const route = useRoute()
 const router = useRouter()
+const draftStore = useReconciliationDraftStore()
 
 const loadingOptions = ref(false)
 const saving = ref(false)
@@ -479,12 +466,15 @@ const selectedSavedRunId = ref('')
 const savedRunType = ref('ruleset')
 const automationName = ref('')
 const inputModeEnumId = ref('')
-const scheduleExpr = ref('')
-const schedulePreset = ref<SchedulePreset>('daily')
-const scheduleTime = ref('06:00')
-const scheduleMinute = ref(0)
-const scheduleWeekday = ref('MON')
-const scheduleMonthDay = ref(1)
+const cron = useCronExpression()
+const {
+  schedulePreset,
+  scheduleExpr,
+  scheduleTime,
+  scheduleMinute,
+  scheduleWeekday,
+  scheduleMonthDay,
+} = cron
 const relativeWindowTypeEnumId = ref('AUT_WIN_LAST_DAYS')
 const relativeWindowCount = ref<number | null>(1)
 const customWindowStartDate = ref('')
@@ -493,10 +483,6 @@ const windowTimeZone = ref('UTC')
 const isActive = ref(true)
 const returnLabel = ref('')
 const returnPath = ref('')
-const sourceDrafts = ref<Record<ReconciliationAutomationFileSide, ReconciliationAutomationSourceDraft>>({
-  FILE_1: {},
-  FILE_2: {},
-})
 const sourceOptions = ref<SourceOptions>({
   inputModes: [],
   relativeWindows: [],
@@ -505,8 +491,6 @@ const sourceOptions = ref<SourceOptions>({
   nsRestletConfigs: [],
   systemRemotes: [],
 })
-const automationFileSides: ReconciliationAutomationFileSide[] = ['FILE_1', 'FILE_2']
-
 const selectedSavedRun = computed(() => {
   if (!selectedSavedRunId.value) return null
   if (handoffSavedRun.value?.savedRunId === selectedSavedRunId.value) return handoffSavedRun.value
@@ -525,10 +509,37 @@ const savedRunSelectOptions = computed<WorkflowSelectOption[]>(() => {
 const effectiveInputModeEnumId = computed(() => inputModeEnumId.value || deterministicInputModeEnumId())
 const usesSftp = computed(() => effectiveInputModeEnumId.value === AUTOMATION_INPUT_MODE_SFTP_FILES)
 const usesApi = computed(() => effectiveInputModeEnumId.value === AUTOMATION_INPUT_MODE_API_RANGE)
-const savedRunUsesOnlyApiSources = computed(() => (
-  Boolean(selectedSavedRun.value) &&
-  automationFileSides.every((side) => systemOptionForSide(side)?.sourceTypeEnumId?.trim() === AUTOMATION_SOURCE_TYPE_API)
-))
+const sources = useAutomationSourceDraft({
+  selectedSavedRunSystemOptions: computed(() => selectedSavedRun.value?.systemOptions),
+  defaultFile1SystemEnumId: computed(() => selectedSavedRun.value?.defaultFile1SystemEnumId ?? undefined),
+  defaultFile2SystemEnumId: computed(() => selectedSavedRun.value?.defaultFile2SystemEnumId ?? undefined),
+  nsRestletConfigs: computed(() => sourceOptions.value.nsRestletConfigs),
+  systemRemotes: computed(() => sourceOptions.value.systemRemotes),
+  sftpServers: computed(() => sourceOptions.value.sftpServers),
+  usesApi,
+  usesSftp,
+  setInputModeEnumId: (value: string) => {
+    inputModeEnumId.value = value
+  },
+})
+const {
+  sourceDrafts,
+  editFile1SftpServerId,
+  editFile2SftpServerId,
+  editFile1RemotePath,
+  editFile2RemotePath,
+  savedRunUsesOnlyApiSources,
+  systemLabelForSide,
+  apiSourceOptionsForSide,
+  selectedApiSourceValue,
+  updateSource,
+  updateApiSource,
+  shouldSkipApiSourceStep,
+  shouldSkipSftpServerStep,
+  inferApiSourcesFromSavedRun,
+  inferSingleApiSourcesFromOptions,
+  inferSingleSftpServerFromOptions,
+} = sources
 const shouldAskInputMode = computed(() => !effectiveInputModeEnumId.value)
 const routeAutomationId = computed(() => (typeof route.params.automationId === 'string' ? route.params.automationId.trim() : ''))
 const isEditMode = computed(() => Boolean(routeAutomationId.value || automationId.value))
@@ -593,15 +604,7 @@ const schedulePresetOptions = computed<Array<{ value: SchedulePreset; label: str
   ]
   return schedulePreset.value === 'custom' ? [...options, { value: 'custom', label: 'Custom schedule' }] : options
 })
-const scheduleWeekdayOptions = [
-  { value: 'MON', label: 'Monday' },
-  { value: 'TUE', label: 'Tuesday' },
-  { value: 'WED', label: 'Wednesday' },
-  { value: 'THU', label: 'Thursday' },
-  { value: 'FRI', label: 'Friday' },
-  { value: 'SAT', label: 'Saturday' },
-  { value: 'SUN', label: 'Sunday' },
-]
+const scheduleWeekdayOptions = SCHEDULE_WEEKDAY_OPTIONS.map((option) => ({ ...option }))
 const activeStatusOptions = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
@@ -640,23 +643,6 @@ const editSavedRunId = computed({
     settleOnCurrentIndex()
   },
 })
-const editFile1SftpServerId = computed({
-  get: () => sourceDrafts.value.FILE_1.sftpServerId ?? '',
-  set: (value: string) => updateSource('FILE_1', { sftpServerId: value }),
-})
-const editFile2SftpServerId = computed({
-  get: () => sourceDrafts.value.FILE_2.sftpServerId ?? '',
-  set: (value: string) => updateSource('FILE_2', { sftpServerId: value }),
-})
-const editFile1RemotePath = computed({
-  get: () => sourceDrafts.value.FILE_1.remotePathTemplate ?? '',
-  set: (value: string) => updateSource('FILE_1', { remotePathTemplate: value }),
-})
-const editFile2RemotePath = computed({
-  get: () => sourceDrafts.value.FILE_2.remotePathTemplate ?? '',
-  set: (value: string) => updateSource('FILE_2', { remotePathTemplate: value }),
-})
-
 function deterministicInputModeEnumId(): string {
   if (savedRunUsesOnlyApiSources.value) return AUTOMATION_INPUT_MODE_API_RANGE
   return inputModeOptions.value.length === 1 ? inputModeOptions.value[0]?.value ?? '' : ''
@@ -908,7 +894,7 @@ const activeTextValue = computed({
 
 watch([schedulePreset, scheduleTime, scheduleMinute, scheduleWeekday, scheduleMonthDay], () => {
   if (schedulePreset.value === 'custom') return
-  scheduleExpr.value = buildCronExpression()
+  scheduleExpr.value = cron.buildCronExpression()
 }, { immediate: true })
 
 const showEmptyState = computed(() => ['automation-name', 'file1-remote-path', 'file2-remote-path'].includes(currentStep.value.id))
@@ -1014,110 +1000,10 @@ function relativeWindowLabel(enumId: string, fallback: string): string {
   return labels[enumId] ?? fallback
 }
 
-function systemOptionForSide(side: ReconciliationAutomationFileSide): SavedRunSystemOption | null {
-  const savedRun = selectedSavedRun.value
-  if (!savedRun) return null
-  const sideOption = savedRun.systemOptions?.find((option) => option.fileSide === side)
-  if (sideOption) return sideOption
-  const fallbackEnumId = side === 'FILE_1' ? savedRun.defaultFile1SystemEnumId : savedRun.defaultFile2SystemEnumId
-  return savedRun.systemOptions?.find((option) => option.enumId === fallbackEnumId) ?? null
-}
-
-function systemEnumIdForSide(side: ReconciliationAutomationFileSide): string {
-  const sideOption = systemOptionForSide(side)
-  if (sideOption?.enumId) return sideOption.enumId
-  return side === 'FILE_1'
-    ? selectedSavedRun.value?.defaultFile1SystemEnumId ?? ''
-    : selectedSavedRun.value?.defaultFile2SystemEnumId ?? ''
-}
-
-function systemLabelForSide(side: ReconciliationAutomationFileSide): string {
-  const sideOption = systemOptionForSide(side)
-  return sideOption?.label || sideOption?.description || sideOption?.enumCode || sideOption?.enumId || systemEnumIdForSide(side) || 'source'
-}
-
 function systemLabelForCurrentApiStep(): string {
   if (currentStep.value.id === 'file1-api') return systemLabelForSide('FILE_1')
   if (currentStep.value.id === 'file2-api') return systemLabelForSide('FILE_2')
   return 'this system'
-}
-
-function optionMatchesSystem(optionSystemEnumId: string | undefined, expectedSystemEnumId: string): boolean {
-  return darpanSystemIdsMatch(optionSystemEnumId, expectedSystemEnumId)
-}
-
-function apiSourceOptionsForSide(side: ReconciliationAutomationFileSide): ApiSourceSelectOption[] {
-  const expectedSystemEnumId = systemEnumIdForSide(side)
-  const nsOptions = sourceOptions.value.nsRestletConfigs
-    .filter((config) => optionMatchesSystem(config.systemEnumId, expectedSystemEnumId))
-    .map((config) => ({
-      value: `ns:${config.nsRestletConfigId}`,
-      sourceKind: 'ns' as const,
-      sourceId: config.nsRestletConfigId,
-      nsRestletConfigId: config.nsRestletConfigId,
-      safeMetadataJson: config.safeMetadataJson,
-      label: config.label || config.description || config.nsRestletConfigId,
-    }))
-  const remoteOptions = sourceOptions.value.systemRemotes
-    .filter((remote) => optionMatchesSystem(remote.systemEnumId, expectedSystemEnumId))
-    .filter((remote) => Boolean(remote.safeMetadataJson))
-    .map((remote) => ({
-      value: remote.optionKey ? `remote:${remote.systemMessageRemoteId}:${remote.optionKey}` : `remote:${remote.systemMessageRemoteId}`,
-      sourceKind: 'remote' as const,
-      sourceId: remote.systemMessageRemoteId,
-      systemMessageRemoteId: remote.systemMessageRemoteId,
-      safeMetadataJson: remote.safeMetadataJson,
-      label: remote.label || remote.description || remote.systemMessageRemoteId,
-    }))
-  return [...nsOptions, ...remoteOptions]
-}
-
-function apiSourceOptionForSavedRunSide(side: ReconciliationAutomationFileSide): ApiSourceSelectOption | null {
-  const sideOption = systemOptionForSide(side)
-  if (!sideOption) return null
-
-  const apiOptions = apiSourceOptionsForSide(side)
-  if (sideOption.nsRestletConfigId) {
-    return apiOptions.find((option) => option.nsRestletConfigId === sideOption.nsRestletConfigId) ?? null
-  }
-
-  if (sideOption.systemMessageRemoteId) {
-    const matchingRemoteOptions = apiOptions.filter((option) => option.systemMessageRemoteId === sideOption.systemMessageRemoteId)
-    if (sideOption.sourceConfigId) {
-      return matchingRemoteOptions.find((option) => option.value === `remote:${sideOption.systemMessageRemoteId}:${sideOption.sourceConfigId}`) ??
-        matchingRemoteOptions[0] ??
-        null
-    }
-    return matchingRemoteOptions[0] ?? null
-  }
-
-  return null
-}
-
-function singleApiSourceOptionForSide(side: ReconciliationAutomationFileSide): ApiSourceSelectOption | null {
-  const options = apiSourceOptionsForSide(side)
-  return options.length === 1 ? options[0] ?? null : null
-}
-
-function hasKnownApiSourceForSide(side: ReconciliationAutomationFileSide): boolean {
-  const sideOption = systemOptionForSide(side)
-  const sourceDraft = sourceDrafts.value[side]
-  return Boolean(
-    sourceDraft.nsRestletConfigId ||
-    sourceDraft.systemMessageRemoteId ||
-    sideOption?.nsRestletConfigId ||
-    sideOption?.systemMessageRemoteId,
-  )
-}
-
-function shouldSkipApiSourceStep(side: ReconciliationAutomationFileSide): boolean {
-  if (!usesApi.value) return false
-  return hasKnownApiSourceForSide(side) || Boolean(singleApiSourceOptionForSide(side))
-}
-
-function shouldSkipSftpServerStep(side: ReconciliationAutomationFileSide): boolean {
-  if (!usesSftp.value) return false
-  return Boolean(sourceDrafts.value[side].sftpServerId || sourceOptions.value.sftpServers.length === 1)
 }
 
 function selectSavedRun(savedRunId: string): void {
@@ -1132,26 +1018,6 @@ function inferSingleSavedRun(): void {
   selectSavedRun(onlySavedRun.savedRunId)
 }
 
-function inferSingleApiSourcesFromOptions(): void {
-  if (!usesApi.value) return
-  automationFileSides.forEach((side) => {
-    if (hasKnownApiSourceForSide(side)) return
-    const singleOption = singleApiSourceOptionForSide(side)
-    if (!singleOption) return
-    updateApiSource(side, singleOption.value)
-  })
-}
-
-function inferSingleSftpServerFromOptions(): void {
-  if (!usesSftp.value || sourceOptions.value.sftpServers.length !== 1) return
-  const onlyServer = sourceOptions.value.sftpServers[0]
-  if (!onlyServer) return
-  automationFileSides.forEach((side) => {
-    if (sourceDrafts.value[side].sftpServerId) return
-    updateSource(side, { sftpServerId: onlyServer.sftpServerId })
-  })
-}
-
 function applyDeterministicDefaults(): void {
   inferSingleSavedRun()
   if (!inputModeEnumId.value && effectiveInputModeEnumId.value) inputModeEnumId.value = effectiveInputModeEnumId.value
@@ -1159,38 +1025,6 @@ function applyDeterministicDefaults(): void {
   inferSingleApiSourcesFromOptions()
   inferSingleSftpServerFromOptions()
   ensureAutomationName()
-}
-
-function inferApiSourcesFromSavedRun(): void {
-  if (!savedRunUsesOnlyApiSources.value) return
-
-  inputModeEnumId.value = AUTOMATION_INPUT_MODE_API_RANGE
-  const nextDrafts: Record<ReconciliationAutomationFileSide, ReconciliationAutomationSourceDraft> = {
-    FILE_1: { ...sourceDrafts.value.FILE_1 },
-    FILE_2: { ...sourceDrafts.value.FILE_2 },
-  }
-
-  automationFileSides.forEach((side) => {
-    const sideOption = systemOptionForSide(side)
-    if (!sideOption) return
-
-    const apiOption = apiSourceOptionForSavedRunSide(side)
-    const inferredDraft: ReconciliationAutomationSourceDraft = {
-      sourceTypeEnumId: AUTOMATION_SOURCE_TYPE_API,
-      nsRestletConfigId: apiOption?.nsRestletConfigId ?? sideOption.nsRestletConfigId,
-      systemMessageRemoteId: apiOption?.systemMessageRemoteId ?? sideOption.systemMessageRemoteId,
-      safeMetadataJson: apiOption?.safeMetadataJson,
-      optionKey: sideOption.sourceConfigId,
-      omsRestSourceConfigId: sideOption.enumId === 'OMS' ? sideOption.sourceConfigId : undefined,
-    }
-    nextDrafts[side] = {
-      ...inferredDraft,
-      ...nextDrafts[side],
-      sourceTypeEnumId: AUTOMATION_SOURCE_TYPE_API,
-    }
-  })
-
-  sourceDrafts.value = nextDrafts
 }
 
 function dateStartIso(value: string): string | undefined {
@@ -1218,133 +1052,7 @@ function dateInputValue(value: string | undefined): string {
   return parsed.toISOString().slice(0, 10)
 }
 
-function updateSource(side: ReconciliationAutomationFileSide, patch: ReconciliationAutomationSourceDraft): void {
-  sourceDrafts.value = {
-    ...sourceDrafts.value,
-    [side]: {
-      ...sourceDrafts.value[side],
-      ...patch,
-    },
-  }
-}
-
-function selectedApiSourceValue(side: ReconciliationAutomationFileSide): string {
-  const source = sourceDrafts.value[side]
-  const option = apiSourceOptionsForSide(side).find((candidate) => (
-    (source.nsRestletConfigId && candidate.nsRestletConfigId === source.nsRestletConfigId) ||
-    (
-      source.systemMessageRemoteId &&
-      candidate.systemMessageRemoteId === source.systemMessageRemoteId &&
-      (!source.safeMetadataJson || candidate.safeMetadataJson === source.safeMetadataJson)
-    )
-  ))
-  if (option) return option.value
-  return ''
-}
-
-function updateApiSource(side: ReconciliationAutomationFileSide, value: string): void {
-  const selectedOption = apiSourceOptionsForSide(side).find((option) => option.value === value)
-  if (!selectedOption) return
-  if (selectedOption.sourceKind === 'ns') {
-    updateSource(side, {
-      nsRestletConfigId: selectedOption.nsRestletConfigId,
-      systemMessageRemoteId: undefined,
-      safeMetadataJson: selectedOption.safeMetadataJson,
-    })
-    return
-  }
-  updateSource(side, {
-    systemMessageRemoteId: selectedOption.systemMessageRemoteId,
-    nsRestletConfigId: undefined,
-    safeMetadataJson: selectedOption.safeMetadataJson,
-  })
-}
-
-function clampScheduleNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const numericValue = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(numericValue)) return fallback
-  return Math.min(Math.max(Math.trunc(numericValue), min), max)
-}
-
-function parseScheduleTimeParts(value: string): { hour: number; minute: number } {
-  const match = value.match(/^(\d{1,2}):(\d{2})$/)
-  if (!match) return { hour: 6, minute: 0 }
-  return {
-    hour: clampScheduleNumber(match[1], 0, 23, 6),
-    minute: clampScheduleNumber(match[2], 0, 59, 0),
-  }
-}
-
-function buildCronExpression(): string {
-  if (schedulePreset.value === 'custom') return scheduleExpr.value.trim()
-
-  if (schedulePreset.value === 'hourly') {
-    return `0 ${clampScheduleNumber(scheduleMinute.value, 0, 59, 0)} * * * ?`
-  }
-
-  const { hour, minute } = parseScheduleTimeParts(scheduleTime.value)
-  if (schedulePreset.value === 'weekly') {
-    return `0 ${minute} ${hour} ? * ${scheduleWeekday.value}`
-  }
-  if (schedulePreset.value === 'monthly') {
-    return `0 ${minute} ${hour} ${clampScheduleNumber(scheduleMonthDay.value, 1, 31, 1)} * ?`
-  }
-  return `0 ${minute} ${hour} * * ?`
-}
-
-function syncScheduleHelperFromExpression(expression: string | undefined): void {
-  const normalizedExpression = expression?.trim()
-  if (!normalizedExpression) {
-    schedulePreset.value = 'daily'
-    return
-  }
-
-  const parts = normalizedExpression.split(/\s+/)
-  if (parts.length !== 6 || parts[0] !== '0') {
-    schedulePreset.value = 'custom'
-    return
-  }
-
-  const minute = Number(parts[1])
-  const hour = Number(parts[2])
-  if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
-    schedulePreset.value = 'custom'
-    return
-  }
-
-  if (parts[2] === '*' && parts[3] === '*' && parts[4] === '*' && parts[5] === '?') {
-    scheduleMinute.value = minute
-    schedulePreset.value = 'hourly'
-    return
-  }
-
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
-    schedulePreset.value = 'custom'
-    return
-  }
-
-  scheduleTime.value = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-  if (parts[3] === '*' && parts[4] === '*' && parts[5] === '?') {
-    schedulePreset.value = 'daily'
-    return
-  }
-
-  const weekdayPart = parts[5] ?? ''
-  if (parts[3] === '?' && parts[4] === '*' && scheduleWeekdayOptions.some((weekday) => weekday.value === weekdayPart)) {
-    scheduleWeekday.value = weekdayPart
-    schedulePreset.value = 'weekly'
-    return
-  }
-
-  const monthDay = Number(parts[3])
-  if (Number.isInteger(monthDay) && monthDay >= 1 && monthDay <= 31 && parts[4] === '*' && parts[5] === '?') {
-    scheduleMonthDay.value = monthDay
-    schedulePreset.value = 'monthly'
-    return
-  }
-
-  schedulePreset.value = 'custom'
-}
+const syncScheduleHelperFromExpression = cron.syncFromExpression
 
 function ensureAutomationName(): void {
   if (automationName.value.trim() || !selectedSavedRun.value) return
@@ -1428,17 +1136,14 @@ async function handlePrimarySubmit(): Promise<void> {
 }
 
 async function openReconciliationCreateWorkflow(): Promise<void> {
-  const origin = readWorkflowOriginFromHistoryState()
+  const origin = draftStore.workflowOrigin
   returnLabel.value = origin?.label ?? returnLabel.value
   returnPath.value = origin?.path ?? returnPath.value
-  savePendingReconciliationAutomationDraftState(activeDraft.value, 'input-mode')
+  draftStore.setAutomationDraft(activeDraft.value, 'input-mode')
+  draftStore.setWorkflowOrigin('Automation Setup', '/reconciliation/automation/create')
   await router.push({
     path: '/reconciliation/create',
     query: { automationFlow: 'new-run' },
-    state: {
-      ...buildWorkflowOriginState('Automation Setup', '/reconciliation/automation/create'),
-      ...buildReconciliationAutomationDraftState(activeDraft.value, 'input-mode'),
-    },
   })
 }
 
@@ -1449,7 +1154,7 @@ async function saveAutomationSetup(): Promise<void> {
 
   try {
     const response = await reconciliationFacade.saveAutomation(buildSaveAutomationPayload(activeDraft.value, selectedSavedRun.value))
-    const origin = readWorkflowOriginFromHistoryState()
+    const origin = draftStore.workflowOrigin
     const savedAutomationId = response.automation?.automationId || activeDraft.value.automationId
     const fallbackRoute = savedAutomationId
       ? { name: 'reconciliation-automation-dashboard', params: { automationId: savedAutomationId } }
@@ -1465,7 +1170,7 @@ async function saveAutomationSetup(): Promise<void> {
 async function cancelEdit(): Promise<void> {
   if (!isEditMode.value || saving.value || loadingOptions.value) return
 
-  const origin = readWorkflowOriginFromHistoryState()
+  const origin = draftStore.workflowOrigin
   const selectedAutomationId = activeDraft.value.automationId || routeAutomationId.value
   if (origin?.path) {
     await router.push(origin.path)
@@ -1548,7 +1253,7 @@ async function loadAutomationForEdit(): Promise<boolean> {
 }
 
 function restoreDraftFromHistoryState(): ReconciliationAutomationStepId | null {
-  const draftState = readReconciliationAutomationDraftState(typeof window === 'undefined' ? null : window.history.state)
+  const draftState = draftStore.automationDraftState
   if (!draftState) return null
 
   const draft = draftState.draft

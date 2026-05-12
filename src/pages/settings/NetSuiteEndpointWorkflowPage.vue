@@ -229,7 +229,8 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import type { NsRestletConfigRecord } from '../../lib/api/types'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { CONFIG_ID_MAX_LENGTH, exceedsConfigIdMaxLength } from './configId'
@@ -266,8 +267,8 @@ interface EndpointForm {
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
 
 function createDefaultEndpointForm(): EndpointForm {
   return {
@@ -302,7 +303,7 @@ const success = ref<string | null>(null)
 const currentStepIndex = ref(0)
 
 const activeEndpointConfigId = computed(() => String(route.params.nsRestletConfigId ?? '').trim())
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const isEditing = computed(() => activeEndpointConfigId.value.length > 0)
 
 const createSteps: EndpointCreateStep[] = [
@@ -396,7 +397,7 @@ async function loadAuthOptions(): Promise<void> {
   const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 })
   authOptions.value = filterRecordsForActiveTenant(
     response.authConfigs ?? [],
-    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   ).map((item) => ({
     value: item.nsAuthConfigId,
     label: resolveRecordLabel({
@@ -413,7 +414,7 @@ async function loadEndpointConfig(): Promise<void> {
   const response = await settingsFacade.listNsRestletConfigs({ pageIndex: 0, pageSize: 200 })
   const matchingConfig = filterRecordsForActiveTenant(
     response.restletConfigs ?? [],
-    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   ).find(
     (config) => config.nsRestletConfigId === activeEndpointConfigId.value,
   )

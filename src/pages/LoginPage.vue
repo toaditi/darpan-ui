@@ -29,13 +29,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import InlineValidation from '../components/ui/InlineValidation.vue'
-import { loginWithCredentials, useAuthState } from '../lib/auth'
+import { useAuthStore } from '../stores/auth'
 import { requestSubmitOnEnter } from '../lib/keyboard'
 import { resolveInternalRedirectTarget } from '../lib/navigation'
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
+const authStore = useAuthStore()
 
 const username = ref('')
 const password = ref('')
@@ -46,8 +46,8 @@ const INITIAL_UNAUTHENTICATED_MESSAGE = 'No active authenticated session detecte
 
 const errorText = computed(() => {
   if (localError.value) return localError.value
-  if (authState.status === 'unauthenticated' && authState.error === INITIAL_UNAUTHENTICATED_MESSAGE) return null
-  return authState.error
+  if (authStore.status === 'unauthenticated' && authStore.error === INITIAL_UNAUTHENTICATED_MESSAGE) return null
+  return authStore.error
 })
 
 function hasRedirectQuery(): boolean {
@@ -70,9 +70,9 @@ async function submit(): Promise<void> {
   loading.value = true
   localError.value = null
   try {
-    const authenticated = await loginWithCredentials(username.value, password.value)
+    const authenticated = await authStore.loginWithCredentials(username.value, password.value)
     if (!authenticated) {
-      localError.value = authState.error ?? 'Invalid username or password.'
+      localError.value = authStore.error ?? 'Invalid username or password.'
       return
     }
 

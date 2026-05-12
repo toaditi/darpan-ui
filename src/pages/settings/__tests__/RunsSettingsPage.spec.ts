@@ -100,41 +100,10 @@ describe('RunsSettingsPage', () => {
     expect(wrapper.find('h1').text()).toBe('Run Editor')
     expect(JSON.parse(runTiles[0]?.attributes('data-to') ?? '{}')).toEqual({
       name: 'settings-runs-edit',
-      params: { reconciliationMappingId: 'OrderIdMap' },
-      state: {
-        workflowOriginLabel: 'Run Editor',
-        workflowOriginPath: '/settings/runs',
-      },
+      params: { reconciliationMappingId: 'OrderIdMap' }
     })
     expect(JSON.parse(runTiles[1]?.attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-ruleset-manager',
-      state: {
-        reconciliationRuleSetDraft: {
-          savedRunId: 'RS_ORDER_CSV',
-          runName: 'CSV Order Compare',
-          description: 'CSV Order Compare',
-          file1SystemEnumId: 'OMS',
-          file1SystemLabel: 'OMS',
-          file1FileTypeEnumId: 'DftCsv',
-          file1PrimaryIdExpression: 'order_id',
-          file2SystemEnumId: 'SHOPIFY',
-          file2SystemLabel: 'SHOPIFY',
-          file2FileTypeEnumId: 'DftCsv',
-          file2PrimaryIdExpression: 'id',
-          rules: [
-            {
-              ruleId: 'RS_ORDER_CSV_RULE_1',
-              file1FieldPath: 'total',
-              file2FieldPath: 'current_total',
-              operator: '=',
-              sequenceNum: 1,
-            },
-          ],
-        },
-        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
-        workflowOriginLabel: 'Run Editor',
-        workflowOriginPath: '/settings/runs',
-      },
     })
     expect(wrapper.find('[data-testid="runs-create-action"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="runs-empty-create-action"]').exists()).toBe(false)

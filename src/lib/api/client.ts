@@ -4,7 +4,7 @@ interface JsonRpcRequest {
   jsonrpc: '2.0'
   id: number
   method: string
-  params: Record<string, unknown>
+  params: object
 }
 
 interface JsonRpcResponse<T> {
@@ -319,7 +319,7 @@ function withMethodDetails(method: string, details: Record<string, unknown>): Re
   }
 }
 
-export async function callService<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+export async function callService<T>(method: string, params: object = {}): Promise<T> {
   const request: JsonRpcRequest = {
     jsonrpc: '2.0',
     id: Date.now(),

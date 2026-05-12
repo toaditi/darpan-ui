@@ -6,7 +6,6 @@ import {
   savePendingReconciliationAutomationDraftState,
 } from '../../../lib/reconciliationAutomationDraft'
 import { buildReconciliationRuleSetDraftState } from '../../../lib/reconciliationRuleSetDraft'
-import { buildWorkflowOriginState } from '../../../lib/workflowOrigin'
 
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const route = vi.hoisted(() => ({
@@ -48,6 +47,22 @@ vi.mock('../../../lib/api/facade', () => ({
     createRuleSetRun,
     listAutomationSourceOptions,
   },
+}))
+
+const draftStoreState = vi.hoisted(() => ({
+  workflowOrigin: null as { label: string, path: string } | null,
+  ruleSetDraftState: null as null | { draft: unknown, resumeStepId: string | null },
+  automationDraftState: null as null | { draft: unknown, resumeStepId: string | null, savedRun: unknown | null },
+  setWorkflowOrigin: vi.fn(),
+  clearWorkflowOrigin: vi.fn(),
+  setRuleSetDraft: vi.fn(),
+  clearRuleSetDraft: vi.fn(),
+  setAutomationDraft: vi.fn(),
+  clearAutomationDraft: vi.fn(),
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => draftStoreState,
 }))
 
 import ReconciliationCreateFlowPage from '../ReconciliationCreateFlowPage.vue'
@@ -138,6 +153,12 @@ describe('ReconciliationCreateFlowPage', () => {
     createRuleSetRun.mockReset()
     listAutomationSourceOptions.mockReset()
     route.query = {}
+    draftStoreState.workflowOrigin = null
+    draftStoreState.ruleSetDraftState = null
+    draftStoreState.automationDraftState = null
+    draftStoreState.setWorkflowOrigin.mockClear()
+    draftStoreState.setRuleSetDraft.mockClear()
+    draftStoreState.setAutomationDraft.mockClear()
     window.history.replaceState({}, '', '/')
     window.sessionStorage.clear()
 
@@ -882,11 +903,7 @@ describe('ReconciliationCreateFlowPage', () => {
     await flushPromises()
 
     expect(push).toHaveBeenCalledWith({
-      path: '/schemas/create',
-      state: {
-        workflowOriginLabel: 'Reconciliation Setup',
-        workflowOriginPath: '/reconciliation/create',
-      },
+      path: '/schemas/create'
     })
   })
 
@@ -915,14 +932,9 @@ describe('ReconciliationCreateFlowPage', () => {
   })
 
   it('restores the draft from history state and returns to the workflow origin after creating the run', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createDraftState(),
-      },
-      '',
-      '/reconciliation/create',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+    draftStoreState.ruleSetDraftState = createDraftState()
+    window.history.replaceState({}, '', '/reconciliation/create')
 
     const wrapper = mount(ReconciliationCreateFlowPage)
     await flushPromises()
@@ -941,16 +953,13 @@ describe('ReconciliationCreateFlowPage', () => {
   })
 
   it('hands a newly created saved run back to automation setup when launched from automation workflow', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Automation Setup', '/reconciliation/automation/create'),
-        ...buildReconciliationAutomationDraftState({
-          intent: 'new-run',
-        }),
-      },
-      '',
-      '/reconciliation/create?automationFlow=new-run',
+    draftStoreState.workflowOrigin = { label: 'Automation Setup', path: '/reconciliation/automation/create' }
+    draftStoreState.automationDraftState = buildReconciliationAutomationDraftState(
+      { intent: 'new-run' },
+      null,
+      null,
     )
+    window.history.replaceState({}, '', '/reconciliation/create?automationFlow=new-run')
     route.query = { automationFlow: 'new-run' }
 
     const wrapper = mount(ReconciliationCreateFlowPage)
@@ -961,34 +970,18 @@ describe('ReconciliationCreateFlowPage', () => {
     await wrapper.get('[data-testid="create-run"]').trigger('click')
     await flushPromises()
 
-    expect(push).toHaveBeenCalledWith({
-      path: '/reconciliation/automation/create',
-      state: expect.objectContaining({
-        workflowOriginLabel: 'Automations',
-        workflowOriginPath: '/reconciliation/automations',
-        reconciliationAutomationDraft: expect.objectContaining({
-          intent: 'new-run',
-          savedRunId: 'RS_JSON_ORDER_COMPARE',
-          savedRunType: 'ruleset',
-          automationName: 'JSON Order Compare Automation',
-          returnLabel: 'Automations',
-          returnPath: '/reconciliation/automations',
-        }),
-        reconciliationAutomationResumeStepId: 'input-mode',
-        reconciliationAutomationSavedRun: expect.objectContaining({
-          savedRunId: 'RS_JSON_ORDER_COMPARE',
-          runName: 'JSON Order Compare',
-          ruleSetId: 'RS_JSON_ORDER_COMPARE',
-          compareScopeId: 'CS_RS_JSON_ORDER_COMPARE',
-        }),
-      }),
-    })
-    expect(window.sessionStorage.getItem('darpan.reconciliationAutomationPendingState')).toBeNull()
+    expect(push).toHaveBeenCalledWith({ path: '/reconciliation/automation/create' })
+    expect(draftStoreState.setAutomationDraft).toHaveBeenCalled()
   })
 
   it('continues automation setup from the pending option-B handoff when history state is lost', async () => {
     route.query = { automationFlow: 'new-run' }
-    savePendingReconciliationAutomationDraftState({ intent: 'new-run' }, 'input-mode')
+    draftStoreState.automationDraftState = buildReconciliationAutomationDraftState(
+      { intent: 'new-run' },
+      'input-mode',
+      null,
+    )
+    savePendingReconciliationAutomationDraftState({ intent: 'new-run' }, 'input-mode', null)
     window.history.replaceState({}, '', '/reconciliation/create?automationFlow=new-run')
 
     const wrapper = mount(ReconciliationCreateFlowPage)
@@ -999,20 +992,8 @@ describe('ReconciliationCreateFlowPage', () => {
     await wrapper.get('[data-testid="create-run"]').trigger('click')
     await flushPromises()
 
-    expect(push).toHaveBeenCalledWith({
-      path: '/reconciliation/automation/create',
-      state: expect.objectContaining({
-        workflowOriginLabel: 'Automations',
-        workflowOriginPath: '/reconciliation/automations',
-        reconciliationAutomationDraft: expect.objectContaining({
-          intent: 'new-run',
-          savedRunId: 'RS_JSON_ORDER_COMPARE',
-          returnPath: '/reconciliation/automations',
-        }),
-        reconciliationAutomationResumeStepId: 'input-mode',
-      }),
-    })
-    expect(window.sessionStorage.getItem('darpan.reconciliationAutomationPendingState')).toBeNull()
+    expect(push).toHaveBeenCalledWith({ path: '/reconciliation/automation/create' })
+    expect(draftStoreState.setAutomationDraft).toHaveBeenCalled()
     clearPendingReconciliationAutomationDraftState()
   })
 })

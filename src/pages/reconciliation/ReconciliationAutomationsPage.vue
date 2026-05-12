@@ -24,6 +24,7 @@
           :to="buildAutomationDashboardRoute(automation)"
           class="static-page-tile static-page-record-tile"
           data-testid="automation-tile"
+          @click="setAutomationsOrigin"
         >
           <span class="static-page-tile-title">{{ automation.automationName }}</span>
         </RouterLink>
@@ -34,6 +35,7 @@
         :to="createRoute"
         class="static-page-action-tile static-page-action-tile--inline"
         data-testid="automation-create-action"
+        @click="setAutomationsOrigin"
       >
         Create Automation
       </RouterLink>
@@ -44,6 +46,7 @@
       :to="createRoute"
       class="static-page-action-tile static-page-create-action"
       data-testid="automation-create-action"
+      @click="setAutomationsOrigin"
     >
       Create Automation
     </RouterLink>
@@ -60,30 +63,32 @@ import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
 import type { AutomationRecord } from '../../lib/api/types'
-import { useUiPermissions } from '../../lib/auth'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 
 const route = useRoute()
-const permissions = useUiPermissions()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 const automations = ref<AutomationRecord[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const hasAutomations = computed(() => automations.value.length > 0)
 const showInlineCreateAction = computed(() => canEditTenantSettings.value && !hasAutomations.value && !loading.value && !error.value)
 const showFooterCreateAction = computed(() => canEditTenantSettings.value && hasAutomations.value)
-const workflowOriginState = computed(() => buildWorkflowOriginState('Automations', route.fullPath || '/reconciliation/automations'))
 const createRoute = computed<RouteLocationRaw>(() => ({
   name: 'reconciliation-automation-create',
-  state: workflowOriginState.value,
 }))
+
+function setAutomationsOrigin(): void {
+  draftStore.setWorkflowOrigin('Automations', route.fullPath || '/reconciliation/automations')
+}
 
 function buildAutomationDashboardRoute(automation: AutomationRecord): RouteLocationRaw {
   return {
     name: 'reconciliation-automation-dashboard',
     params: { automationId: automation.automationId },
-    state: workflowOriginState.value,
   }
 }
 

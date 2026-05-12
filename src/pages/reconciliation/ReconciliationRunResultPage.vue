@@ -258,6 +258,7 @@
             aria-label="Open run"
             title="Open run"
             :to="workflowRoute"
+            @click="draftStore.setWorkflowOrigin('Run Result', route.fullPath)"
           >
             <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
               <path :d="playIconPath" :transform="playIconTransform" fill="currentColor" />
@@ -316,7 +317,7 @@ import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
 import type { GeneratedOutput, GeneratedOutputSourceDetails, GeneratedOutputSourceFile, GetGeneratedOutputFile } from '../../lib/api/types'
-import { useUiPermissions } from '../../lib/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import { DEFAULT_LIST_PAGE_SIZE, useListPagination } from '../../lib/listPagination'
 import { fileNameFromPath, normalizeDisplayText, normalizeDisplayToken } from '../../lib/reconciliationDisplay'
 import {
@@ -324,11 +325,11 @@ import {
   buildReconciliationRunHistoryRoute,
   type ReconciliationRunRouteContext,
 } from '../../lib/reconciliationRoutes'
-import { resolveSavedRunEditorRoute } from '../../lib/savedRunEditorRoute'
+import { buildRuleSetDraft, buildSavedRunEditorRoute, resolveSavedRunEditorTarget } from '../../lib/savedRunEditorRoute'
 import { listIconPath, playIconPath, playIconTransform } from '../../lib/iconPaths'
 import { formatSavedResultDateTime } from '../../lib/utils/date'
 import { downloadTextFile } from '../../lib/utils/download'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 
 type DiffBucketKey = 'file-1' | 'file-2' | 'rule'
 
@@ -439,7 +440,8 @@ const diffDetailColumns = [
 
 const route = useRoute()
 const router = useRouter()
-const permissions = useUiPermissions()
+const draftStore = useReconciliationDraftStore()
+const permissionsStore = usePermissionsStore()
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const openingRunSettings = ref(false)
@@ -475,8 +477,8 @@ const savedRunId = computed(() =>
 const outputFileName = computed(() =>
   typeof route.params.outputFileName === 'string' ? route.params.outputFileName.trim() : '',
 )
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
-const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
+const canRunActiveTenantReconciliation = computed(() => permissionsStore.canRunActiveTenantReconciliation)
 const settingsIconPath =
   'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.3a2 2 0 0 1-4 0V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14H2.7a2 2 0 0 1 0-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6v-.3a2 2 0 0 1 4 0V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1A1.7 1.7 0 0 0 21 10h.3a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z'
 const routeRunName = computed(() => (typeof route.query.runName === 'string' && route.query.runName.trim() ? route.query.runName.trim() : 'Selected Run'))
@@ -496,12 +498,8 @@ const reconciliationRunRouteContext = computed<ReconciliationRunRouteContext>(()
   file1SystemLabel: diffDetailsFile1Label.value,
   file2SystemLabel: diffDetailsFile2Label.value,
 }))
-const workflowOriginState = computed(() => buildWorkflowOriginState('Run Result', route.fullPath))
 const workflowRoute = computed<RouteLocationRaw>(() =>
-  buildReconciliationDiffRoute(
-    reconciliationRunRouteContext.value,
-    workflowOriginState.value,
-  ),
+  buildReconciliationDiffRoute(reconciliationRunRouteContext.value),
 )
 const runHistoryRoute = computed<RouteLocationRaw>(() =>
   buildReconciliationRunHistoryRoute(reconciliationRunRouteContext.value),
@@ -715,13 +713,19 @@ async function openRunSettings(): Promise<void> {
   runSettingsError.value = null
 
   try {
-    const editorRoute = await resolveSavedRunEditorRoute(targetId, workflowOriginState.value)
-    if (!editorRoute) {
+    draftStore.setWorkflowOrigin('Run Result', route.fullPath)
+    const savedRun = await resolveSavedRunEditorTarget(targetId)
+    if (!savedRun) {
       runSettingsError.value = `Unable to find run "${targetId}".`
       return
     }
 
-    await router.push(editorRoute)
+    if (savedRun.runType === 'ruleset') {
+      const draft = buildRuleSetDraft(savedRun)
+      if (draft) draftStore.setRuleSetDraft(draft, 'ruleset-manager')
+    }
+
+    await router.push(buildSavedRunEditorRoute(savedRun))
   } catch (error) {
     runSettingsError.value = error instanceof ApiCallError ? error.message : 'Unable to open run settings.'
   } finally {

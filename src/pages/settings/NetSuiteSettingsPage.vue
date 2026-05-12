@@ -55,19 +55,20 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { settingsFacade } from '../../lib/api/facade'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 import SettingsRecordListSection from './SettingsRecordListSection.vue'
 import { useSettingsPagedList } from './useSettingsPagedList'
 
 const route = useRoute()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 
-const workflowOriginState = computed(() => buildWorkflowOriginState('NetSuite', route.fullPath || '/settings/netsuite'))
 const {
   rows: authRows,
   pageIndex: authPageIndex,
@@ -80,7 +81,7 @@ const {
   pageSize: 10,
   loadPage: (request) => settingsFacade.listNsAuthConfigs(request),
   selectRecords: (response) => response.authConfigs ?? [],
-  activeTenantUserGroupId: () => authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  activeTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   fallbackErrorMessage: 'Failed to load NetSuite auth configs.',
 })
 const {
@@ -95,14 +96,11 @@ const {
   pageSize: 10,
   loadPage: (request) => settingsFacade.listNsRestletConfigs(request),
   selectRecords: (response) => response.restletConfigs ?? [],
-  activeTenantUserGroupId: () => authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  activeTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   fallbackErrorMessage: 'Failed to load endpoint configs.',
 })
 
-const authCreateRoute = computed(() => ({
-  name: 'settings-netsuite-auth-create',
-  state: workflowOriginState.value,
-}))
+const authCreateRoute = computed(() => ({ name: 'settings-netsuite-auth-create' }))
 const authTiles = computed(() => authRows.value.map((row) => ({
   key: row.nsAuthConfigId,
   label: resolveRecordLabel({
@@ -112,14 +110,10 @@ const authTiles = computed(() => authRows.value.map((row) => ({
   to: {
     name: 'settings-netsuite-auth-edit',
     params: { nsAuthConfigId: row.nsAuthConfigId },
-    state: workflowOriginState.value,
   },
 })))
 
-const endpointCreateRoute = computed(() => ({
-  name: 'settings-netsuite-endpoints-create',
-  state: workflowOriginState.value,
-}))
+const endpointCreateRoute = computed(() => ({ name: 'settings-netsuite-endpoints-create' }))
 const endpointTiles = computed(() => endpointRows.value.map((row) => ({
   key: row.nsRestletConfigId,
   label: resolveRecordLabel({
@@ -129,11 +123,11 @@ const endpointTiles = computed(() => endpointRows.value.map((row) => ({
   to: {
     name: 'settings-netsuite-endpoints-edit',
     params: { nsRestletConfigId: row.nsRestletConfigId },
-    state: workflowOriginState.value,
   },
 })))
 
 onMounted(() => {
+  draftStore.setWorkflowOrigin('NetSuite', route.fullPath || '/settings/netsuite')
   void loadAuthConfigs()
   void loadEndpointConfigs()
 })

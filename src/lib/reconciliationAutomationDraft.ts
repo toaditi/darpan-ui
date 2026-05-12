@@ -1,10 +1,10 @@
-import type { HistoryState } from 'vue-router'
 import type { SavedRunSummary, SavedRunSystemOption } from './api/types'
+import type { AutomationSourcePayload, SaveAutomationPayload } from './api/facadeTypes'
+import { isRecord, removeEmpty } from './utils/objects'
+import { normalizeString } from './utils/strings'
 
-export const RECONCILIATION_AUTOMATION_DRAFT_KEY = 'reconciliationAutomationDraft'
-export const RECONCILIATION_AUTOMATION_RESUME_STEP_KEY = 'reconciliationAutomationResumeStepId'
-export const RECONCILIATION_AUTOMATION_SAVED_RUN_KEY = 'reconciliationAutomationSavedRun'
-export const RECONCILIATION_AUTOMATION_PENDING_STATE_KEY = 'darpan.reconciliationAutomationPendingState'
+// Draft state management has moved to src/stores/reconciliationDraft.ts.
+// This file keeps types, constants, and pure payload-building utilities.
 
 export const AUTOMATION_INPUT_MODE_API_RANGE = 'AUT_IN_API_RANGE'
 export const AUTOMATION_INPUT_MODE_SFTP_FILES = 'AUT_IN_SFTP_FILES'
@@ -84,8 +84,68 @@ export interface ReconciliationAutomationDraftState {
   savedRun: SavedRunSummary | null
 }
 
-function normalizeString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+/** SessionStorage key for pending automation draft handoff state. */
+export const RECONCILIATION_AUTOMATION_PENDING_STATE_KEY = 'darpan.reconciliationAutomationDraftState'
+
+/**
+ * Build a serializable state payload from an automation draft.  The result
+ * can be spread into Vue Router `history.state` or saved to sessionStorage.
+ */
+export function buildReconciliationAutomationDraftState(
+  draft: ReconciliationAutomationDraft,
+  resumeStepId: ReconciliationAutomationStepId | null,
+  savedRun: SavedRunSummary | null,
+): ReconciliationAutomationDraftState {
+  return { draft, resumeStepId, savedRun }
+}
+
+/** Persist pending automation draft state to sessionStorage for cross-page handoff. */
+export function savePendingReconciliationAutomationDraftState(
+  draft: ReconciliationAutomationDraft,
+  resumeStepId: ReconciliationAutomationStepId | null,
+  savedRun: SavedRunSummary | null,
+): void {
+  try {
+    window.sessionStorage.setItem(
+      RECONCILIATION_AUTOMATION_PENDING_STATE_KEY,
+      JSON.stringify({ draft, resumeStepId, savedRun }),
+    )
+  } catch {
+    // ignore storage errors (private browsing, quota exceeded, etc.)
+  }
+}
+
+/** Read pending automation draft state from sessionStorage. */
+export function readPendingReconciliationAutomationDraftState(): ReconciliationAutomationDraftState | null {
+  try {
+    const raw = window.sessionStorage.getItem(RECONCILIATION_AUTOMATION_PENDING_STATE_KEY)
+    if (!raw) return null
+    return readReconciliationAutomationDraftState(JSON.parse(raw))
+  } catch {
+    return null
+  }
+}
+
+/** Remove pending automation draft state from sessionStorage. */
+export function clearPendingReconciliationAutomationDraftState(): void {
+  try {
+    window.sessionStorage.removeItem(RECONCILIATION_AUTOMATION_PENDING_STATE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+export function automationWindowNeedsCount(windowTypeEnumId: string | undefined): boolean {
+  return COUNTED_WINDOW_TYPES.has(windowTypeEnumId ?? '')
+}
+
+export function automationWindowUsesCustomRange(windowTypeEnumId: string | undefined): boolean {
+  return windowTypeEnumId === AUTOMATION_WINDOW_CUSTOM
+}
+
+export function buildDefaultAutomationName(savedRunName: string): string {
+  const trimmedName = savedRunName.trim()
+  return trimmedName ? `${trimmedName} Automation` : 'New Automation'
 }
 
 function normalizeNumber(value: unknown): number | undefined {
@@ -104,14 +164,6 @@ function normalizeBoolean(value: unknown): boolean | undefined {
     if (value === 'N' || value.toLowerCase() === 'false') return false
   }
   return undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
-}
-
-function removeEmpty<T extends Record<string, unknown>>(record: T): Partial<T> {
-  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined && value !== null && value !== '')) as Partial<T>
 }
 
 function readSourceDraft(value: unknown): ReconciliationAutomationSourceDraft {
@@ -170,14 +222,6 @@ function readDraft(value: unknown): ReconciliationAutomationDraft | null {
   return Object.keys(draft).length ? draft : null
 }
 
-export function automationWindowNeedsCount(windowTypeEnumId: string | undefined): boolean {
-  return COUNTED_WINDOW_TYPES.has(windowTypeEnumId ?? '')
-}
-
-export function automationWindowUsesCustomRange(windowTypeEnumId: string | undefined): boolean {
-  return windowTypeEnumId === AUTOMATION_WINDOW_CUSTOM
-}
-
 function readSavedRunSystemOption(value: unknown): SavedRunSystemOption | null {
   if (!isRecord(value)) return null
   const enumId = normalizeString(value.enumId)
@@ -228,75 +272,16 @@ function readSavedRun(value: unknown): SavedRunSummary | null {
   }) as SavedRunSummary
 }
 
-export function buildDefaultAutomationName(savedRunName: string): string {
-  const trimmedName = savedRunName.trim()
-  return trimmedName ? `${trimmedName} Automation` : 'New Automation'
-}
-
-export function buildReconciliationAutomationDraftState(
-  draft: ReconciliationAutomationDraft,
-  resumeStepId: ReconciliationAutomationStepId | null = null,
-  savedRun: SavedRunSummary | null = null,
-): HistoryState {
-  const state: HistoryState = {
-    [RECONCILIATION_AUTOMATION_DRAFT_KEY]: draft as unknown as HistoryState,
-  }
-  if (resumeStepId) state[RECONCILIATION_AUTOMATION_RESUME_STEP_KEY] = resumeStepId
-  if (savedRun) state[RECONCILIATION_AUTOMATION_SAVED_RUN_KEY] = savedRun as unknown as HistoryState
-  return state
-}
-
 export function readReconciliationAutomationDraftState(stateLike: unknown): ReconciliationAutomationDraftState | null {
   if (!isRecord(stateLike)) return null
-  const draft = readDraft(stateLike[RECONCILIATION_AUTOMATION_DRAFT_KEY])
+  const draft = readDraft(stateLike.draft ?? stateLike)
   if (!draft) return null
-  const resumeStepId = normalizeString(stateLike[RECONCILIATION_AUTOMATION_RESUME_STEP_KEY])
+  const resumeStepId = normalizeString(stateLike.resumeStepId)
   return {
     draft,
-    resumeStepId: resumeStepId as ReconciliationAutomationStepId | null,
-    savedRun: readSavedRun(stateLike[RECONCILIATION_AUTOMATION_SAVED_RUN_KEY]),
+    resumeStepId: (resumeStepId as ReconciliationAutomationStepId | null) ?? null,
+    savedRun: readSavedRun(stateLike.savedRun),
   }
-}
-
-function getSessionStorage(): Storage | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return window.sessionStorage
-  } catch {
-    return null
-  }
-}
-
-export function savePendingReconciliationAutomationDraftState(
-  draft: ReconciliationAutomationDraft,
-  resumeStepId: ReconciliationAutomationStepId | null = null,
-  savedRun: SavedRunSummary | null = null,
-): void {
-  const storage = getSessionStorage()
-  if (!storage) return
-  storage.setItem(
-    RECONCILIATION_AUTOMATION_PENDING_STATE_KEY,
-    JSON.stringify(buildReconciliationAutomationDraftState(draft, resumeStepId, savedRun)),
-  )
-}
-
-export function readPendingReconciliationAutomationDraftState(): ReconciliationAutomationDraftState | null {
-  const storage = getSessionStorage()
-  if (!storage) return null
-  const rawState = storage.getItem(RECONCILIATION_AUTOMATION_PENDING_STATE_KEY)
-  if (!rawState) return null
-
-  try {
-    return readReconciliationAutomationDraftState(JSON.parse(rawState))
-  } catch {
-    return null
-  }
-}
-
-export function clearPendingReconciliationAutomationDraftState(): void {
-  const storage = getSessionStorage()
-  if (!storage) return
-  storage.removeItem(RECONCILIATION_AUTOMATION_PENDING_STATE_KEY)
 }
 
 function resolveSavedRunSide(savedRun: SavedRunSummary, fileSide: ReconciliationAutomationFileSide): SavedRunSystemOption | null {
@@ -310,7 +295,7 @@ function buildSourcePayload(
   draft: ReconciliationAutomationDraft,
   savedRun: SavedRunSummary,
   fileSide: ReconciliationAutomationFileSide,
-): Record<string, unknown> {
+): AutomationSourcePayload {
   const sourceDraft = draft.sources?.[fileSide] ?? {}
   const savedRunSide = resolveSavedRunSide(savedRun, fileSide)
   const sourceTypeEnumId = draft.inputModeEnumId === AUTOMATION_INPUT_MODE_SFTP_FILES
@@ -331,7 +316,7 @@ function buildSourcePayload(
       sftpServerId: sourceDraft.sftpServerId,
       remotePathTemplate: sourceDraft.remotePathTemplate,
       fileNamePattern: sourceDraft.fileNamePattern,
-    }) as Record<string, unknown>
+    }) as AutomationSourcePayload
   }
 
   return removeEmpty({
@@ -345,13 +330,13 @@ function buildSourcePayload(
     safeMetadataJson: sourceDraft.safeMetadataJson,
     optionKey: sourceDraft.optionKey,
     omsRestSourceConfigId: sourceDraft.omsRestSourceConfigId,
-  }) as Record<string, unknown>
+  }) as AutomationSourcePayload
 }
 
 export function buildSaveAutomationPayload(
   draft: ReconciliationAutomationDraft,
   savedRun: SavedRunSummary,
-): Record<string, unknown> {
+): SaveAutomationPayload {
   return removeEmpty({
     automationId: draft.automationId,
     automationName: draft.automationName,
@@ -372,5 +357,5 @@ export function buildSaveAutomationPayload(
       buildSourcePayload(draft, savedRun, 'FILE_1'),
       buildSourcePayload(draft, savedRun, 'FILE_2'),
     ],
-  }) as Record<string, unknown>
+  }) as SaveAutomationPayload
 }

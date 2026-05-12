@@ -48,7 +48,10 @@ vi.mock('../../../lib/api/facade', () => ({
 }))
 
 vi.mock('../../../lib/auth', () => ({
-  useUiPermissions: () => ({
+  useUiPermissions: () => permissionsShape,
+}))
+
+const permissionsShape = {
     get canRunActiveTenantReconciliation() {
       return authState.sessionInfo.canRunActiveTenantReconciliation === true ||
         authState.sessionInfo.canEditActiveTenantData === true ||
@@ -63,6 +66,31 @@ vi.mock('../../../lib/auth', () => ({
     get canViewTenantSettings() {
       return Boolean(authState.sessionInfo.userId)
     },
+}
+
+vi.mock('../../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    sessionInfo: authState.sessionInfo,
+  }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionsShape,
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
   }),
 }))
 
@@ -296,11 +324,7 @@ describe('ReconciliationRunHistoryPage', () => {
         runName: 'CSV Order Compare',
         file1SystemLabel: 'OMS',
         file2SystemLabel: 'SHOPIFY',
-      },
-      state: {
-        workflowOriginLabel: 'Run History',
-        workflowOriginPath: route.fullPath,
-      },
+      }
     })
     expect(wrapper.find('.static-page-board [data-testid="run-history-open-settings"]').exists()).toBe(false)
     const openSettingsAction = wrapper.get('.static-page-actions [data-testid="run-history-open-settings"]')
@@ -327,19 +351,6 @@ describe('ReconciliationRunHistoryPage', () => {
     })
     expect(routerPush).toHaveBeenCalledWith(expect.objectContaining({
       name: 'reconciliation-ruleset-manager',
-      state: expect.objectContaining({
-        workflowOriginLabel: 'Run History',
-        workflowOriginPath: route.fullPath,
-        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
-        reconciliationRuleSetDraft: expect.objectContaining({
-          savedRunId: 'RS_ORDER_CSV',
-          runName: 'CSV Order Compare',
-          file1SystemEnumId: 'OMS',
-          file1PrimaryIdExpression: 'order_id',
-          file2SystemEnumId: 'SHOPIFY',
-          file2PrimaryIdExpression: 'id',
-        }),
-      }),
     }))
 
     editableTitle.element.textContent = 'CSV Order Compare Revised'

@@ -370,8 +370,10 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import type { NsAuthConfigRecord } from '../../lib/api/types'
+import type { SaveNsAuthConfigPayload } from '../../lib/api/facadeTypes'
 import { CONFIG_ID_MAX_LENGTH, exceedsConfigIdMaxLength } from './configId'
 import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 
@@ -418,8 +420,8 @@ interface NsAuthForm {
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
 
 function createDefaultNsAuthForm(): NsAuthForm {
   return {
@@ -464,7 +466,7 @@ const selectedScopeValues = ref<string[]>(parseScopeValue(defaultScopeValue))
 const showClientId = ref(false)
 
 const activeAuthConfigId = computed(() => String(route.params.nsAuthConfigId ?? '').trim())
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const isEditing = computed(() => activeAuthConfigId.value.length > 0)
 const isBasicAuth = computed(() => form.authType === 'BASIC')
 const isBearerAuth = computed(() => form.authType === 'BEARER')
@@ -653,7 +655,7 @@ function resetCreateForm(): void {
   success.value = null
 }
 
-function buildPayloadForAuthType(): Record<string, unknown> {
+function buildPayloadForAuthType(): SaveNsAuthConfigPayload {
   const basePayload = {
     nsAuthConfigId: form.nsAuthConfigId.trim(),
     description: form.description.trim(),
@@ -743,7 +745,7 @@ async function loadAuthConfig(): Promise<void> {
     const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 })
     const matchingConfig = filterRecordsForActiveTenant(
       response.authConfigs ?? [],
-      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+      authStore.sessionInfo?.activeTenantUserGroupId ?? null,
     ).find((config) => config.nsAuthConfigId === activeAuthConfigId.value)
     if (!matchingConfig) {
       error.value = `Unable to find NetSuite auth config "${activeAuthConfigId.value}".`

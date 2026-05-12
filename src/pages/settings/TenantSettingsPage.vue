@@ -356,7 +356,7 @@
             <label v-else-if="currentAiCreateStep.id === 'llmBaseUrl'" class="wizard-input-shell">
               <input
                 v-model="aiForm.llmBaseUrl"
-                :class="['wizard-answer-control', { empty: !normalizeTextValue(aiForm.llmBaseUrl) }]"
+                :class="['wizard-answer-control', { empty: !normalizeStringOrEmpty(aiForm.llmBaseUrl) }]"
                 name="llmBaseUrl"
                 type="url"
                 :placeholder="createBaseUrlPlaceholder"
@@ -366,7 +366,7 @@
             <label v-else-if="currentAiCreateStep.id === 'llmTimeoutSeconds'" class="wizard-input-shell">
               <input
                 v-model="aiForm.llmTimeoutSeconds"
-                :class="['wizard-answer-control', { empty: !normalizeTextValue(aiForm.llmTimeoutSeconds) }]"
+                :class="['wizard-answer-control', { empty: !normalizeStringOrEmpty(aiForm.llmTimeoutSeconds) }]"
                 name="llmTimeoutSeconds"
                 type="number"
                 min="1"
@@ -404,11 +404,13 @@ import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import type { LlmSettings, TenantNotificationSettings, TenantSettings } from '../../lib/api/types'
-import { saveTenantSettings, useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import { buildTimezoneOptions } from '../../lib/timezones'
+import { normalizeStringOrEmpty } from '../../lib/utils/strings'
+import { useTenantSettingsPopup } from '../../composables/useActivePopup'
 
 type LlmProvider = 'OPENAI' | 'GEMINI'
-type AiWorkflowMode = 'create' | 'edit'
 type NotificationWorkflowChoice = 'configure' | 'edit' | 'disable' | 'enable'
 
 interface ProviderProfile extends LlmSettings {
@@ -416,13 +418,6 @@ interface ProviderProfile extends LlmSettings {
   llmProvider: LlmProvider
   label: string
 }
-
-type ActivePopup =
-  | { type: 'timezone' }
-  | { type: 'notification-menu' }
-  | { type: 'notification-form' }
-  | { type: 'ai-menu' }
-  | { type: 'ai'; mode: AiWorkflowMode }
 
 type CreateStepId = 'llmProvider' | 'llmEnabled' | 'llmModel' | 'llmBaseUrl' | 'llmTimeoutSeconds' | 'llmApiKey'
 
@@ -434,8 +429,8 @@ interface CreateStep {
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
 
 const providerOrder: LlmProvider[] = ['OPENAI', 'GEMINI']
 const providerLabels: Record<LlmProvider, string> = {
@@ -487,7 +482,19 @@ const notificationSummary = ref('Not configured')
 const notificationWorkflowError = ref<string | null>(null)
 const notificationWorkflowSuccess = ref<string | null>(null)
 const notificationWorkflowSaving = ref(false)
-const activePopup = ref<ActivePopup | null>(null)
+const popup = useTenantSettingsPopup()
+const {
+  activePopup,
+  isPopupOpen,
+  isAiEditing,
+  openTimezone,
+  openNotificationMenu,
+  openNotificationForm: openNotificationFormPopup,
+  openAiMenu,
+  openAiCreate: openAiCreatePopup,
+  openAiEdit: openAiEditPopup,
+  close: closeActivePopup,
+} = popup
 const aiCreateStepIndex = ref(0)
 const aiWorkflowSaving = ref(false)
 const aiWorkflowLoading = ref(false)
@@ -511,12 +518,12 @@ const timezoneForm = reactive({
   timeZone: 'UTC',
 })
 
-const canManageGlobalSettings = computed(() => permissions.canManageGlobalSettings)
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
-const activeTenantUserGroupId = computed(() => authState.sessionInfo?.activeTenantUserGroupId ?? null)
+const canManageGlobalSettings = computed(() => permissionsStore.canManageGlobalSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
+const activeTenantUserGroupId = computed(() => authStore.sessionInfo?.activeTenantUserGroupId ?? null)
 const tenantLabel = computed(() => (
-  authState.sessionInfo?.activeTenantLabel
-  || authState.sessionInfo?.availableTenants?.find((tenant) => tenant.userGroupId === activeTenantUserGroupId.value)?.label
+  authStore.sessionInfo?.activeTenantLabel
+  || authStore.sessionInfo?.availableTenants?.find((tenant) => tenant.userGroupId === activeTenantUserGroupId.value)?.label
   || activeTenantUserGroupId.value
   || 'Active tenant'
 ))
@@ -524,8 +531,6 @@ const tenantSettingsTitle = computed(() => {
   if (!activeTenantUserGroupId.value) return 'Tenant Settings'
   return `${tenantLabel.value} Settings`
 })
-const isPopupOpen = computed(() => activePopup.value !== null)
-const isAiEditing = computed(() => activePopup.value?.type === 'ai' && activePopup.value.mode === 'edit')
 const selectedAiProvider = computed(() => {
   const directPrimary = providers.value.find((provider) => provider.activeProvider === provider.llmProvider)
   if (directPrimary) return directPrimary
@@ -551,7 +556,7 @@ const notificationWebhookPlaceholder = computed(() => (
   notificationSettings.value?.googleChatWebhookUrlMasked
   || 'https://chat.googleapis.com/v1/spaces/.../messages?key=...&token=...'
 ))
-const notificationWebhookInput = computed(() => normalizeTextValue(notificationForm.googleChatWebhookUrl))
+const notificationWebhookInput = computed(() => normalizeStringOrEmpty(notificationForm.googleChatWebhookUrl))
 const hasWebhookForNotificationSave = computed(() => (
   notificationForm.isActive === 'N' || notificationWebhookInput.value.length > 0 || notificationConfigured.value
 ))
@@ -625,11 +630,11 @@ const aiSubmitDisabled = computed(() => {
     case 'llmProvider':
       return normalizeProvider(aiForm.llmProvider) === null
     case 'llmModel':
-      return normalizeTextValue(aiForm.llmModel).length === 0
+      return normalizeStringOrEmpty(aiForm.llmModel).length === 0
     case 'llmBaseUrl':
-      return normalizeTextValue(aiForm.llmBaseUrl).length === 0
+      return normalizeStringOrEmpty(aiForm.llmBaseUrl).length === 0
     case 'llmTimeoutSeconds':
-      return !/^\d+$/.test(normalizeTextValue(aiForm.llmTimeoutSeconds)) || Number(aiForm.llmTimeoutSeconds) < 1
+      return !/^\d+$/.test(normalizeStringOrEmpty(aiForm.llmTimeoutSeconds)) || Number(aiForm.llmTimeoutSeconds) < 1
     default:
       return false
   }
@@ -649,27 +654,23 @@ const createModelPlaceholder = computed(() => createProviderDefaults.value?.llmM
 const createBaseUrlPlaceholder = computed(() => createProviderDefaults.value?.llmBaseUrl ?? 'Enter base URL')
 const createTimeoutPlaceholder = computed(() => createProviderDefaults.value?.llmTimeoutSeconds ?? 'Enter timeout')
 const selectedTimeZone = computed(() => (
-  normalizeTextValue(timezoneForm.timeZone)
-  || normalizeTextValue(tenantSettings.value?.timeZone)
-  || normalizeTextValue(authState.sessionInfo?.timeZone)
+  normalizeStringOrEmpty(timezoneForm.timeZone)
+  || normalizeStringOrEmpty(tenantSettings.value?.timeZone)
+  || normalizeStringOrEmpty(authStore.sessionInfo?.timeZone)
   || 'UTC'
 ))
 const timezoneOptions = computed<AppSelectOption[]>(() => buildTimezoneOptions(selectedTimeZone.value))
 const timezoneSaveDisabled = computed(() => (
   timezoneWorkflowSaving.value ||
   !canEditTenantSettings.value ||
-  normalizeTextValue(timezoneForm.timeZone).length === 0
+  normalizeStringOrEmpty(timezoneForm.timeZone).length === 0
 ))
 const timezonePrimaryLabel = computed(() => (
   timezoneWorkflowSaving.value ? 'Saving timezone' : 'Save Timezone'
 ))
 
-function normalizeTextValue(value: unknown): string {
-  return String(value ?? '').trim()
-}
-
 function normalizeProvider(rawProvider: unknown): LlmProvider | null {
-  const normalized = normalizeTextValue(rawProvider).toUpperCase()
+  const normalized = normalizeStringOrEmpty(rawProvider).toUpperCase()
   if (normalized === 'OPENAI' || normalized === 'GEMINI') return normalized
   return null
 }
@@ -716,7 +717,7 @@ function resetAiForm(): void {
 
 function applyTenantSettings(nextSettings?: TenantSettings | null): void {
   tenantSettings.value = nextSettings ?? null
-  const nextTimeZone = normalizeTextValue(nextSettings?.timeZone) || normalizeTextValue(authState.sessionInfo?.timeZone) || 'UTC'
+  const nextTimeZone = normalizeStringOrEmpty(nextSettings?.timeZone) || normalizeStringOrEmpty(authStore.sessionInfo?.timeZone) || 'UTC'
   timezoneForm.timeZone = nextTimeZone
   tenantTimezoneSummary.value = nextTimeZone
 }
@@ -734,7 +735,7 @@ function openTimezoneWorkflow(): void {
   timezoneWorkflowError.value = null
   timezoneWorkflowSuccess.value = null
   timezoneForm.timeZone = tenantTimezoneSummary.value || 'UTC'
-  activePopup.value = { type: 'timezone' }
+  openTimezone()
 }
 
 async function saveTimezoneSettings(): Promise<void> {
@@ -744,17 +745,17 @@ async function saveTimezoneSettings(): Promise<void> {
   timezoneWorkflowError.value = null
   timezoneWorkflowSuccess.value = null
   try {
-    const response = await saveTenantSettings({
-      timeZone: normalizeTextValue(timezoneForm.timeZone),
+    const response = await authStore.saveTenantSettings({
+      timeZone: normalizeStringOrEmpty(timezoneForm.timeZone),
     })
     if (!response?.ok) {
-      timezoneWorkflowError.value = response?.errors?.[0] ?? authState.error ?? 'Failed to save tenant timezone.'
+      timezoneWorkflowError.value = response?.errors?.[0] ?? authStore.error ?? 'Failed to save tenant timezone.'
       return
     }
 
     applyTenantSettings(response.tenantSettings)
     timezoneWorkflowSuccess.value = response.messages?.[0] ?? 'Saved tenant settings.'
-    activePopup.value = null
+    closeActivePopup()
   } catch (saveError) {
     timezoneWorkflowError.value = saveError instanceof ApiCallError ? saveError.message : 'Failed to save tenant timezone.'
   } finally {
@@ -765,7 +766,7 @@ async function saveTimezoneSettings(): Promise<void> {
 function openNotificationWorkflow(): void {
   notificationWorkflowError.value = null
   notificationWorkflowSuccess.value = null
-  activePopup.value = { type: 'notification-menu' }
+  openNotificationMenu()
 }
 
 function openNotificationForm(): void {
@@ -773,7 +774,7 @@ function openNotificationForm(): void {
   notificationWorkflowSuccess.value = null
   notificationForm.googleChatWebhookUrl = ''
   notificationForm.isActive = notificationActive.value ? 'Y' : 'N'
-  activePopup.value = { type: 'notification-form' }
+  openNotificationFormPopup()
 }
 
 function handleNotificationWorkflowChoice(value: string): void {
@@ -800,7 +801,7 @@ async function saveNotificationActiveState(isActive: boolean): Promise<void> {
     })
     applyNotificationSettings(response.tenantNotificationSettings)
     notificationWorkflowSuccess.value = response.messages?.[0] ?? 'Saved notification settings.'
-    activePopup.value = null
+    closeActivePopup()
   } catch (saveError) {
     notificationWorkflowError.value = saveError instanceof ApiCallError ? saveError.message : 'Failed to save notification settings.'
   } finally {
@@ -821,7 +822,7 @@ async function saveNotificationSettings(): Promise<void> {
     })
     applyNotificationSettings(response.tenantNotificationSettings)
     notificationWorkflowSuccess.value = response.messages?.[0] ?? 'Saved notification settings.'
-    activePopup.value = null
+    closeActivePopup()
   } catch (saveError) {
     notificationWorkflowError.value = saveError instanceof ApiCallError ? saveError.message : 'Failed to save notification settings.'
   } finally {
@@ -863,7 +864,7 @@ function openAiProviderWorkflow(): void {
   if (!canManageGlobalSettings.value) return
   aiSuccess.value = null
   resetAiForm()
-  activePopup.value = { type: 'ai-menu' }
+  openAiMenu()
 }
 
 function handleAiProviderWorkflowChoice(value: string): void {
@@ -881,7 +882,7 @@ function openAiCreate(): void {
   if (!canManageGlobalSettings.value) return
   aiSuccess.value = null
   resetAiForm()
-  activePopup.value = { type: 'ai', mode: 'create' }
+  openAiCreatePopup()
 }
 
 function openAiEdit(rawProvider: unknown): void {
@@ -891,7 +892,7 @@ function openAiEdit(rawProvider: unknown): void {
 
   aiSuccess.value = null
   resetAiForm()
-  activePopup.value = { type: 'ai', mode: 'edit' }
+  openAiEditPopup()
   const provider = providers.value.find((nextProvider) => nextProvider.llmProvider === llmProvider)
   if (provider) {
     applyAiSettings(provider, llmProvider)
@@ -902,7 +903,7 @@ function openAiEdit(rawProvider: unknown): void {
 }
 
 function closePopup(): void {
-  activePopup.value = null
+  closeActivePopup()
   resetAiForm()
   timezoneWorkflowError.value = null
   notificationWorkflowError.value = null
@@ -916,9 +917,9 @@ function applyCreateDefaults(): void {
   if (!provider) return
 
   const defaults = providerDefaults[provider]
-  if (!normalizeTextValue(aiForm.llmModel)) aiForm.llmModel = defaults.llmModel
-  if (!normalizeTextValue(aiForm.llmBaseUrl)) aiForm.llmBaseUrl = defaults.llmBaseUrl
-  if (!normalizeTextValue(aiForm.llmTimeoutSeconds)) aiForm.llmTimeoutSeconds = defaults.llmTimeoutSeconds
+  if (!normalizeStringOrEmpty(aiForm.llmModel)) aiForm.llmModel = defaults.llmModel
+  if (!normalizeStringOrEmpty(aiForm.llmBaseUrl)) aiForm.llmBaseUrl = defaults.llmBaseUrl
+  if (!normalizeStringOrEmpty(aiForm.llmTimeoutSeconds)) aiForm.llmTimeoutSeconds = defaults.llmTimeoutSeconds
 }
 
 function goNextAiStep(): void {
@@ -957,13 +958,13 @@ async function saveAiSettings(): Promise<void> {
   try {
     const response = await settingsFacade.saveLlmSettings({
       llmProvider: provider,
-      llmModel: normalizeTextValue(aiForm.llmModel),
-      llmBaseUrl: normalizeTextValue(aiForm.llmBaseUrl),
-      llmTimeoutSeconds: normalizeTextValue(aiForm.llmTimeoutSeconds),
+      llmModel: normalizeStringOrEmpty(aiForm.llmModel),
+      llmBaseUrl: normalizeStringOrEmpty(aiForm.llmBaseUrl),
+      llmTimeoutSeconds: normalizeStringOrEmpty(aiForm.llmTimeoutSeconds),
       llmEnabled: aiForm.llmEnabled,
       llmApiKey: aiForm.llmApiKey,
     })
-    activePopup.value = null
+    closeActivePopup()
     resetAiForm()
     aiSuccess.value = response.messages?.[0] ?? 'Saved LLM settings.'
     await loadAiProviders()

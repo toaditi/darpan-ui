@@ -122,7 +122,8 @@ import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
 import { invokePrimaryActionOnEnter } from '../../lib/keyboard'
 import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
-import { useUiPermissions } from '../../lib/auth'
+import { isRecord } from '../../lib/utils/objects'
+import { usePermissionsStore } from '../../stores/permissions'
 
 type SchemaWorkflowStep = 'upload-intent' | 'upload' | 'verify' | 'system' | 'name'
 type SchemaUploadIntent = 'schema' | 'sample'
@@ -156,7 +157,7 @@ const fieldColumns = [
 ]
 
 const router = useRouter()
-const permissions = useUiPermissions()
+const permissionsStore = usePermissionsStore()
 
 const currentStepIndex = ref(0)
 const selectedUploadIntent = ref<SchemaUploadIntent | ''>('')
@@ -170,7 +171,7 @@ const loading = ref(false)
 const saving = ref(false)
 const pageError = ref<string | null>(null)
 const systemOptions = ref<AppSelectOption[]>([])
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 
 function buildWorkflowSteps(uploadIntent: SchemaUploadIntent | ''): WorkflowStep[] {
   const steps: WorkflowStep[] = [
@@ -234,10 +235,6 @@ const uploadAccept = computed(() => '.json,application/json,application/schema+j
 function deriveSchemaName(fileName: string): string {
   const baseName = fileName.replace(/\.[^.]+$/, '')
   return baseName.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'schema'
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function parseFieldPathTokens(fieldPath: string): string[] | null {

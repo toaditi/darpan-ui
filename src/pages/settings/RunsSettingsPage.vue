@@ -28,14 +28,13 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { reconciliationFacade } from '../../lib/api/facade'
-import { buildSavedRunEditorRoute, savedRunName } from '../../lib/savedRunEditorRoute'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
+import { buildRuleSetDraft, buildSavedRunEditorRoute, savedRunName } from '../../lib/savedRunEditorRoute'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import SettingsRecordListSection from './SettingsRecordListSection.vue'
 import { useSettingsPagedList } from './useSettingsPagedList'
 
 const route = useRoute()
-
-const workflowOriginState = computed(() => buildWorkflowOriginState('Run Editor', route.fullPath || '/settings/runs'))
+const draftStore = useReconciliationDraftStore()
 const {
   rows,
   pageIndex,
@@ -49,13 +48,18 @@ const {
   selectRecords: (response) => response.savedRuns ?? [],
   fallbackErrorMessage: 'Failed to load runs.',
 })
-const recordTiles = computed(() => rows.value.map((row) => ({
-  key: row.savedRunId,
-  label: savedRunName(row),
-  to: buildSavedRunEditorRoute(row, workflowOriginState.value),
-})))
+const recordTiles = computed(() => rows.value.map((row) => {
+  const ruleSetDraft = row.runType === 'ruleset' ? buildRuleSetDraft(row) : null
+  return {
+    key: row.savedRunId,
+    label: savedRunName(row),
+    to: buildSavedRunEditorRoute(row),
+    onClick: ruleSetDraft ? () => { draftStore.setRuleSetDraft(ruleSetDraft, 'ruleset-manager') } : undefined,
+  }
+}))
 
 onMounted(() => {
+  draftStore.setWorkflowOrigin('Run Editor', route.fullPath || '/settings/runs')
   void load()
 })
 </script>

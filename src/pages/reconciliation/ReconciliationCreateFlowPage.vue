@@ -87,15 +87,9 @@ import type {
 } from '../../lib/api/types'
 import {
   buildDefaultAutomationName,
-  buildReconciliationAutomationDraftState,
-  clearPendingReconciliationAutomationDraftState,
-  readPendingReconciliationAutomationDraftState,
-  readReconciliationAutomationDraftState,
-  savePendingReconciliationAutomationDraftState,
 } from '../../lib/reconciliationAutomationDraft'
 import {
   buildCreateRuleSetRunPayload,
-  readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
 } from '../../lib/reconciliationRuleSetDraft'
 import {
@@ -104,7 +98,7 @@ import {
   deduplicateDarpanSystemOptions,
 } from '../../lib/utils/darpanSystems'
 import { resolveSchemaLabel } from '../../lib/utils/schemaLabel'
-import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 
 type StepId =
   | 'run-name'
@@ -146,6 +140,7 @@ const SYSTEM_LABEL_OVERRIDES: Record<string, string> = {
 
 const router = useRouter()
 const route = useRoute()
+const draftStore = useReconciliationDraftStore()
 const stepForm = ref<ComponentPublicInstance | null>(null)
 
 const loadingOptions = ref(false)
@@ -1137,7 +1132,7 @@ function goBack(): void {
 }
 
 async function restoreDraftFromHistoryState(): Promise<void> {
-  const draftState = readReconciliationRuleSetDraftState(typeof window === 'undefined' ? null : window.history.state)
+  const draftState = draftStore.ruleSetDraftState
   if (!draftState) return
 
   runName.value = draftState.draft.runName
@@ -1215,10 +1210,8 @@ async function handlePrimarySubmit(): Promise<void> {
 }
 
 async function openSchemaCreateWorkflow(): Promise<void> {
-  await router.push({
-    path: '/schemas/create',
-    state: buildWorkflowOriginState('Reconciliation Setup', '/reconciliation/create'),
-  })
+  draftStore.setWorkflowOrigin('Reconciliation Setup', '/reconciliation/create')
+  await router.push({ path: '/schemas/create' })
 }
 
 function isAutomationCreateRoute(): boolean {
@@ -1227,9 +1220,9 @@ function isAutomationCreateRoute(): boolean {
 }
 
 function readAutomationHandoffDraft() {
-  const historyDraft = readReconciliationAutomationDraftState(typeof window === 'undefined' ? null : window.history.state)
-  if (historyDraft?.draft.intent === 'new-run') return historyDraft
-  return isAutomationCreateRoute() ? readPendingReconciliationAutomationDraftState() : null
+  const storeDraft = draftStore.automationDraftState
+  if (storeDraft?.draft.intent === 'new-run') return storeDraft
+  return isAutomationCreateRoute() ? storeDraft : null
 }
 
 async function createRun(): Promise<void> {
@@ -1252,19 +1245,14 @@ async function createRun(): Promise<void> {
         returnLabel: automationDraftState.draft.returnLabel || 'Automations',
         returnPath: automationDraftState.draft.returnPath || '/reconciliation/automations',
       }
-      savePendingReconciliationAutomationDraftState(nextDraft, 'input-mode', response.savedRun)
-      await router.push({
-        path: '/reconciliation/automation/create',
-        state: {
-          ...buildWorkflowOriginState(nextDraft.returnLabel, nextDraft.returnPath),
-          ...buildReconciliationAutomationDraftState(nextDraft, 'input-mode', response.savedRun),
-        },
-      })
-      clearPendingReconciliationAutomationDraftState()
+      draftStore.setAutomationDraft(nextDraft, 'input-mode', response.savedRun)
+      draftStore.setWorkflowOrigin(nextDraft.returnLabel, nextDraft.returnPath)
+      await router.push({ path: '/reconciliation/automation/create' })
+      draftStore.clearAutomationDraft()
       return
     }
 
-    const workflowOrigin = readWorkflowOriginFromHistoryState()
+    const workflowOrigin = draftStore.workflowOrigin
     await router.push(workflowOrigin?.path ?? { name: 'hub' })
   } catch (error) {
     pageError.value = error instanceof ApiCallError ? error.message : 'Unable to create reconciliation flow.'

@@ -122,14 +122,13 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import { buildAuthRedirect, ensureAuthenticated, logoutSession, useAuthState, useUiPermissions } from './lib/auth'
+import { buildAuthRedirect, useAuthStore } from './stores/auth'
+import { usePermissionsStore } from './stores/permissions'
+import { useReconciliationDraftStore } from './stores/reconciliationDraft'
 import { AUTH_REQUIRED_EVENT } from './lib/api/client'
-import { reconciliationFacade, settingsFacade } from './lib/api/facade'
-import type { GeneratedOutput, SftpServerRecord } from './lib/api/types'
-import { buildDataCommandActions } from './lib/commandDataSearch'
-import { listRecentCommandIds, recordRecentCommand } from './lib/commandSearch'
 import { shouldAbortWorkflowOnEscape } from './lib/keyboard'
-import { useTheme } from './lib/theme'
+import { useTheme } from './composables/useTheme'
+import { useCommandPalette } from './composables/useCommandPalette'
 import type { CommandAction } from './lib/types/ux'
 import {
   DISMISS_INLINE_MENUS_EVENT,
@@ -139,38 +138,42 @@ import {
   type WorkflowHintTone,
 } from './lib/uiEvents'
 import { useUserDisplayNamePreference } from './lib/userDisplayName'
-import { filterRecordsForActiveTenant } from './lib/utils/tenantRecords'
-import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState, resolveStaticPageLabel, type WorkflowOrigin } from './lib/workflowOrigin'
+import { resolveStaticPageLabel } from './lib/workflowOrigin'
 
 const CommandPalette = defineAsyncComponent(() => import('./components/shell/CommandPalette.vue').then((module) => module.default))
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissions = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 const { theme, toggleTheme } = useTheme()
 const { resolveUserDisplayName } = useUserDisplayNamePreference()
 
-const isCommandPaletteOpen = ref(false)
+const commandPalette = useCommandPalette({
+  getActiveTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
+})
+const {
+  isCommandPaletteOpen,
+  isLoadingCommandData,
+  recentCommandIds,
+  dataCommandActions,
+} = commandPalette
 const isUserMenuOpen = ref(false)
 const isLoggingOut = ref(false)
-const isLoadingCommandData = ref(false)
-const recentCommandIds = ref<string[]>([])
-const dataCommandActions = ref<CommandAction[]>([])
 const userMenuWrap = ref<HTMLElement | null>(null)
 const workflowHint = ref<{ message: string, tone: WorkflowHintTone } | null>(null)
 const workflowEscapeOriginPath = ref<string | null>(null)
-const workflowEscapeOriginState = ref<WorkflowOrigin | null>(null)
 
 const isShelllessRoute = computed(() => route.name === 'login')
 const surfaceMode = computed<'static' | 'workflow'>(() => (route.meta.surfaceMode === 'workflow' ? 'workflow' : 'static'))
 const routerViewKey = computed(
-  () => `${route.fullPath}::${authState.sessionInfo?.activeTenantUserGroupId ?? authState.sessionInfo?.scopeType ?? 'anonymous'}`,
+  () => `${route.fullPath}::${authStore.sessionInfo?.activeTenantUserGroupId ?? authStore.sessionInfo?.scopeType ?? 'anonymous'}`,
 )
-const userDisplayName = computed(() => resolveUserDisplayName(authState.sessionInfo))
-const activeTenantUserGroupId = computed(() => authState.sessionInfo?.activeTenantUserGroupId ?? null)
+const userDisplayName = computed(() => resolveUserDisplayName(authStore.sessionInfo))
+const activeTenantUserGroupId = computed(() => authStore.sessionInfo?.activeTenantUserGroupId ?? null)
 const activeTenantName = computed<string | null>(() => {
-  const sessionInfo = authState.sessionInfo
+  const sessionInfo = authStore.sessionInfo
   const activeTenantId = sessionInfo?.activeTenantUserGroupId?.toString().trim()
   if (!activeTenantId) return null
 
@@ -186,10 +189,10 @@ const activeTenantName = computed<string | null>(() => {
 })
 const userStatusText = computed<string | null>(() => {
   if (isLoggingOut.value) return 'Signing out'
-  if (authState.authenticated) return null
-  if (authState.error) return authState.error
-  if (authState.status === 'verification-failed') return 'Session check failed'
-  if (authState.checked) return 'Not signed in'
+  if (authStore.authenticated) return null
+  if (authStore.error) return authStore.error
+  if (authStore.status === 'verification-failed') return 'Session check failed'
+  if (authStore.checked) return 'Not signed in'
   return 'Checking session'
 })
 
@@ -335,57 +338,15 @@ const staticCommandActions: CommandAction[] = [
 ]
 
 let workflowEscapeHintTimer: ReturnType<typeof globalThis.setTimeout> | null = null
-let commandDataRequestId = 0
-
-function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
-  return result.status === 'fulfilled'
-}
-
-function readSftpServers(result: PromiseSettledResult<{ servers?: SftpServerRecord[] }>): SftpServerRecord[] {
-  if (!isFulfilled(result)) return []
-  return filterRecordsForActiveTenant(
-    result.value.servers ?? [],
-    authState.sessionInfo?.activeTenantUserGroupId ?? null,
-  )
-}
-
-function readGeneratedOutputs(result: PromiseSettledResult<{ generatedOutputs?: GeneratedOutput[] }>): GeneratedOutput[] {
-  if (!isFulfilled(result)) return []
-  return result.value.generatedOutputs ?? []
-}
-
-async function loadCommandDataActions(): Promise<void> {
-  const requestId = ++commandDataRequestId
-  isLoadingCommandData.value = true
-
-  try {
-    const [sftpResult, generatedOutputResult] = await Promise.allSettled([
-      settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 }),
-      reconciliationFacade.listGeneratedOutputs({ pageIndex: 0, pageSize: 80, query: '' }),
-    ])
-
-    if (requestId !== commandDataRequestId) return
-
-    dataCommandActions.value = buildDataCommandActions({
-      sftpServers: readSftpServers(sftpResult),
-      generatedOutputs: readGeneratedOutputs(generatedOutputResult),
-    })
-  } finally {
-    if (requestId === commandDataRequestId) {
-      isLoadingCommandData.value = false
-    }
-  }
-}
 
 function openCommandPalette(): void {
   isUserMenuOpen.value = false
   document.dispatchEvent(new Event(DISMISS_INLINE_MENUS_EVENT))
-  isCommandPaletteOpen.value = true
-  void loadCommandDataActions()
+  commandPalette.open()
 }
 
 function closeCommandPalette(): void {
-  isCommandPaletteOpen.value = false
+  commandPalette.close()
 }
 
 function toggleUserMenu(): void {
@@ -426,13 +387,12 @@ async function goToHub(options: { clearFocus?: boolean } = {}): Promise<void> {
 
 async function goToWorkflowOrigin(options: { clearFocus?: boolean } = {}): Promise<void> {
   const targetPath = workflowEscapeOriginPath.value || '/'
-  const targetState = workflowEscapeOriginState.value?.state
 
   isCommandPaletteOpen.value = false
   isUserMenuOpen.value = false
   if (options.clearFocus) clearActiveElementFocus()
   if (route.fullPath === targetPath) return
-  await router.push(targetState ? { path: targetPath, state: targetState } : targetPath)
+  await router.push(targetPath)
   if (options.clearFocus) {
     await nextTick()
     clearActiveElementFocus()
@@ -452,7 +412,7 @@ async function handleLogout(): Promise<void> {
   isCommandPaletteOpen.value = false
   isLoggingOut.value = true
   try {
-    const loggedOut = await logoutSession()
+    const loggedOut = await authStore.logoutSession()
     if (!loggedOut) return
 
     isUserMenuOpen.value = false
@@ -463,16 +423,14 @@ async function handleLogout(): Promise<void> {
 }
 
 async function executeCommand(action: CommandAction): Promise<void> {
-  isCommandPaletteOpen.value = false
-  recentCommandIds.value = recordRecentCommand(action.id)
+  commandPalette.close()
+  commandPalette.recordExecution(action.id)
   if (action.to === route.fullPath) return
   const staticPageLabel = resolveStaticPageLabel(route)
   const targetRoute = router.resolve(action.to)
   if (staticPageLabel && targetRoute.meta.surfaceMode === 'workflow') {
-    await router.push({
-      path: action.to,
-      state: buildWorkflowOriginState(staticPageLabel, route.fullPath),
-    })
+    draftStore.setWorkflowOrigin(staticPageLabel, route.fullPath)
+    await router.push(action.to)
     return
   }
   await router.push(action.to)
@@ -522,12 +480,13 @@ async function redirectToAuthBoundary(): Promise<void> {
   isCommandPaletteOpen.value = false
   isUserMenuOpen.value = false
   await router.replace(buildAuthRedirect(route.fullPath))
+
 }
 
 async function handleAuthRequired(): Promise<void> {
   if (isShelllessRoute.value) return
 
-  const authenticated = await ensureAuthenticated(true)
+  const authenticated = await authStore.ensureAuthenticated(true)
   if (authenticated) return
 
   await redirectToAuthBoundary()
@@ -578,13 +537,11 @@ function handleWorkflowHintRequest(event: Event): void {
 function syncWorkflowEscapeOrigin(): void {
   if (surfaceMode.value !== 'workflow') {
     workflowEscapeOriginPath.value = null
-    workflowEscapeOriginState.value = null
     hideWorkflowEscapeHint()
     return
   }
 
-  const workflowOrigin = readWorkflowOriginFromHistoryState()
-  workflowEscapeOriginState.value = workflowOrigin
+  const workflowOrigin = draftStore.workflowOrigin
   workflowEscapeOriginPath.value = workflowOrigin?.path ?? null
   if (!workflowOrigin) {
     hideWorkflowEscapeHint()
@@ -595,9 +552,9 @@ function syncWorkflowEscapeOrigin(): void {
 }
 
 watch(activeTenantUserGroupId, () => {
-  dataCommandActions.value = []
+  commandPalette.clearCommandData()
   if (isCommandPaletteOpen.value) {
-    void loadCommandDataActions()
+    void commandPalette.loadCommandData()
   }
 })
 
@@ -607,7 +564,7 @@ watch(
     isCommandPaletteOpen.value = false
     isUserMenuOpen.value = false
     if (!isShelllessRoute.value) {
-      void ensureAuthenticated()
+      void authStore.ensureAuthenticated()
     }
   },
 )
@@ -629,14 +586,14 @@ watch(
 )
 
 onMounted(() => {
-  recentCommandIds.value = listRecentCommandIds()
+  commandPalette.loadRecentFromStorage()
   window.addEventListener('keydown', handleKeyboard)
   window.addEventListener('mousedown', handleWindowMouseDown)
   window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
   document.addEventListener(WORKFLOW_HINT_REQUEST_EVENT, handleWorkflowHintRequest)
   syncBodySurfaceMode(surfaceMode.value)
   if (!isShelllessRoute.value) {
-    void ensureAuthenticated()
+    void authStore.ensureAuthenticated()
   }
 })
 

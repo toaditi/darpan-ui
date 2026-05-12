@@ -249,26 +249,27 @@ import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, reconciliationFacade, settingsFacade } from '../../lib/api/facade'
 import type { OmsRestSourceConfigRecord, ShopifyAuthConfigRecord } from '../../lib/api/types'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import { editIconPath, listIconPath, playIconPath, playIconTransform, trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import { OMS_ORDERS_ENDPOINT_DOC } from '../../lib/omsSwagger'
 import {
-  buildReconciliationRuleSetDraftState,
   formatReconciliationFieldKey,
-  readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
   type ReconciliationRuleSetDraftRule,
 } from '../../lib/reconciliationRuleSetDraft'
 import { buildReconciliationDiffRoute, buildReconciliationRunHistoryRoute } from '../../lib/reconciliationRoutes'
+import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 import { resolveSchemaLabel } from '../../lib/utils/schemaLabel'
 import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { buildWorkflowOriginState, readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 const schemaLabels = ref<Record<string, string>>({})
 const deletingSavedRun = ref(false)
 const deleteError = ref<string | null>(null)
@@ -312,7 +313,7 @@ const shopifyOrdersEndpoint = {
   method: 'POST',
 }
 
-const draftState = computed(() => readReconciliationRuleSetDraftState(typeof window === 'undefined' ? null : window.history.state))
+const draftState = computed(() => draftStore.ruleSetDraftState)
 const draft = computed<ReconciliationRuleSetDraft | null>(() => draftState.value?.draft ?? null)
 const savedRunId = computed(() => draft.value?.savedRunId?.trim() ?? '')
 const heroTitle = computed(() => draft.value?.runName || 'Run')
@@ -324,8 +325,8 @@ const file1SystemConfig = computed<SourceConfigSummary | null>(() => buildSource
 const file2SystemConfig = computed<SourceConfigSummary | null>(() => buildSourceConfigSummary(draft.value, 'file2'))
 const file1PrimaryId = computed(() => formatFieldKey(draft.value?.file1PrimaryIdExpression))
 const file2PrimaryId = computed(() => formatFieldKey(draft.value?.file2PrimaryIdExpression))
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
-const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
+const canRunActiveTenantReconciliation = computed(() => permissionsStore.canRunActiveTenantReconciliation)
 const canViewRunHistory = computed(() => Boolean(savedRunId.value))
 const authInfoPopup = ref<AuthInfoPopupState | null>(null)
 const isAuthInfoPopupOpen = computed(() => Boolean(authInfoPopup.value))
@@ -390,7 +391,7 @@ function summarizeSource(draftValue: ReconciliationRuleSetDraft | null, side: 'f
 
 function buildSourceConfigSummary(draftValue: ReconciliationRuleSetDraft | null, side: SourceSide): SourceConfigSummary | null {
   if (!draftValue) return null
-  if (!permissions.canViewTenantSettings) return null
+  if (!permissionsStore.canViewTenantSettings) return null
 
   const sourceTypeEnumId = side === 'file1' ? draftValue.file1SourceTypeEnumId : draftValue.file2SourceTypeEnumId
   if (sourceTypeEnumId?.trim() !== SOURCE_TYPE_API) return null
@@ -508,7 +509,7 @@ async function loadOmsAuthInfo(sourceConfig: SourceConfigSummary): Promise<AuthI
   const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 })
   const matchingConfig = filterRecordsForActiveTenant(
     response.omsRestSourceConfigs ?? [],
-    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   ).find((record) => record.omsRestSourceConfigId === sourceConfig.configId)
 
   if (!matchingConfig) {
@@ -522,7 +523,7 @@ async function loadShopifyAuthInfo(sourceConfig: SourceConfigSummary): Promise<A
   const response = await settingsFacade.getShopifyAuthConfig({ shopifyAuthConfigId: sourceConfig.configId })
   const record = response.shopifyAuthConfig ?? null
   const [matchingConfig] = record
-    ? filterRecordsForActiveTenant([record], authState.sessionInfo?.activeTenantUserGroupId ?? null)
+    ? filterRecordsForActiveTenant([record], authStore.sessionInfo?.activeTenantUserGroupId ?? null)
     : []
 
   if (!matchingConfig) {
@@ -675,14 +676,11 @@ async function openRunEditWorkflow(): Promise<void> {
   if (!canEditTenantSettings.value) return
   if (!draft.value || !savedRunId.value) return
 
-  const runDetailsState = buildReconciliationRuleSetDraftState(draft.value)
+  draftStore.setWorkflowOrigin('Run Details', route.fullPath || '/reconciliation/ruleset-manager')
+  draftStore.setRuleSetDraft(draft.value)
   await router.push({
     name: 'settings-runs-edit',
     params: { reconciliationMappingId: savedRunId.value },
-    state: {
-      ...buildWorkflowOriginState('Run Details', route.fullPath || '/reconciliation/ruleset-manager', runDetailsState),
-      ...runDetailsState,
-    },
   })
 }
 
@@ -690,14 +688,9 @@ async function openRuleEditWorkflow(): Promise<void> {
   if (!canEditTenantSettings.value) return
   if (!draft.value) return
 
-  const runDetailsState = buildReconciliationRuleSetDraftState(draft.value, 'ruleset-manager')
-  await router.push({
-    name: 'reconciliation-ruleset-editor',
-    state: {
-      ...buildWorkflowOriginState('Run Details', route.fullPath || '/reconciliation/ruleset-manager', runDetailsState),
-      ...runDetailsState,
-    },
-  })
+  draftStore.setWorkflowOrigin('Run Details', route.fullPath || '/reconciliation/ruleset-manager')
+  draftStore.setRuleSetDraft(draft.value, 'ruleset-manager')
+  await router.push({ name: 'reconciliation-ruleset-editor' })
 }
 
 async function openRunWorkflow(): Promise<void> {
@@ -708,16 +701,14 @@ async function openRunWorkflow(): Promise<void> {
     return
   }
 
+  draftStore.setWorkflowOrigin('Run Details', route.fullPath || '/reconciliation/ruleset-manager')
   await router.push(
-    buildReconciliationDiffRoute(
-      {
-        savedRunId: savedRunId.value,
-        runName: heroTitle.value,
-        file1SystemLabel: file1Title.value,
-        file2SystemLabel: file2Title.value,
-      },
-      buildWorkflowOriginState('Run Details', route.fullPath || '/reconciliation/ruleset-manager'),
-    ),
+    buildReconciliationDiffRoute({
+      savedRunId: savedRunId.value,
+      runName: heroTitle.value,
+      file1SystemLabel: file1Title.value,
+      file2SystemLabel: file2Title.value,
+    }),
   )
 }
 
@@ -736,7 +727,7 @@ async function deleteSavedRun(): Promise<void> {
   deletingSavedRun.value = true
   try {
     await reconciliationFacade.deleteSavedRun({ savedRunId: savedRunId.value })
-    await router.push(readWorkflowOriginFromHistoryState()?.path ?? '/settings/runs')
+    await router.push(draftStore.workflowOrigin?.path ?? '/settings/runs')
   } catch (error) {
     deleteError.value = error instanceof ApiCallError ? error.message : 'Unable to delete run.'
   } finally {

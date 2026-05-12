@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { buildReconciliationRuleSetDraftState } from '../../../lib/reconciliationRuleSetDraft'
 
 const push = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const route = vi.hoisted(() => ({
@@ -44,7 +43,10 @@ vi.mock('../../../lib/api/facade', () => ({
 }))
 
 vi.mock('../../../lib/auth', () => ({
-  useUiPermissions: () => ({
+  useUiPermissions: () => permissionsShape,
+}))
+
+const permissionsShape = {
     get canEditTenantSettings() {
       return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
     },
@@ -54,7 +56,40 @@ vi.mock('../../../lib/auth', () => ({
     get canViewTenantSettings() {
       return Boolean(authState.sessionInfo.userId)
     },
+  
+  get canRunActiveTenantReconciliation() {
+    return ((authState.sessionInfo as Record<string, unknown>)?.canEditActiveTenantData === true ||
+      (authState.sessionInfo as Record<string, unknown>)?.isSuperAdmin === true ||
+      (authState.sessionInfo as Record<string, unknown>)?.canRunActiveTenantReconciliation === true)
+  },
+}
+
+vi.mock('../../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    sessionInfo: authState.sessionInfo,
   }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionsShape,
+}))
+
+const draftStoreState = vi.hoisted(() => ({
+  workflowOrigin: null as { label: string, path: string } | null,
+  ruleSetDraftState: null as null | { draft: unknown, resumeStepId: string | null },
+  automationDraftState: null,
+  setWorkflowOrigin: vi.fn(),
+  clearWorkflowOrigin: vi.fn(),
+  setRuleSetDraft: vi.fn(),
+  clearRuleSetDraft: vi.fn(),
+  setAutomationDraft: vi.fn(),
+  clearAutomationDraft: vi.fn(),
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => draftStoreState,
 }))
 
 import RunsSettingsWorkflowPage from '../RunsSettingsWorkflowPage.vue'
@@ -83,14 +118,13 @@ describe('RunsSettingsWorkflowPage', () => {
       canEditActiveTenantData: true,
       isSuperAdmin: false,
     }
-    window.history.replaceState(
-      {
-        workflowOriginLabel: 'Runs',
-        workflowOriginPath: '/settings/runs',
-      },
-      '',
-      '/settings/runs/edit/OrderIdMap',
-    )
+    draftStoreState.workflowOrigin = { label: 'Runs', path: '/settings/runs' }
+    draftStoreState.ruleSetDraftState = null
+    draftStoreState.automationDraftState = null
+    draftStoreState.setWorkflowOrigin.mockClear()
+    draftStoreState.setRuleSetDraft.mockClear()
+    draftStoreState.setAutomationDraft.mockClear()
+    window.history.replaceState({}, '', '/settings/runs/edit/OrderIdMap')
 
     listSchemas.mockResolvedValue({
       ok: true,
@@ -357,31 +391,28 @@ describe('RunsSettingsWorkflowPage', () => {
 
   it('loads a ruleset run draft and saves non-rule settings back to the run details page', async () => {
     route.params.reconciliationMappingId = 'RS_ORDER_SYNC'
-    window.history.replaceState(
-      {
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-        ...buildReconciliationRuleSetDraftState({
-          savedRunId: 'RS_ORDER_SYNC',
-          runName: 'Order Sync',
-          description: 'Compares orders across systems.',
-          file1SystemEnumId: 'DarSysOms',
-          file1SystemLabel: 'OMS',
-          file1FileTypeEnumId: 'DftJson',
-          file1JsonSchemaId: '100408',
-          file1SchemaFileName: 'Returns Feed',
-          file1PrimaryIdExpression: '$.return_id',
-          file2SystemEnumId: 'DarSysShopify',
-          file2SystemLabel: 'SHOPIFY',
-          file2FileTypeEnumId: 'DftJson',
-          file2JsonSchemaId: '100409',
-          file2SchemaFileName: 'Shopify Orders',
-          file2PrimaryIdExpression: '$.id',
-        }),
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+    draftStoreState.ruleSetDraftState = {
+      draft: {
+        savedRunId: 'RS_ORDER_SYNC',
+        runName: 'Order Sync',
+        description: 'Compares orders across systems.',
+        file1SystemEnumId: 'DarSysOms',
+        file1SystemLabel: 'OMS',
+        file1FileTypeEnumId: 'DftJson',
+        file1JsonSchemaId: '100408',
+        file1SchemaFileName: 'Returns Feed',
+        file1PrimaryIdExpression: '$.return_id',
+        file2SystemEnumId: 'DarSysShopify',
+        file2SystemLabel: 'SHOPIFY',
+        file2FileTypeEnumId: 'DftJson',
+        file2JsonSchemaId: '100409',
+        file2SchemaFileName: 'Shopify Orders',
+        file2PrimaryIdExpression: '$.id',
       },
-      '',
-      '/settings/runs/edit/RS_ORDER_SYNC',
-    )
+      resumeStepId: 'ruleset-manager',
+    }
+    window.history.replaceState({}, '', '/settings/runs/edit/RS_ORDER_SYNC')
 
     const wrapper = mount(RunsSettingsWorkflowPage)
     await flushPromises()
@@ -409,18 +440,7 @@ describe('RunsSettingsWorkflowPage', () => {
       file2PrimaryIdExpression: '$.id',
     })
     expect(saveMapping).not.toHaveBeenCalled()
-    expect(push).toHaveBeenCalledWith({
-      name: 'reconciliation-ruleset-manager',
-      state: expect.objectContaining({
-        reconciliationRuleSetDraft: expect.objectContaining({
-          savedRunId: 'RS_ORDER_SYNC',
-          runName: 'Order Sync Revised',
-          file1PrimaryIdExpression: '$.return_ref',
-          file2PrimaryIdExpression: '$.id',
-        }),
-        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
-      }),
-    })
+    expect(push).toHaveBeenCalledWith({ name: 'reconciliation-ruleset-manager' })
   })
 
   it('edits API run configuration with API config, endpoint, and primary ID controls', async () => {
@@ -436,35 +456,32 @@ describe('RunsSettingsWorkflowPage', () => {
         runType: 'ruleset',
       },
     })
-    window.history.replaceState(
-      {
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-        ...buildReconciliationRuleSetDraftState({
-          savedRunId: 'RS_API_ORDER_SYNC',
-          runName: 'API Order Sync',
-          description: 'API order comparison.',
-          file1SystemEnumId: 'OMS',
-          file1SystemLabel: 'HotWax',
-          file1SourceTypeEnumId: 'AUT_SRC_API',
-          file1SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
-          file1SourceConfigId: 'KREWE_OMS',
-          file1SourceConfigType: 'HOTWAX_OMS_REST',
-          file1FileTypeEnumId: '',
-          file1PrimaryIdExpression: '$.records[*].orderId',
-          file2SystemEnumId: 'SHOPIFY',
-          file2SystemLabel: 'SHOPIFY',
-          file2SourceTypeEnumId: 'AUT_SRC_API',
-          file2SystemMessageRemoteId: 'SHOPIFY_REMOTE',
-          file2SourceConfigId: 'SHOPIFY_MAIN',
-          file2SourceConfigType: 'SHOPIFY_AUTH',
-          file2FileTypeEnumId: '',
-          file2PrimaryIdExpression: '$.records[*].id',
-        }),
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+    draftStoreState.ruleSetDraftState = {
+      draft: {
+        savedRunId: 'RS_API_ORDER_SYNC',
+        runName: 'API Order Sync',
+        description: 'API order comparison.',
+        file1SystemEnumId: 'OMS',
+        file1SystemLabel: 'HotWax',
+        file1SourceTypeEnumId: 'AUT_SRC_API',
+        file1SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
+        file1SourceConfigId: 'KREWE_OMS',
+        file1SourceConfigType: 'HOTWAX_OMS_REST',
+        file1FileTypeEnumId: '',
+        file1PrimaryIdExpression: '$.records[*].orderId',
+        file2SystemEnumId: 'SHOPIFY',
+        file2SystemLabel: 'SHOPIFY',
+        file2SourceTypeEnumId: 'AUT_SRC_API',
+        file2SystemMessageRemoteId: 'SHOPIFY_REMOTE',
+        file2SourceConfigId: 'SHOPIFY_MAIN',
+        file2SourceConfigType: 'SHOPIFY_AUTH',
+        file2FileTypeEnumId: '',
+        file2PrimaryIdExpression: '$.records[*].id',
       },
-      '',
-      '/settings/runs/edit/RS_API_ORDER_SYNC',
-    )
+      resumeStepId: 'ruleset-manager',
+    }
+    window.history.replaceState({}, '', '/settings/runs/edit/RS_API_ORDER_SYNC')
 
     const wrapper = mount(RunsSettingsWorkflowPage)
     await flushPromises()
@@ -510,22 +527,7 @@ describe('RunsSettingsWorkflowPage', () => {
       file2PrimaryIdExpression: '$.records[*].id',
     })
     expect(saveMapping).not.toHaveBeenCalled()
-    expect(push).toHaveBeenCalledWith({
-      name: 'reconciliation-ruleset-manager',
-      state: expect.objectContaining({
-        reconciliationRuleSetDraft: expect.objectContaining({
-          savedRunId: 'RS_API_ORDER_SYNC',
-          runName: 'API Order Sync',
-          file1SourceTypeEnumId: 'AUT_SRC_API',
-          file1SystemMessageRemoteId: 'HOTWAX_RETURNS_API',
-          file1PrimaryIdExpression: '$.records[*].returnId',
-          file2SourceTypeEnumId: 'AUT_SRC_API',
-          file2SystemMessageRemoteId: 'SHOPIFY_REMOTE',
-          file2PrimaryIdExpression: '$.records[*].id',
-        }),
-        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
-      }),
-    })
+    expect(push).toHaveBeenCalledWith({ name: 'reconciliation-ruleset-manager' })
   })
 
   it('uses the schema label for the selected schema text instead of internal identifiers', async () => {

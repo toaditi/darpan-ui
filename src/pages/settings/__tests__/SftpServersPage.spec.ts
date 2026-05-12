@@ -31,18 +31,45 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+const permissionsShape = {
+  get canEditTenantSettings() {
+    return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+  },
+  get canManageGlobalSettings() {
+    return authState.sessionInfo.isSuperAdmin === true
+  },
+  get canViewTenantSettings() {
+    return Boolean(authState.sessionInfo.userId)
+  },
+  get canRunActiveTenantReconciliation() {
+    return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+  },
+}
+
 vi.mock('../../../lib/auth', () => ({
   useAuthState: () => authState,
-  useUiPermissions: () => ({
-    get canEditTenantSettings() {
-      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
-    },
-    get canManageGlobalSettings() {
-      return authState.sessionInfo.isSuperAdmin === true
-    },
-    get canViewTenantSettings() {
-      return Boolean(authState.sessionInfo.userId)
-    },
+  useUiPermissions: () => permissionsShape,
+}))
+
+vi.mock('../../../stores/auth', () => ({
+  useAuthStore: () => ({ ...authState, sessionInfo: authState.sessionInfo }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionsShape,
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
   }),
 }))
 
@@ -101,17 +128,9 @@ describe('SftpServersPage', () => {
     expect(JSON.parse(wrapper.get('[data-testid="sftp-server-tile"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'settings-sftp-edit',
       params: { sftpServerId: 'sftp-primary' },
-      state: {
-        workflowOriginLabel: 'SFTP Servers',
-        workflowOriginPath: '/settings/sftp',
-      },
     })
     expect(JSON.parse(wrapper.get('[data-testid="sftp-create-action"]').attributes('data-to') ?? '{}')).toEqual({
       path: '/settings/sftp/create',
-      state: {
-        workflowOriginLabel: 'SFTP Servers',
-        workflowOriginPath: '/settings/sftp',
-      },
     })
   })
 
@@ -180,10 +199,6 @@ describe('SftpServersPage', () => {
     expect(wrapper.find('[data-testid="sftp-create-action"]').exists()).toBe(false)
     expect(JSON.parse(wrapper.get('[data-testid="sftp-empty-create-action"]').attributes('data-to') ?? '{}')).toEqual({
       path: '/settings/sftp/create',
-      state: {
-        workflowOriginLabel: 'SFTP Servers',
-        workflowOriginPath: '/settings/sftp',
-      },
     })
   })
 

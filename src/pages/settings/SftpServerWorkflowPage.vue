@@ -222,7 +222,8 @@ import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.v
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import type { SftpServerRecord } from '../../lib/api/types'
 import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
 
@@ -255,8 +256,8 @@ interface SftpForm {
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
 
 function createDefaultSftpForm(): SftpForm {
   return {
@@ -293,7 +294,7 @@ const createSteps: SftpCreateStep[] = [
 ]
 
 const activeServerId = computed(() => String(route.params.sftpServerId ?? '').trim())
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const isEditing = computed(() => activeServerId.value.length > 0)
 const currentCreateStep = computed<SftpCreateStep>(() => {
   const lastStepIndex = Math.max(0, createSteps.length - 1)
@@ -372,7 +373,7 @@ async function loadServer(): Promise<void> {
     const response = await settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 })
     const matchingServer = filterRecordsForActiveTenant(
       response.servers ?? [],
-      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+      authStore.sessionInfo?.activeTenantUserGroupId ?? null,
     ).find((server) => server.sftpServerId === activeServerId.value)
     if (!matchingServer) {
       error.value = `Unable to find SFTP server "${activeServerId.value}".`

@@ -4,7 +4,7 @@ import { resolveRecordLabel } from './utils/recordLabel'
 
 const DEFAULT_RESULT_LIMIT = 6
 
-function normalizeText(value: string): string {
+function toIdSegment(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -17,7 +17,7 @@ function encodePathSegment(value: string): string {
 }
 
 function buildActionId(prefix: string, values: string[]): string {
-  const normalizedValues = values.map(normalizeText).filter(Boolean).join('-')
+  const normalizedValues = values.map(toIdSegment).filter(Boolean).join('-')
   return [prefix, normalizedValues || 'record'].join('-')
 }
 

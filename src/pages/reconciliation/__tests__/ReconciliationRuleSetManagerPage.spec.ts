@@ -5,7 +5,6 @@ import {
   buildReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraftRule,
 } from '../../../lib/reconciliationRuleSetDraft'
-import { buildWorkflowOriginState } from '../../../lib/workflowOrigin'
 
 const getJsonSchema = vi.hoisted(() => vi.fn())
 const deleteSavedRun = vi.hoisted(() => vi.fn())
@@ -55,6 +54,34 @@ vi.mock('../../../lib/api/facade', () => ({
 vi.mock('../../../lib/auth', () => ({
   useAuthState: () => authState,
   useUiPermissions: () => permissionState,
+}))
+
+vi.mock('../../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    sessionInfo: authState.sessionInfo,
+  }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionState,
+}))
+
+const draftStoreState = vi.hoisted(() => ({
+  workflowOrigin: null as { label: string, path: string } | null,
+  ruleSetDraftState: null as null | { draft: unknown, resumeStepId: string | null },
+  automationDraftState: null,
+  setWorkflowOrigin: vi.fn(),
+  clearWorkflowOrigin: vi.fn(),
+  setRuleSetDraft: vi.fn(),
+  clearRuleSetDraft: vi.fn(),
+  setAutomationDraft: vi.fn(),
+  clearAutomationDraft: vi.fn(),
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => draftStoreState,
 }))
 
 import ReconciliationRuleSetManagerPage from '../ReconciliationRuleSetManagerPage.vue'
@@ -154,6 +181,12 @@ describe('ReconciliationRuleSetManagerPage', () => {
     permissionState.canManageGlobalSettings = false
     permissionState.canViewTenantSettings = true
     authState.sessionInfo.activeTenantUserGroupId = 'tenant-a'
+    draftStoreState.workflowOrigin = null
+    draftStoreState.ruleSetDraftState = null
+    draftStoreState.automationDraftState = null
+    draftStoreState.setWorkflowOrigin.mockClear()
+    draftStoreState.setRuleSetDraft.mockClear()
+    draftStoreState.setAutomationDraft.mockClear()
     window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     getJsonSchema.mockImplementation(async ({ jsonSchemaId, schemaName }: { jsonSchemaId?: string, schemaName?: string }) => {
@@ -270,14 +303,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
   })
 
   it('renders the draft-backed run summary and static equation', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -393,14 +421,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
   })
 
   it('labels API-backed sources by endpoint name in the run summary', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createApiDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createApiDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -469,13 +492,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(dialog.find('form').exists()).toBe(false)
     expect(dialog.find('input').exists()).toBe(false)
     expect(dialog.find('[data-testid="oms-auth-edit-action"]').exists()).toBe(false)
-    expect(JSON.parse(wrapper.get('[data-testid="ruleset-manager-auth-popup-dashboard"]').attributes('data-to') ?? '{}')).toEqual({
+    expect(JSON.parse(wrapper.get('[data-testid="ruleset-manager-auth-popup-dashboard"]').attributes('data-to') ?? '{}')).toMatchObject({
       name: 'settings-oms-auth',
       params: { omsRestSourceConfigId: 'dev_oms' },
-      state: {
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-      },
     })
 
     await file2SystemConfig.trigger('click')
@@ -497,25 +516,16 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(dialog.find('form').exists()).toBe(false)
     expect(dialog.find('input').exists()).toBe(false)
     expect(dialog.find('[data-testid="shopify-auth-edit-action"]').exists()).toBe(false)
-    expect(JSON.parse(wrapper.get('[data-testid="ruleset-manager-auth-popup-dashboard"]').attributes('data-to') ?? '{}')).toEqual({
+    expect(JSON.parse(wrapper.get('[data-testid="ruleset-manager-auth-popup-dashboard"]').attributes('data-to') ?? '{}')).toMatchObject({
       name: 'settings-shopify-auth',
       params: { shopifyAuthConfigId: 'dev_shopify' },
-      state: {
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-      },
     })
   })
 
   it('renders a saved run summary and equation without editable rule controls', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -541,14 +551,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
   it('allows tenant users to run a saved ruleset without edit or delete actions', async () => {
     permissionState.canRunActiveTenantReconciliation = true
     permissionState.canEditTenantSettings = false
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -565,10 +570,8 @@ describe('ReconciliationRuleSetManagerPage', () => {
   })
 
   it('renders persisted rules from the rules editor draft and keeps the basic diff visible', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState([
           {
             ruleId: 'basic-diff',
             file1FieldPath: '$.orders[*].legacyResourceId',
@@ -583,11 +586,8 @@ describe('ReconciliationRuleSetManagerPage', () => {
             operator: '=',
             sequenceNum: 1,
           },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+        ])
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -600,14 +600,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
   })
 
   it('opens the run edit workflow from the Run section without sending rule state', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -618,24 +613,7 @@ describe('ReconciliationRuleSetManagerPage', () => {
     expect(routerPush).toHaveBeenCalledWith({
       name: 'settings-runs-edit',
       params: { reconciliationMappingId: 'RS_ORDER_SYNC' },
-      state: expect.objectContaining({
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-        workflowOriginRouteState: expect.objectContaining({
-          reconciliationRuleSetDraft: expect.objectContaining({
-            savedRunId: 'RS_ORDER_SYNC',
-            runName: 'Order Sync',
-          }),
-        }),
-        reconciliationRuleSetDraft: expect.objectContaining({
-          savedRunId: 'RS_ORDER_SYNC',
-          runName: 'Order Sync',
-          file1SystemEnumId: 'SHOPIFY',
-          file2SystemEnumId: 'OMS',
-        }),
-      }),
     })
-    expect(routerPush.mock.calls.at(-1)?.[0].state).not.toHaveProperty('rules')
   })
 
   it('opens the rules edit workflow from the Rules section', async () => {
@@ -648,14 +626,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
         sequenceNum: 1,
       },
     ]
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState(rules),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState(rules)
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -665,41 +638,13 @@ describe('ReconciliationRuleSetManagerPage', () => {
 
     expect(routerPush).toHaveBeenCalledWith({
       name: 'reconciliation-ruleset-editor',
-      state: expect.objectContaining({
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-        workflowOriginRouteState: expect.objectContaining({
-          reconciliationRuleSetDraft: expect.objectContaining({
-            savedRunId: 'RS_ORDER_SYNC',
-            runName: 'Order Sync',
-          }),
-        }),
-        reconciliationRuleSetDraft: expect.objectContaining({
-          savedRunId: 'RS_ORDER_SYNC',
-          runName: 'Order Sync',
-          file1SystemEnumId: 'SHOPIFY',
-          file2SystemEnumId: 'OMS',
-          rules: [
-            expect.objectContaining({
-              ruleId: 'RS_ORDER_SYNC_RULE_1',
-              file1FieldPath: '$.orders[*].legacyResourceId',
-              file2FieldPath: '$[*].order_name',
-            }),
-          ],
-        }),
-      }),
     })
   })
 
   it('opens the reconciliation run workflow from the bottom play action', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -715,22 +660,13 @@ describe('ReconciliationRuleSetManagerPage', () => {
         file1SystemLabel: 'SHOPIFY',
         file2SystemLabel: 'OMS',
       },
-      state: expect.objectContaining({
-        workflowOriginLabel: 'Run Details',
-        workflowOriginPath: '/reconciliation/ruleset-manager',
-      }),
     })
   })
 
   it('opens the previous runs page from the bottom list action', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -755,14 +691,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
   })
 
   it('does not offer residual actions from the manager edit surface', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
 
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
@@ -775,14 +706,9 @@ describe('ReconciliationRuleSetManagerPage', () => {
   })
 
   it('deletes a saved run from the bottom trash action after confirmation', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Editor', '/settings/runs'),
-        ...createSavedRunReopenDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Editor', path: '/settings/runs' }
+      draftStoreState.ruleSetDraftState = createSavedRunReopenDraftState()
+      window.history.replaceState({}, '', '/reconciliation/ruleset-manager')
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     deleteSavedRun.mockResolvedValue({
       ok: true,

@@ -45,6 +45,32 @@ vi.mock('../../../lib/auth', () => ({
   useUiPermissions: () => permissions,
 }))
 
+vi.mock('../../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    sessionInfo: authState.sessionInfo,
+  }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissions,
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
+  }),
+}))
+
 import ReconciliationAutomationDashboardPage from '../ReconciliationAutomationDashboardPage.vue'
 
 function mockAutomation(active = true) {
@@ -206,31 +232,6 @@ describe('ReconciliationAutomationDashboardPage', () => {
     expect(savedRunLink.classes()).not.toContain('automation-dashboard-link')
     expect(JSON.parse(savedRunLink.attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-ruleset-manager',
-      state: {
-        reconciliationRuleSetDraft: {
-          savedRunId: 'RS_API',
-          runName: 'API Orders',
-          file1SystemEnumId: 'OMS',
-          file1SystemLabel: 'OMS',
-          file1SourceTypeEnumId: 'AUT_SRC_API',
-          file1SystemMessageRemoteId: 'HOTWAX_ORDERS_API',
-          file1SystemMessageRemoteLabel: 'Orders API',
-          file1SourceConfigId: 'HOTWAX_ORDERS',
-          file1FileTypeEnumId: 'DftCsv',
-          file1PrimaryIdExpression: 'order_id',
-          file2SystemEnumId: 'SHOPIFY',
-          file2SystemLabel: 'SHOPIFY',
-          file2SourceTypeEnumId: 'AUT_SRC_API',
-          file2SystemMessageRemoteId: 'SHOPIFY_ORDERS_API',
-          file2SystemMessageRemoteLabel: 'Shopify Orders Endpoint',
-          file2SourceConfigId: 'SHOPIFY_ORDERS',
-          file2FileTypeEnumId: 'DftCsv',
-          file2PrimaryIdExpression: 'id',
-        },
-        reconciliationRuleSetDraftResumeStepId: 'ruleset-manager',
-        workflowOriginLabel: 'Daily API orders',
-        workflowOriginPath: '/reconciliation/automations/AUT_ACTIVE_API',
-      },
     })
 
     const rows = wrapper.findAll('[data-testid="automation-execution-row"]')

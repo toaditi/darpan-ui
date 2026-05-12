@@ -33,17 +33,19 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { settingsFacade } from '../../lib/api/facade'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 import SettingsRecordListSection from './SettingsRecordListSection.vue'
 import { useSettingsPagedList } from './useSettingsPagedList'
 
 const route = useRoute()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const {
   rows,
   pageIndex,
@@ -55,14 +57,11 @@ const {
 } = useSettingsPagedList({
   loadPage: (request) => settingsFacade.listSftpServers(request),
   selectRecords: (response) => response.servers ?? [],
-  activeTenantUserGroupId: () => authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  activeTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   fallbackErrorMessage: 'Failed to load servers.',
 })
 
-const createRoute = computed(() => ({
-  path: '/settings/sftp/create',
-  state: buildWorkflowOriginState('SFTP Servers', route.fullPath || '/settings/sftp'),
-}))
+const createRoute = computed(() => ({ path: '/settings/sftp/create' }))
 const recordTiles = computed(() => rows.value.map((row) => ({
   key: row.sftpServerId,
   label: resolveRecordLabel({
@@ -72,11 +71,11 @@ const recordTiles = computed(() => rows.value.map((row) => ({
   to: {
     name: 'settings-sftp-edit',
     params: { sftpServerId: row.sftpServerId },
-    state: buildWorkflowOriginState('SFTP Servers', route.fullPath || '/settings/sftp'),
   },
 })))
 
 onMounted(() => {
+  draftStore.setWorkflowOrigin('SFTP Servers', route.fullPath || '/settings/sftp')
   void load()
 })
 </script>

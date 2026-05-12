@@ -174,16 +174,15 @@ import type {
   JsonSchemaField,
   JsonSchemaSummary,
 } from '../../lib/api/types'
-import { useUiPermissions } from '../../lib/auth'
+import type { SaveRuleSetRunPayload } from '../../lib/api/facadeTypes'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import {
-  buildReconciliationRuleSetDraftState,
-  readReconciliationRuleSetDraftState,
   type ReconciliationRuleSetDraft,
 } from '../../lib/reconciliationRuleSetDraft'
 import { darpanSystemIdsMatch } from '../../lib/utils/darpanSystems'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { resolveSchemaLabel } from '../../lib/utils/schemaLabel'
-import { readWorkflowOriginFromHistoryState } from '../../lib/workflowOrigin'
 
 interface RunSourceForm {
   schemaId: string
@@ -202,7 +201,8 @@ interface RunForm {
 
 const route = useRoute()
 const router = useRouter()
-const permissions = useUiPermissions()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 const SOURCE_TYPE_API = 'AUT_SRC_API'
 
 const schemas = ref<JsonSchemaSummary[]>([])
@@ -222,7 +222,7 @@ const form = reactive<RunForm>({
 })
 
 const activeMappingId = computed(() => String(route.params.reconciliationMappingId ?? '').trim())
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const source1Schema = computed(() => schemas.value.find((schema) => schema.jsonSchemaId === form.source1.schemaId) ?? null)
 const source2Schema = computed(() => schemas.value.find((schema) => schema.jsonSchemaId === form.source2.schemaId) ?? null)
 const source1UsesApi = computed(() => sourceUsesApi('source1'))
@@ -454,40 +454,60 @@ function validateSource(sourceKey: SourceKey): string | null {
   return null
 }
 
-function appendRuleSetSourcePayload(payload: Record<string, unknown>, sourceKey: SourceKey): void {
+function buildSourceKeyFields(sourceKey: SourceKey): Partial<SaveRuleSetRunPayload> {
   const source = sourceForm(sourceKey)
-  const prefix = sourceKey === 'source1' ? 'file1' : 'file2'
-  const originalPrimaryId = sourceKey === 'source1'
+  const isSource1 = sourceKey === 'source1'
+  const originalPrimaryId = isSource1
     ? ruleSetDraft.value?.file1PrimaryIdExpression
     : ruleSetDraft.value?.file2PrimaryIdExpression
 
-  payload[`${prefix}SystemEnumId`] = sourceSystemEnumId(sourceKey)
   if (sourceUsesApi(sourceKey)) {
-    payload[`${prefix}SourceTypeEnumId`] = SOURCE_TYPE_API
-    if (source.systemMessageRemoteId.trim()) payload[`${prefix}SystemMessageRemoteId`] = source.systemMessageRemoteId.trim()
-    if (source.nsRestletConfigId.trim()) payload[`${prefix}NsRestletConfigId`] = source.nsRestletConfigId.trim()
-    if (source.sourceConfigId.trim()) payload[`${prefix}SourceConfigId`] = source.sourceConfigId.trim()
     const sourceConfigType = resolveSelectedSourceConfigType(sourceKey)
-    if (sourceConfigType) payload[`${prefix}SourceConfigType`] = sourceConfigType
-    payload[`${prefix}PrimaryIdExpression`] = source.fieldPath.trim()
-    return
+    if (isSource1) {
+      return {
+        file1SourceTypeEnumId: SOURCE_TYPE_API,
+        ...(source.systemMessageRemoteId.trim() ? { file1SystemMessageRemoteId: source.systemMessageRemoteId.trim() } : {}),
+        ...(source.nsRestletConfigId.trim() ? { file1NsRestletConfigId: source.nsRestletConfigId.trim() } : {}),
+        ...(source.sourceConfigId.trim() ? { file1SourceConfigId: source.sourceConfigId.trim() } : {}),
+        ...(sourceConfigType ? { file1SourceConfigType: sourceConfigType } : {}),
+        file1PrimaryIdExpression: source.fieldPath.trim(),
+      }
+    }
+    return {
+      file2SourceTypeEnumId: SOURCE_TYPE_API,
+      ...(source.systemMessageRemoteId.trim() ? { file2SystemMessageRemoteId: source.systemMessageRemoteId.trim() } : {}),
+      ...(source.nsRestletConfigId.trim() ? { file2NsRestletConfigId: source.nsRestletConfigId.trim() } : {}),
+      ...(source.sourceConfigId.trim() ? { file2SourceConfigId: source.sourceConfigId.trim() } : {}),
+      ...(sourceConfigType ? { file2SourceConfigType: sourceConfigType } : {}),
+      file2PrimaryIdExpression: source.fieldPath.trim(),
+    }
   }
 
-  const selectedSchema = sourceKey === 'source1' ? source1Schema.value : source2Schema.value
-  payload[`${prefix}FileTypeEnumId`] = 'DftJson'
-  payload[`${prefix}SchemaFileName`] = selectedSchema?.schemaName
-  payload[`${prefix}PrimaryIdExpression`] = preserveFieldExpressionSuffix(originalPrimaryId, source.fieldPath)
+  const selectedSchema = isSource1 ? source1Schema.value : source2Schema.value
+  if (isSource1) {
+    return {
+      file1FileTypeEnumId: 'DftJson',
+      file1SchemaFileName: selectedSchema?.schemaName,
+      file1PrimaryIdExpression: preserveFieldExpressionSuffix(originalPrimaryId, source.fieldPath),
+    }
+  }
+  return {
+    file2FileTypeEnumId: 'DftJson',
+    file2SchemaFileName: selectedSchema?.schemaName,
+    file2PrimaryIdExpression: preserveFieldExpressionSuffix(originalPrimaryId, source.fieldPath),
+  }
 }
 
-function buildRuleSetSavePayload(): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
+function buildRuleSetSavePayload(): SaveRuleSetRunPayload {
+  return {
+    ...buildSourceKeyFields('source1'),
+    ...buildSourceKeyFields('source2'),
     savedRunId: ruleSetDraft.value?.savedRunId ?? activeMappingId.value,
     runName: form.mappingName.trim(),
     description: ruleSetDraft.value?.description,
+    file1SystemEnumId: sourceSystemEnumId('source1'),
+    file2SystemEnumId: sourceSystemEnumId('source2'),
   }
-  appendRuleSetSourcePayload(payload, 'source1')
-  appendRuleSetSourcePayload(payload, 'source2')
-  return payload
 }
 
 function resolveSchemaId(jsonSchemaId: string | undefined, schemaName: string | undefined): string {
@@ -632,7 +652,7 @@ function buildFieldOptions(schemaId: string): AppSelectOption[] {
 }
 
 function resolveOriginPath(): string {
-  return readWorkflowOriginFromHistoryState()?.path ?? '/settings/runs'
+  return draftStore.workflowOrigin?.path ?? '/settings/runs'
 }
 
 async function ensureFieldsLoaded(schemaId: string): Promise<void> {
@@ -676,7 +696,7 @@ async function load(): Promise<void> {
   success.value = null
 
   try {
-    const draftState = readReconciliationRuleSetDraftState(typeof window === 'undefined' ? null : window.history.state)
+    const draftState = draftStore.ruleSetDraftState
     const historyDraft = draftState?.draft?.savedRunId === activeMappingId.value ? draftState.draft : null
     const shouldLoadApiOptions = Boolean(historyDraft && (
       historyDraft.file1SourceTypeEnumId?.trim() === SOURCE_TYPE_API ||
@@ -749,10 +769,8 @@ async function save(): Promise<void> {
       const response = await reconciliationFacade.saveRuleSetRun(buildRuleSetSavePayload())
       const savedRunName = response.savedRun?.runName || form.mappingName.trim()
       success.value = response.messages?.[0] ?? 'Saved run.'
-      await router.push({
-        name: 'reconciliation-ruleset-manager',
-        state: buildReconciliationRuleSetDraftState(buildRuleSetDraftFromForm(savedRunName), 'ruleset-manager'),
-      })
+      draftStore.setRuleSetDraft(buildRuleSetDraftFromForm(savedRunName), 'ruleset-manager')
+      await router.push({ name: 'reconciliation-ruleset-manager' })
       return
     }
 
@@ -776,10 +794,8 @@ async function save(): Promise<void> {
 async function cancelEdit(): Promise<void> {
   if (loading.value) return
   if (ruleSetDraft.value) {
-    await router.push({
-      name: 'reconciliation-ruleset-manager',
-      state: buildReconciliationRuleSetDraftState(ruleSetDraft.value, 'ruleset-manager'),
-    })
+    draftStore.setRuleSetDraft(ruleSetDraft.value, 'ruleset-manager')
+    await router.push({ name: 'reconciliation-ruleset-manager' })
     return
   }
   await router.push(resolveOriginPath())

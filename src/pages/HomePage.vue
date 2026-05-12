@@ -14,6 +14,7 @@
             :data-flow-id="flow.id"
             :to="flow.to"
             draggable="true"
+            @click="setDashboardOrigin"
             @dragstart="handleDragStart(flow.id, $event)"
           >
             <span class="static-page-tile-title">{{ flow.title }}</span>
@@ -38,6 +39,7 @@
             :data-flow-id="flow.id"
             :to="flow.to"
             draggable="true"
+            @click="setDashboardOrigin"
             @dragstart="handleDragStart(flow.id, $event)"
           >
             <span class="static-page-tile-title">{{ flow.title }}</span>
@@ -57,13 +59,14 @@
           class="static-page-action-tile static-page-action-tile--inline"
           data-testid="other-runs-empty-action"
           :to="createFlowRoute"
+          @click="setDashboardOrigin"
         >
           Create Run
         </RouterLink>
       </div>
     </StaticPageSection>
 
-    <RouterLink v-if="hasOtherRuns" class="static-page-action-tile" data-testid="dashboard-create-action" :to="createFlowRoute">
+    <RouterLink v-if="hasOtherRuns" class="static-page-action-tile" data-testid="dashboard-create-action" :to="createFlowRoute" @click="setDashboardOrigin">
       Create Run
     </RouterLink>
   </StaticPageFrame>
@@ -74,11 +77,11 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import StaticPageFrame from '../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../components/ui/StaticPageSection.vue'
-import { buildAuthRedirect, ensureAuthenticated } from '../lib/auth'
+import { useAuthStore, buildAuthRedirect } from '../stores/auth'
+import { useReconciliationDraftStore } from '../stores/reconciliationDraft'
 import { reconciliationFacade } from '../lib/api/facade'
 import type { SavedRunSummary } from '../lib/api/types'
 import { buildReconciliationDiffRoute } from '../lib/reconciliationRoutes'
-import { buildWorkflowOriginState } from '../lib/workflowOrigin'
 
 interface DashboardFlowCard {
   id: string
@@ -126,14 +129,12 @@ function resolveSystemLabel(savedRun: SavedRunSummary, enumId?: string): string 
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
+const draftStore = useReconciliationDraftStore()
 const savedRuns = ref<SavedRunSummary[]>([])
 const pinnedSavedRunIds = ref<string[]>([])
 const showAllOtherRuns = ref(false)
-const dashboardWorkflowOriginState = buildWorkflowOriginState('Dashboard', '/')
-const createFlowRoute: RouteLocationRaw = {
-  name: 'reconciliation-create',
-  state: dashboardWorkflowOriginState,
-}
+const createFlowRoute: RouteLocationRaw = { name: 'reconciliation-create' }
 
 const savedRunCards = computed<DashboardFlowCard[]>(() =>
   savedRuns.value.map((savedRun) => {
@@ -149,7 +150,6 @@ const savedRunCards = computed<DashboardFlowCard[]>(() =>
           file1SystemLabel: resolveSystemLabel(savedRun, savedRun.defaultFile1SystemEnumId),
           file2SystemLabel: resolveSystemLabel(savedRun, savedRun.defaultFile2SystemEnumId),
         },
-        dashboardWorkflowOriginState,
       ),
     }
   }),
@@ -213,8 +213,12 @@ async function handleDrop(target: 'pinned' | 'other', event: DragEvent): Promise
   await savePinnedRuns(nextPinnedSavedRunIds, previousPinnedSavedRunIds)
 }
 
+function setDashboardOrigin(): void {
+  draftStore.setWorkflowOrigin('Dashboard', '/')
+}
+
 async function loadDashboard(): Promise<void> {
-  const authenticated = await ensureAuthenticated(true)
+  const authenticated = await authStore.ensureAuthenticated(true)
   if (!authenticated) {
     await router.replace(buildAuthRedirect(route.fullPath))
     return

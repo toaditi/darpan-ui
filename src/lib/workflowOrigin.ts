@@ -1,56 +1,64 @@
 import type { HistoryState } from 'vue-router'
 
+// WorkflowOrigin state management has moved to src/stores/reconciliationDraft.ts.
+// This file keeps pure utility functions and the serialization helpers used by
+// route history state payloads (which can't use reactive Pinia store refs).
+export type { WorkflowOrigin } from '../stores/reconciliationDraft'
+
+// Keys used when embedding workflow-origin data in Vue Router history state.
 export const WORKFLOW_ORIGIN_LABEL_KEY = 'workflowOriginLabel'
 export const WORKFLOW_ORIGIN_PATH_KEY = 'workflowOriginPath'
 export const WORKFLOW_ORIGIN_ROUTE_STATE_KEY = 'workflowOriginRouteState'
 
-export interface WorkflowOrigin {
+export interface WorkflowOriginState {
   label: string
   path: string
-  state?: HistoryState
+  state?: Record<string, unknown>
 }
 
-function normalizeString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
-}
-
-export function buildWorkflowOriginState(label: string, path: string): Record<string, string>
-export function buildWorkflowOriginState(label: string, path: string, state: HistoryState): HistoryState
-export function buildWorkflowOriginState(label: string, path: string, state?: HistoryState): Record<string, string> | HistoryState {
-  const originState: HistoryState = {
+/**
+ * Build a plain-object payload suitable for spreading into a Vue Router `state`
+ * option.  The caller may include additional route state keys via `routeState`.
+ */
+export function buildWorkflowOriginState(
+  label: string,
+  path: string,
+  routeState?: HistoryState,
+): HistoryState {
+  const payload: HistoryState = {
     [WORKFLOW_ORIGIN_LABEL_KEY]: label,
     [WORKFLOW_ORIGIN_PATH_KEY]: path,
   }
-
-  if (state && Object.keys(state).length > 0) {
-    originState[WORKFLOW_ORIGIN_ROUTE_STATE_KEY] = state
+  if (routeState !== undefined) {
+    payload[WORKFLOW_ORIGIN_ROUTE_STATE_KEY] = routeState
   }
-
-  return originState
+  return payload
 }
 
-export function readWorkflowOriginState(stateLike: unknown): WorkflowOrigin | null {
-  if (!stateLike || typeof stateLike !== 'object') return null
-
-  const stateRecord = stateLike as Record<string, unknown>
-  const label = normalizeString(stateRecord[WORKFLOW_ORIGIN_LABEL_KEY])
-  const path = normalizeString(stateRecord[WORKFLOW_ORIGIN_PATH_KEY])
-  if (!label || !path) return null
-
-  const originRouteState = stateRecord[WORKFLOW_ORIGIN_ROUTE_STATE_KEY]
-  const state = originRouteState && typeof originRouteState === 'object'
-    ? originRouteState as HistoryState
-    : undefined
-
-  return state ? { label, path, state } : { label, path }
+/** Read workflow-origin data from an arbitrary state object (e.g. route state). */
+export function readWorkflowOriginState(stateLike: unknown): WorkflowOriginState | null {
+  if (!stateLike || typeof stateLike !== 'object' || Array.isArray(stateLike)) return null
+  const state = stateLike as Record<string, unknown>
+  const label = state[WORKFLOW_ORIGIN_LABEL_KEY]
+  const path = state[WORKFLOW_ORIGIN_PATH_KEY]
+  if (typeof label !== 'string' || !label.trim()) return null
+  if (typeof path !== 'string') return null
+  const routeState = state[WORKFLOW_ORIGIN_ROUTE_STATE_KEY]
+  return {
+    label: label.trim(),
+    path,
+    ...(routeState && typeof routeState === 'object' ? { state: routeState as Record<string, unknown> } : {}),
+  }
 }
 
-export function readWorkflowOriginFromHistoryState(): WorkflowOrigin | null {
+/** Read workflow-origin data from `window.history.state` (browser-only). */
+export function readWorkflowOriginFromHistoryState(): WorkflowOriginState | null {
   if (typeof window === 'undefined') return null
   return readWorkflowOriginState(window.history.state)
 }
 
 export function resolveStaticPageLabel(routeLike: { meta?: { surfaceMode?: unknown; staticPageLabel?: unknown } | null }): string | null {
   if (routeLike?.meta?.surfaceMode === 'workflow') return null
-  return normalizeString(routeLike?.meta?.staticPageLabel)
+  const label = routeLike?.meta?.staticPageLabel
+  return typeof label === 'string' && label.trim().length > 0 ? label.trim() : null
 }

@@ -193,7 +193,7 @@ import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade, settingsFacade } from '../../lib/api/facade'
 import type { EnumOption, JsonSchemaField } from '../../lib/api/types'
-import { useUiPermissions } from '../../lib/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import { trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import { formatDateTime } from '../../lib/utils/date'
 import { downloadTextFile } from '../../lib/utils/download'
@@ -217,7 +217,7 @@ const props = defineProps<{
 
 const route = useRoute()
 const router = useRouter()
-const permissions = useUiPermissions()
+const permissionsStore = usePermissionsStore()
 
 const currentSchemaId = ref(props.jsonSchemaId ?? String(route.params.jsonSchemaId ?? '').trim())
 const schemaName = ref('')
@@ -238,7 +238,7 @@ const initialLoadCompleted = ref(false)
 const initialLoadSucceeded = ref(false)
 
 const hasTarget = computed(() => currentSchemaId.value.length > 0)
-const canEditTarget = computed(() => permissions.canEditTenantSettings && hasTarget.value && initialLoadSucceeded.value)
+const canEditTarget = computed(() => permissionsStore.canEditTenantSettings && hasTarget.value && initialLoadSucceeded.value)
 const showInitialLoadFailureState = computed(() => hasTarget.value && initialLoadCompleted.value && !initialLoadSucceeded.value)
 const footerActionsDisabled = computed(() => !canEditTarget.value || savingRefined.value || deletingSchema.value)
 const heroTitle = computed(() => {

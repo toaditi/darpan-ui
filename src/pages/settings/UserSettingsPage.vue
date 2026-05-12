@@ -128,12 +128,13 @@ import AppSaveAction from '../../components/ui/AppSaveAction.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
-import { changeOwnPassword, saveActiveTenant, saveUserSettings, useAuthState, useUiPermissions, verifyOwnPassword } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import { WORKFLOW_CANCEL_REQUEST_EVENT, WORKFLOW_HINT_REQUEST_EVENT } from '../../lib/uiEvents'
 import { formatDateTime } from '../../lib/utils/date'
 
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
 
 const displayNameInput = ref('')
 const settingsMessage = ref<string | null>(null)
@@ -173,7 +174,7 @@ const passwordSteps = [
 let displayNameSaveTimer: ReturnType<typeof globalThis.setTimeout> | null = null
 let savedDisplayNameInput = ''
 
-const sessionInfo = computed(() => authState.sessionInfo)
+const sessionInfo = computed(() => authStore.sessionInfo)
 const userId = computed(() => sessionInfo.value?.userId ?? '')
 const username = computed(() => sessionInfo.value?.username ?? sessionInfo.value?.userId ?? '')
 const displayName = computed(() => sessionInfo.value?.displayName?.toString().trim() || username.value)
@@ -186,10 +187,10 @@ const lastRunLabel = computed(() => {
   return lastRun.savedRunId || lastRun.reconciliationRunId || lastRun.reconciliationRunResultId || 'Run available'
 })
 const permissionSummary = computed(() => {
-  if (permissions.canManageGlobalSettings) return 'Darpan admin'
+  if (permissionsStore.canManageGlobalSettings) return 'Darpan admin'
   if (sessionInfo.value?.isSuperAdmin === true) return 'Super admin'
-  if (permissions.canEditTenantSettings) return 'Tenant admin'
-  if (permissions.canRunActiveTenantReconciliation) return 'Tenant user'
+  if (permissionsStore.canEditTenantSettings) return 'Tenant admin'
+  if (permissionsStore.canRunActiveTenantReconciliation) return 'Tenant user'
   return 'View only membership'
 })
 const passwordStep = computed(() => passwordSteps[passwordStepIndex.value] ?? passwordSteps[0])
@@ -245,9 +246,9 @@ async function saveUserSettingsForm(): Promise<void> {
   isSavingUserSettings.value = true
   settingsMessage.value = 'Saving user settings'
   try {
-    const saved = await saveUserSettings({ displayName: submittedDisplayNameInput })
+    const saved = await authStore.saveUserSettings({ displayName: submittedDisplayNameInput })
     if (!saved) {
-      settingsMessage.value = authState.error ?? 'Unable to save user settings.'
+      settingsMessage.value = authStore.error ?? 'Unable to save user settings.'
       return
     }
 
@@ -327,9 +328,9 @@ async function verifyCurrentPasswordStep(): Promise<boolean> {
 
   isVerifyingCurrentPassword.value = true
   try {
-    const verified = await verifyOwnPassword(passwordForm.value.currentPassword)
+    const verified = await authStore.verifyOwnPassword(passwordForm.value.currentPassword)
     if (!verified) {
-      showPasswordWorkflowWarning(authState.error || 'Password incorrect.')
+      showPasswordWorkflowWarning(authStore.error || 'Password incorrect.')
       return false
     }
 
@@ -359,7 +360,7 @@ async function submitPasswordChange(): Promise<void> {
   isChangingPassword.value = true
   passwordMessage.value = 'Changing password'
   try {
-    const changed = await changeOwnPassword({
+    const changed = await authStore.changeOwnPassword({
       currentPassword: passwordForm.value.currentPassword,
       newPassword: passwordForm.value.newPassword,
       newPasswordVerify: passwordForm.value.newPasswordVerify,
@@ -374,7 +375,7 @@ async function submitPasswordChange(): Promise<void> {
       passwordStepIndex.value = 0
       passwordMessage.value = 'Password changed.'
     } else {
-      passwordMessage.value = authState.error ?? 'Unable to change password.'
+      passwordMessage.value = authStore.error ?? 'Unable to change password.'
     }
   } finally {
     isChangingPassword.value = false
@@ -386,7 +387,7 @@ async function switchTenant(nextTenantUserGroupId: string): Promise<void> {
   isSwitchingTenant.value = true
   tenantMessage.value = 'Switching tenant'
   try {
-    const saved = await saveActiveTenant(nextTenantUserGroupId)
+    const saved = await authStore.saveActiveTenant(nextTenantUserGroupId)
     tenantMessage.value = saved ? null : 'Unable to switch tenant.'
   } finally {
     isSwitchingTenant.value = false

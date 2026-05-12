@@ -18,6 +18,8 @@
     "check": "npm run lint && npm run type-check && npm run test"
   },
   "dependencies": {
+    "@tanstack/vue-query": "^5.100.9",
+    "pinia": "^3.0.4",
     "vue": "^3.5.13",
     "vue-router": "^4.5.1"
   },
@@ -36,8 +38,8 @@
     "typescript-eslint": "^8.20.0",
     "vite": "^5.4.11",
     "vitest": "^2.1.8",
-    "vue-tsc": "^2.2.0",
-    "vue-eslint-parser": "^9.4.3"
+    "vue-eslint-parser": "^9.4.3",
+    "vue-tsc": "^2.2.0"
   },
   "engines": {
     "node": ">=20.0.0"

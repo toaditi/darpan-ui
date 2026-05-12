@@ -1,4 +1,5 @@
 import { callService } from './client'
+export { clearApiResponseCache } from '../queryClient'
 import type {
   CreateRuleSetRunResponse,
   CreateCsvRunResponse,
@@ -59,6 +60,60 @@ import type {
   SessionInfoResponse,
   ValidateJsonResponse,
 } from './types'
+import type {
+  ChangeOwnPasswordPayload,
+  CreateCsvRunPayload,
+  CreateMappingPayload,
+  CreateRuleSetRunPayload,
+  DeleteAutomationPayload,
+  DeleteGeneratedOutputPayload,
+  DeleteJsonSchemaPayload,
+  DeleteOmsRestSourceConfigPayload,
+  DeleteSavedRunPayload,
+  DeleteShopifyAuthConfigPayload,
+  FlattenJsonSchemaPayload,
+  GetAutomationPayload,
+  GetGeneratedOutputPayload,
+  GetJsonSchemaPayload,
+  GetLlmSettingsPayload,
+  GetMappingPayload,
+  GetShopifyAuthConfigPayload,
+  InferJsonSchemaFromTextPayload,
+  ListAutomationExecutionsPayload,
+  ListAutomationsPayload,
+  ListGeneratedOutputsPayload,
+  ListJsonSchemasPayload,
+  ListMappingsPayload,
+  ListNsAuthConfigsPayload,
+  ListNsRestletConfigsPayload,
+  ListOmsRestSourceConfigsPayload,
+  ListSavedRunsPayload,
+  ListSftpServersPayload,
+  ListShopifyAuthConfigsPayload,
+  PauseAutomationPayload,
+  ResumeAutomationPayload,
+  RunAutomationNowPayload,
+  RunSavedRunDiffPayload,
+  SaveAutomationPayload,
+  SaveDashboardPinnedMappingsPayload,
+  SaveDashboardPinnedSavedRunsPayload,
+  SaveJsonSchemaTextPayload,
+  SaveLlmSettingsPayload,
+  SaveMappingPayload,
+  SaveNsAuthConfigPayload,
+  SaveNsRestletConfigPayload,
+  SaveOmsRestSourceConfigPayload,
+  SaveRefinedSchemaPayload,
+  SaveRuleSetRunPayload,
+  SaveSavedRunNamePayload,
+  SaveSftpServerPayload,
+  SaveShopifyAuthConfigPayload,
+  SaveTenantNotificationSettingsPayload,
+  SaveTenantSettingsPayload,
+  SaveUserSettingsPayload,
+  ValidateJsonTextPayload,
+  VerifyOwnPasswordPayload,
+} from './facadeTypes'
 
 const AUTH = {
   loginSession: 'facade.AuthFacadeServices.login#Session',
@@ -132,66 +187,6 @@ const RECONCILIATION = {
   listAutomationSourceOptions: 'facade.ReconciliationFacadeServices.list#AutomationSourceOptions',
 }
 
-const API_RESPONSE_CACHE_TTL_MS = 15_000
-
-interface ApiResponseCacheEntry<T> {
-  expiresAt: number
-  promise: Promise<T>
-}
-
-const apiResponseCache = new Map<string, ApiResponseCacheEntry<unknown>>()
-
-function stableCacheValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableCacheValue)
-  if (!value || typeof value !== 'object') return value
-
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
-      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
-      .map(([key, item]) => [key, stableCacheValue(item)]),
-  )
-}
-
-function apiResponseCacheKey(method: string, params: Record<string, unknown> = {}): string {
-  return `${method}:${JSON.stringify(stableCacheValue(params))}`
-}
-
-function callCachedService<T>(
-  method: string,
-  params: Record<string, unknown> = {},
-  ttlMs = API_RESPONSE_CACHE_TTL_MS,
-): Promise<T> {
-  const now = Date.now()
-  const key = apiResponseCacheKey(method, params)
-  const cached = apiResponseCache.get(key) as ApiResponseCacheEntry<T> | undefined
-  if (cached && cached.expiresAt > now) return cached.promise
-
-  const promise = callService<T>(method, params).catch((error) => {
-    if (apiResponseCache.get(key)?.promise === promise) {
-      apiResponseCache.delete(key)
-    }
-    throw error
-  })
-  apiResponseCache.set(key, {
-    expiresAt: now + ttlMs,
-    promise,
-  })
-  return promise
-}
-
-export function clearApiResponseCache(): void {
-  apiResponseCache.clear()
-}
-
-async function callMutatingService<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-  try {
-    return await callService<T>(method, params)
-  } finally {
-    clearApiResponseCache()
-  }
-}
-
 export const authFacade = {
   loginSession(username: string, password: string): Promise<LoginSessionResponse> {
     return callService<LoginSessionResponse>(AUTH.loginSession, { username, password })
@@ -202,13 +197,13 @@ export const authFacade = {
   saveActiveTenant(activeTenantUserGroupId: string): Promise<SaveActiveTenantResponse> {
     return callService<SaveActiveTenantResponse>(AUTH.saveActiveTenant, { activeTenantUserGroupId })
   },
-  saveUserSettings(payload: Record<string, unknown>): Promise<SaveUserSettingsResponse> {
+  saveUserSettings(payload: SaveUserSettingsPayload): Promise<SaveUserSettingsResponse> {
     return callService<SaveUserSettingsResponse>(AUTH.saveUserSettings, payload)
   },
-  verifyOwnPassword(payload: Record<string, unknown>): Promise<VerifyOwnPasswordResponse> {
+  verifyOwnPassword(payload: VerifyOwnPasswordPayload): Promise<VerifyOwnPasswordResponse> {
     return callService<VerifyOwnPasswordResponse>(AUTH.verifyOwnPassword, payload)
   },
-  changeOwnPassword(payload: Record<string, unknown>): Promise<ChangeOwnPasswordResponse> {
+  changeOwnPassword(payload: ChangeOwnPasswordPayload): Promise<ChangeOwnPasswordResponse> {
     return callService<ChangeOwnPasswordResponse>(AUTH.changeOwnPassword, payload)
   },
   logoutSession(): Promise<LogoutSessionResponse> {
@@ -220,163 +215,163 @@ export const settingsFacade = {
   listEnumOptions(enumTypeId: string): Promise<ListEnumOptionsResponse> {
     return callService<ListEnumOptionsResponse>(SETTINGS.listEnumOptions, { enumTypeId })
   },
-  getLlmSettings(payload?: Record<string, unknown>): Promise<LlmSettingsResponse> {
+  getLlmSettings(payload?: GetLlmSettingsPayload): Promise<LlmSettingsResponse> {
     return callService<LlmSettingsResponse>(SETTINGS.getLlmSettings, payload)
   },
-  saveLlmSettings(payload: Record<string, unknown>): Promise<SaveLlmSettingsResponse> {
+  saveLlmSettings(payload: SaveLlmSettingsPayload): Promise<SaveLlmSettingsResponse> {
     return callService<SaveLlmSettingsResponse>(SETTINGS.saveLlmSettings, payload)
   },
   getTenantSettings(): Promise<GetTenantSettingsResponse> {
     return callService<GetTenantSettingsResponse>(SETTINGS.getTenantSettings)
   },
-  saveTenantSettings(payload: Record<string, unknown>): Promise<SaveTenantSettingsResponse> {
+  saveTenantSettings(payload: SaveTenantSettingsPayload): Promise<SaveTenantSettingsResponse> {
     return callService<SaveTenantSettingsResponse>(SETTINGS.saveTenantSettings, payload)
   },
   getTenantNotificationSettings(): Promise<GetTenantNotificationSettingsResponse> {
     return callService<GetTenantNotificationSettingsResponse>(SETTINGS.getTenantNotificationSettings)
   },
-  saveTenantNotificationSettings(payload: Record<string, unknown>): Promise<SaveTenantNotificationSettingsResponse> {
+  saveTenantNotificationSettings(payload: SaveTenantNotificationSettingsPayload): Promise<SaveTenantNotificationSettingsResponse> {
     return callService<SaveTenantNotificationSettingsResponse>(SETTINGS.saveTenantNotificationSettings, payload)
   },
-  listSftpServers(payload: Record<string, unknown>): Promise<ListSftpServersResponse> {
-    return callCachedService<ListSftpServersResponse>(SETTINGS.listSftpServers, payload)
+  listSftpServers(payload: ListSftpServersPayload): Promise<ListSftpServersResponse> {
+    return callService<ListSftpServersResponse>(SETTINGS.listSftpServers, payload)
   },
-  saveSftpServer(payload: Record<string, unknown>): Promise<SaveSftpServerResponse> {
-    return callMutatingService<SaveSftpServerResponse>(SETTINGS.saveSftpServer, payload)
+  saveSftpServer(payload: SaveSftpServerPayload): Promise<SaveSftpServerResponse> {
+    return callService<SaveSftpServerResponse>(SETTINGS.saveSftpServer, payload)
   },
-  listNsAuthConfigs(payload: Record<string, unknown>): Promise<ListNsAuthConfigsResponse> {
-    return callCachedService<ListNsAuthConfigsResponse>(SETTINGS.listNsAuthConfigs, payload)
+  listNsAuthConfigs(payload: ListNsAuthConfigsPayload): Promise<ListNsAuthConfigsResponse> {
+    return callService<ListNsAuthConfigsResponse>(SETTINGS.listNsAuthConfigs, payload)
   },
-  saveNsAuthConfig(payload: Record<string, unknown>): Promise<SaveNsAuthConfigResponse> {
-    return callMutatingService<SaveNsAuthConfigResponse>(SETTINGS.saveNsAuthConfig, payload)
+  saveNsAuthConfig(payload: SaveNsAuthConfigPayload): Promise<SaveNsAuthConfigResponse> {
+    return callService<SaveNsAuthConfigResponse>(SETTINGS.saveNsAuthConfig, payload)
   },
-  listNsRestletConfigs(payload: Record<string, unknown>): Promise<ListNsRestletConfigsResponse> {
-    return callCachedService<ListNsRestletConfigsResponse>(SETTINGS.listNsRestletConfigs, payload)
+  listNsRestletConfigs(payload: ListNsRestletConfigsPayload): Promise<ListNsRestletConfigsResponse> {
+    return callService<ListNsRestletConfigsResponse>(SETTINGS.listNsRestletConfigs, payload)
   },
-  saveNsRestletConfig(payload: Record<string, unknown>): Promise<SaveNsRestletConfigResponse> {
-    return callMutatingService<SaveNsRestletConfigResponse>(SETTINGS.saveNsRestletConfig, payload)
+  saveNsRestletConfig(payload: SaveNsRestletConfigPayload): Promise<SaveNsRestletConfigResponse> {
+    return callService<SaveNsRestletConfigResponse>(SETTINGS.saveNsRestletConfig, payload)
   },
-  listShopifyAuthConfigs(payload: Record<string, unknown>): Promise<ListShopifyAuthConfigsResponse> {
-    return callCachedService<ListShopifyAuthConfigsResponse>(SETTINGS.listShopifyAuthConfigs, payload)
+  listShopifyAuthConfigs(payload: ListShopifyAuthConfigsPayload): Promise<ListShopifyAuthConfigsResponse> {
+    return callService<ListShopifyAuthConfigsResponse>(SETTINGS.listShopifyAuthConfigs, payload)
   },
-  getShopifyAuthConfig(payload: Record<string, unknown>): Promise<GetShopifyAuthConfigResponse> {
+  getShopifyAuthConfig(payload: GetShopifyAuthConfigPayload): Promise<GetShopifyAuthConfigResponse> {
     return callService<GetShopifyAuthConfigResponse>(SETTINGS.getShopifyAuthConfig, payload)
   },
-  saveShopifyAuthConfig(payload: Record<string, unknown>): Promise<SaveShopifyAuthConfigResponse> {
-    return callMutatingService<SaveShopifyAuthConfigResponse>(SETTINGS.saveShopifyAuthConfig, payload)
+  saveShopifyAuthConfig(payload: SaveShopifyAuthConfigPayload): Promise<SaveShopifyAuthConfigResponse> {
+    return callService<SaveShopifyAuthConfigResponse>(SETTINGS.saveShopifyAuthConfig, payload)
   },
-  deleteShopifyAuthConfig(payload: Record<string, unknown>): Promise<DeleteShopifyAuthConfigResponse> {
-    return callMutatingService<DeleteShopifyAuthConfigResponse>(SETTINGS.deleteShopifyAuthConfig, payload)
+  deleteShopifyAuthConfig(payload: DeleteShopifyAuthConfigPayload): Promise<DeleteShopifyAuthConfigResponse> {
+    return callService<DeleteShopifyAuthConfigResponse>(SETTINGS.deleteShopifyAuthConfig, payload)
   },
-  listOmsRestSourceConfigs(payload: Record<string, unknown>): Promise<ListOmsRestSourceConfigsResponse> {
-    return callCachedService<ListOmsRestSourceConfigsResponse>(SETTINGS.listOmsRestSourceConfigs, payload)
+  listOmsRestSourceConfigs(payload: ListOmsRestSourceConfigsPayload): Promise<ListOmsRestSourceConfigsResponse> {
+    return callService<ListOmsRestSourceConfigsResponse>(SETTINGS.listOmsRestSourceConfigs, payload)
   },
-  saveOmsRestSourceConfig(payload: Record<string, unknown>): Promise<SaveOmsRestSourceConfigResponse> {
-    return callMutatingService<SaveOmsRestSourceConfigResponse>(SETTINGS.saveOmsRestSourceConfig, payload)
+  saveOmsRestSourceConfig(payload: SaveOmsRestSourceConfigPayload): Promise<SaveOmsRestSourceConfigResponse> {
+    return callService<SaveOmsRestSourceConfigResponse>(SETTINGS.saveOmsRestSourceConfig, payload)
   },
-  deleteOmsRestSourceConfig(payload: Record<string, unknown>): Promise<DeleteOmsRestSourceConfigResponse> {
-    return callMutatingService<DeleteOmsRestSourceConfigResponse>(SETTINGS.deleteOmsRestSourceConfig, payload)
+  deleteOmsRestSourceConfig(payload: DeleteOmsRestSourceConfigPayload): Promise<DeleteOmsRestSourceConfigResponse> {
+    return callService<DeleteOmsRestSourceConfigResponse>(SETTINGS.deleteOmsRestSourceConfig, payload)
   },
 }
 
 export const jsonSchemaFacade = {
-  list(payload: Record<string, unknown>): Promise<ListJsonSchemasResponse> {
+  list(payload: ListJsonSchemasPayload): Promise<ListJsonSchemasResponse> {
     return callService<ListJsonSchemasResponse>(JSON_SCHEMA.list, payload)
   },
-  get(payload: Record<string, unknown>): Promise<GetJsonSchemaResponse> {
+  get(payload: GetJsonSchemaPayload): Promise<GetJsonSchemaResponse> {
     return callService<GetJsonSchemaResponse>(JSON_SCHEMA.get, payload)
   },
-  saveText(payload: Record<string, unknown>): Promise<SaveJsonSchemaTextResponse> {
+  saveText(payload: SaveJsonSchemaTextPayload): Promise<SaveJsonSchemaTextResponse> {
     return callService<SaveJsonSchemaTextResponse>(JSON_SCHEMA.saveText, payload)
   },
-  inferFromText(payload: Record<string, unknown>): Promise<InferJsonSchemaResponse> {
+  inferFromText(payload: InferJsonSchemaFromTextPayload): Promise<InferJsonSchemaResponse> {
     return callService<InferJsonSchemaResponse>(JSON_SCHEMA.inferFromText, payload)
   },
-  validateText(payload: Record<string, unknown>): Promise<ValidateJsonResponse> {
+  validateText(payload: ValidateJsonTextPayload): Promise<ValidateJsonResponse> {
     return callService<ValidateJsonResponse>(JSON_SCHEMA.validateText, payload)
   },
-  flatten(payload: Record<string, unknown>): Promise<FlattenJsonSchemaResponse> {
+  flatten(payload: FlattenJsonSchemaPayload): Promise<FlattenJsonSchemaResponse> {
     return callService<FlattenJsonSchemaResponse>(JSON_SCHEMA.flatten, payload)
   },
-  saveRefined(payload: Record<string, unknown>): Promise<SaveRefinedSchemaResponse> {
+  saveRefined(payload: SaveRefinedSchemaPayload): Promise<SaveRefinedSchemaResponse> {
     return callService<SaveRefinedSchemaResponse>(JSON_SCHEMA.saveRefined, payload)
   },
-  delete(payload: Record<string, unknown>): Promise<DeleteJsonSchemaResponse> {
+  delete(payload: DeleteJsonSchemaPayload): Promise<DeleteJsonSchemaResponse> {
     return callService<DeleteJsonSchemaResponse>(JSON_SCHEMA.delete, payload)
   },
 }
 
 export const reconciliationFacade = {
-  createRuleSetRun(payload: Record<string, unknown>): Promise<CreateRuleSetRunResponse> {
-    return callMutatingService<CreateRuleSetRunResponse>(RECONCILIATION.createRuleSetRun, payload)
+  createRuleSetRun(payload: CreateRuleSetRunPayload): Promise<CreateRuleSetRunResponse> {
+    return callService<CreateRuleSetRunResponse>(RECONCILIATION.createRuleSetRun, payload)
   },
-  saveRuleSetRun(payload: Record<string, unknown>): Promise<SaveRuleSetRunResponse> {
-    return callMutatingService<SaveRuleSetRunResponse>(RECONCILIATION.saveRuleSetRun, payload)
+  saveRuleSetRun(payload: SaveRuleSetRunPayload): Promise<SaveRuleSetRunResponse> {
+    return callService<SaveRuleSetRunResponse>(RECONCILIATION.saveRuleSetRun, payload)
   },
-  createCsvRun(payload: Record<string, unknown>): Promise<CreateCsvRunResponse> {
-    return callMutatingService<CreateCsvRunResponse>(RECONCILIATION.createCsvRun, payload)
+  createCsvRun(payload: CreateCsvRunPayload): Promise<CreateCsvRunResponse> {
+    return callService<CreateCsvRunResponse>(RECONCILIATION.createCsvRun, payload)
   },
-  listSavedRuns(payload: Record<string, unknown>): Promise<ListSavedRunsResponse> {
-    return callCachedService<ListSavedRunsResponse>(RECONCILIATION.listSavedRuns, payload)
+  listSavedRuns(payload: ListSavedRunsPayload): Promise<ListSavedRunsResponse> {
+    return callService<ListSavedRunsResponse>(RECONCILIATION.listSavedRuns, payload)
   },
-  createMapping(payload: Record<string, unknown>): Promise<CreateMappingResponse> {
-    return callMutatingService<CreateMappingResponse>(RECONCILIATION.createMapping, payload)
+  createMapping(payload: CreateMappingPayload): Promise<CreateMappingResponse> {
+    return callService<CreateMappingResponse>(RECONCILIATION.createMapping, payload)
   },
-  listMappings(payload: Record<string, unknown>): Promise<ListMappingsResponse> {
+  listMappings(payload: ListMappingsPayload): Promise<ListMappingsResponse> {
     return callService<ListMappingsResponse>(RECONCILIATION.listMappings, payload)
   },
-  getMapping(payload: Record<string, unknown>): Promise<GetMappingResponse> {
+  getMapping(payload: GetMappingPayload): Promise<GetMappingResponse> {
     return callService<GetMappingResponse>(RECONCILIATION.getMapping, payload)
   },
-  saveMapping(payload: Record<string, unknown>): Promise<SaveMappingResponse> {
-    return callMutatingService<SaveMappingResponse>(RECONCILIATION.saveMapping, payload)
+  saveMapping(payload: SaveMappingPayload): Promise<SaveMappingResponse> {
+    return callService<SaveMappingResponse>(RECONCILIATION.saveMapping, payload)
   },
-  saveDashboardPinnedMappings(payload: Record<string, unknown>): Promise<SaveDashboardPinnedMappingsResponse> {
-    return callMutatingService<SaveDashboardPinnedMappingsResponse>(RECONCILIATION.saveDashboardPinnedMappings, payload)
+  saveDashboardPinnedMappings(payload: SaveDashboardPinnedMappingsPayload): Promise<SaveDashboardPinnedMappingsResponse> {
+    return callService<SaveDashboardPinnedMappingsResponse>(RECONCILIATION.saveDashboardPinnedMappings, payload)
   },
-  saveDashboardPinnedSavedRuns(payload: Record<string, unknown>): Promise<SaveDashboardPinnedSavedRunsResponse> {
-    return callMutatingService<SaveDashboardPinnedSavedRunsResponse>(RECONCILIATION.saveDashboardPinnedSavedRuns, payload)
+  saveDashboardPinnedSavedRuns(payload: SaveDashboardPinnedSavedRunsPayload): Promise<SaveDashboardPinnedSavedRunsResponse> {
+    return callService<SaveDashboardPinnedSavedRunsResponse>(RECONCILIATION.saveDashboardPinnedSavedRuns, payload)
   },
-  saveSavedRunName(payload: Record<string, unknown>): Promise<SaveSavedRunNameResponse> {
-    return callMutatingService<SaveSavedRunNameResponse>(RECONCILIATION.saveSavedRunName, payload)
+  saveSavedRunName(payload: SaveSavedRunNamePayload): Promise<SaveSavedRunNameResponse> {
+    return callService<SaveSavedRunNameResponse>(RECONCILIATION.saveSavedRunName, payload)
   },
-  deleteSavedRun(payload: Record<string, unknown>): Promise<DeleteSavedRunResponse> {
-    return callMutatingService<DeleteSavedRunResponse>(RECONCILIATION.deleteSavedRun, payload)
+  deleteSavedRun(payload: DeleteSavedRunPayload): Promise<DeleteSavedRunResponse> {
+    return callService<DeleteSavedRunResponse>(RECONCILIATION.deleteSavedRun, payload)
   },
-  runSavedRunDiff(payload: Record<string, unknown>): Promise<RunSavedRunDiffResponse> {
-    return callMutatingService<RunSavedRunDiffResponse>(RECONCILIATION.runSavedRunDiff, payload)
+  runSavedRunDiff(payload: RunSavedRunDiffPayload): Promise<RunSavedRunDiffResponse> {
+    return callService<RunSavedRunDiffResponse>(RECONCILIATION.runSavedRunDiff, payload)
   },
-  listGeneratedOutputs(payload: Record<string, unknown>): Promise<ListGeneratedOutputsResponse> {
-    return callCachedService<ListGeneratedOutputsResponse>(RECONCILIATION.listGeneratedOutputs, payload)
+  listGeneratedOutputs(payload: ListGeneratedOutputsPayload): Promise<ListGeneratedOutputsResponse> {
+    return callService<ListGeneratedOutputsResponse>(RECONCILIATION.listGeneratedOutputs, payload)
   },
-  getGeneratedOutput(payload: Record<string, unknown>): Promise<GetGeneratedOutputResponse> {
+  getGeneratedOutput(payload: GetGeneratedOutputPayload): Promise<GetGeneratedOutputResponse> {
     return callService<GetGeneratedOutputResponse>(RECONCILIATION.getGeneratedOutput, payload)
   },
-  deleteGeneratedOutput(payload: Record<string, unknown>): Promise<DeleteGeneratedOutputResponse> {
-    return callMutatingService<DeleteGeneratedOutputResponse>(RECONCILIATION.deleteGeneratedOutput, payload)
+  deleteGeneratedOutput(payload: DeleteGeneratedOutputPayload): Promise<DeleteGeneratedOutputResponse> {
+    return callService<DeleteGeneratedOutputResponse>(RECONCILIATION.deleteGeneratedOutput, payload)
   },
-  listAutomations(payload: Record<string, unknown>): Promise<ListAutomationsResponse> {
+  listAutomations(payload: ListAutomationsPayload): Promise<ListAutomationsResponse> {
     return callService<ListAutomationsResponse>(RECONCILIATION.listAutomations, payload)
   },
-  getAutomation(payload: Record<string, unknown>): Promise<GetAutomationResponse> {
+  getAutomation(payload: GetAutomationPayload): Promise<GetAutomationResponse> {
     return callService<GetAutomationResponse>(RECONCILIATION.getAutomation, payload)
   },
-  saveAutomation(payload: Record<string, unknown>): Promise<SaveAutomationResponse> {
-    return callMutatingService<SaveAutomationResponse>(RECONCILIATION.saveAutomation, payload)
+  saveAutomation(payload: SaveAutomationPayload): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.saveAutomation, payload)
   },
-  deleteAutomation(payload: Record<string, unknown>): Promise<DeleteAutomationResponse> {
-    return callMutatingService<DeleteAutomationResponse>(RECONCILIATION.deleteAutomation, payload)
+  deleteAutomation(payload: DeleteAutomationPayload): Promise<DeleteAutomationResponse> {
+    return callService<DeleteAutomationResponse>(RECONCILIATION.deleteAutomation, payload)
   },
-  pauseAutomation(payload: Record<string, unknown>): Promise<SaveAutomationResponse> {
-    return callMutatingService<SaveAutomationResponse>(RECONCILIATION.pauseAutomation, payload)
+  pauseAutomation(payload: PauseAutomationPayload): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.pauseAutomation, payload)
   },
-  resumeAutomation(payload: Record<string, unknown>): Promise<SaveAutomationResponse> {
-    return callMutatingService<SaveAutomationResponse>(RECONCILIATION.resumeAutomation, payload)
+  resumeAutomation(payload: ResumeAutomationPayload): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.resumeAutomation, payload)
   },
-  runAutomationNow(payload: Record<string, unknown>): Promise<RunAutomationNowResponse> {
-    return callMutatingService<RunAutomationNowResponse>(RECONCILIATION.runAutomationNow, payload)
+  runAutomationNow(payload: RunAutomationNowPayload): Promise<RunAutomationNowResponse> {
+    return callService<RunAutomationNowResponse>(RECONCILIATION.runAutomationNow, payload)
   },
-  listAutomationExecutions(payload: Record<string, unknown>): Promise<ListAutomationExecutionsResponse> {
+  listAutomationExecutions(payload: ListAutomationExecutionsPayload): Promise<ListAutomationExecutionsResponse> {
     return callService<ListAutomationExecutionsResponse>(RECONCILIATION.listAutomationExecutions, payload)
   },
   listAutomationSourceOptions(): Promise<ListAutomationSourceOptionsResponse> {

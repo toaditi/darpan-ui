@@ -27,6 +27,29 @@ vi.mock('../../../lib/auth', () => ({
   useUiPermissions: () => permissions,
 }))
 
+vi.mock('../../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({ sessionInfo: null }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissions,
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
+  }),
+}))
+
 import ReconciliationAutomationsPage from '../ReconciliationAutomationsPage.vue'
 
 function mockAutomationRows() {
@@ -83,11 +106,7 @@ describe('ReconciliationAutomationsPage', () => {
     expect(firstTile.text()).toBe('Daily API orders')
     expect(JSON.parse(firstTile.attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-automation-dashboard',
-      params: { automationId: 'AUT_ACTIVE_API' },
-      state: {
-        workflowOriginLabel: 'Automations',
-        workflowOriginPath: '/reconciliation/automations',
-      },
+      params: { automationId: 'AUT_ACTIVE_API' }
     })
     expect(wrapper.get('[data-testid="saved-automations"]').classes()).toContain('static-page-record-grid--fixed')
     expect(wrapper.text()).not.toContain('Based on API Orders')

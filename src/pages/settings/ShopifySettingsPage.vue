@@ -33,18 +33,19 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { settingsFacade } from '../../lib/api/facade'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 import SettingsRecordListSection from './SettingsRecordListSection.vue'
 import { useSettingsPagedList } from './useSettingsPagedList'
 
 const route = useRoute()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
-const workflowOriginState = computed(() => buildWorkflowOriginState('Shopify', route.fullPath || '/settings/shopify'))
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const {
   rows,
   pageIndex,
@@ -56,13 +57,12 @@ const {
 } = useSettingsPagedList({
   loadPage: (request) => settingsFacade.listShopifyAuthConfigs(request),
   selectRecords: (response) => response.shopifyAuthConfigs ?? [],
-  activeTenantUserGroupId: () => authState.sessionInfo?.activeTenantUserGroupId ?? null,
+  activeTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   fallbackErrorMessage: 'Failed to load Shopify configs.',
 })
 
 const createRoute = computed(() => ({
   name: 'settings-shopify-create',
-  state: workflowOriginState.value,
 }))
 const recordTiles = computed(() => rows.value.map((row) => ({
   key: row.shopifyAuthConfigId,
@@ -73,11 +73,11 @@ const recordTiles = computed(() => rows.value.map((row) => ({
   to: {
     name: 'settings-shopify-auth',
     params: { shopifyAuthConfigId: row.shopifyAuthConfigId },
-    state: workflowOriginState.value,
   },
 })))
 
 onMounted(() => {
+  draftStore.setWorkflowOrigin('Shopify', route.fullPath || '/settings/shopify')
   void load()
 })
 </script>

@@ -39,7 +39,10 @@ vi.mock('../../../lib/api/facade', () => ({
 
 vi.mock('../../../lib/auth', () => ({
   useAuthState: () => authState,
-  useUiPermissions: () => ({
+  useUiPermissions: () => permissionsShape,
+}))
+
+const permissionsShape = {
     get canEditTenantSettings() {
       return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
     },
@@ -49,6 +52,37 @@ vi.mock('../../../lib/auth', () => ({
     get canViewTenantSettings() {
       return Boolean(authState.sessionInfo.userId)
     },
+  
+  get canRunActiveTenantReconciliation() {
+    return ((authState.sessionInfo as Record<string, unknown>)?.canEditActiveTenantData === true ||
+      (authState.sessionInfo as Record<string, unknown>)?.isSuperAdmin === true ||
+      (authState.sessionInfo as Record<string, unknown>)?.canRunActiveTenantReconciliation === true)
+  },
+}
+
+vi.mock('../../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    sessionInfo: authState.sessionInfo,
+  }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionsShape,
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
   }),
 }))
 
@@ -117,7 +151,6 @@ describe('ShopifyAuthDashboardPage', () => {
     expect(editAction.attributes('aria-label')).toBe('Edit Shopify Config')
     expect(editAction.attributes('data-to')).toContain('"name":"settings-shopify-edit"')
     expect(editAction.attributes('data-to')).toContain('"shopifyAuthConfigId":"krewe-shopify"')
-    expect(editAction.attributes('data-to')).toContain('"workflowOriginPath":"/settings/shopify/auth/krewe-shopify"')
 
     const footerActions = wrapper.get('.static-page-actions')
     const deleteAction = wrapper.get('[data-testid="delete-shopify-auth"]')

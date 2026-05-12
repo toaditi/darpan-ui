@@ -34,6 +34,14 @@ vi.mock('../../lib/auth', () => ({
   useAuthState: () => authState,
 }))
 
+vi.mock('../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: string) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    loginWithCredentials,
+  }),
+}))
+
 import LoginPage from '../LoginPage.vue'
 
 describe('LoginPage', () => {

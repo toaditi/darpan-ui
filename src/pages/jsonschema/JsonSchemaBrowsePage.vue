@@ -72,25 +72,25 @@ import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { jsonSchemaFacade } from '../../lib/api/facade'
-import { useUiPermissions } from '../../lib/auth'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import type { JsonSchemaSummary } from '../../lib/api/types'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
-const permissions = useUiPermissions()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
 const schemaCards = ref<JsonSchemaSummary[]>([])
 const showAllSchemas = ref(false)
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 
 const visibleSchemaCards = computed(() => (showAllSchemas.value ? schemaCards.value : schemaCards.value.slice(0, 5)))
 const hasMoreSchemas = computed(() => schemaCards.value.length > 5 && !showAllSchemas.value)
 const createSchemaRoute = computed(() => ({
   path: '/schemas/create',
-  state: buildWorkflowOriginState('Schema Library', route.fullPath || '/schemas/library'),
 }))
 
 function resolveSchemaCardTitle(schema: JsonSchemaSummary): string {
@@ -121,6 +121,7 @@ async function loadSchemas(): Promise<void> {
 }
 
 onMounted(() => {
+  draftStore.setWorkflowOrigin('Schema Library', route.fullPath || '/schemas/library')
   void loadSchemas()
 })
 </script>

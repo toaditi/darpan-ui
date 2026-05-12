@@ -1,7 +1,9 @@
-import type { HistoryState } from 'vue-router'
+// Draft state management has moved to src/stores/reconciliationDraft.ts.
+// This file keeps types and pure utility functions for building API payloads.
 
-const RULESET_DRAFT_KEY = 'reconciliationRuleSetDraft'
-const RULESET_DRAFT_RESUME_STEP_KEY = 'reconciliationRuleSetDraftResumeStepId'
+import type { CreateRuleSetRunPayload, RuleSetRulePayload, SaveRuleSetRunPayload } from './api/facadeTypes'
+import { normalizeString } from './utils/strings'
+
 const RULESET_SOURCE_TYPE_API = 'AUT_SRC_API'
 
 export type ReconciliationRuleSetDraftStepId = 'ruleset-manager'
@@ -68,25 +70,31 @@ export interface ReconciliationRuleSetDraftState {
   resumeStepId: ReconciliationRuleSetDraftStepId | null
 }
 
-function normalizeString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+/**
+ * Build a serializable state payload from a rule-set draft.  The result is
+ * spread into Vue Router `history.state` so it survives navigation.
+ */
+export function buildReconciliationRuleSetDraftState(
+  draft: ReconciliationRuleSetDraft,
+  resumeStepId?: ReconciliationRuleSetDraftStepId | null,
+): ReconciliationRuleSetDraftState {
+  return { draft, resumeStepId: resumeStepId ?? null }
 }
 
-function isApiSourceType(value: unknown): boolean {
-  return normalizeString(value) === RULESET_SOURCE_TYPE_API
-}
-
-function normalizeSequenceNum(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
-  if (typeof value !== 'string' || value.trim().length === 0) return null
-
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? Math.trunc(parsed) : null
+/** Read a rule-set draft state payload from an arbitrary state-like object. */
+export function readReconciliationRuleSetDraftState(stateLike: unknown): ReconciliationRuleSetDraftState | null {
+  if (!stateLike || typeof stateLike !== 'object' || Array.isArray(stateLike)) return null
+  const state = stateLike as Record<string, unknown>
+  const rawDraft = state.draft
+  if (!rawDraft || typeof rawDraft !== 'object' || Array.isArray(rawDraft)) return null
+  const resumeStepId = typeof state.resumeStepId === 'string'
+    ? (state.resumeStepId as ReconciliationRuleSetDraftStepId)
+    : null
+  return { draft: rawDraft as ReconciliationRuleSetDraft, resumeStepId }
 }
 
 function normalizePreAction(value: unknown): ReconciliationRulePreAction | null {
   if (typeof value !== 'string') return null
-
   const normalized = value.trim().toUpperCase()
   if (normalized === 'STRING_TO_INTEGER' || normalized === 'TO_INT' || normalized === 'TO_INTEGER') return 'STRING_TO_INT'
   if (normalized === 'TO_NUMBER') return 'STRING_TO_NUMBER'
@@ -95,7 +103,6 @@ function normalizePreAction(value: unknown): ReconciliationRulePreAction | null 
 
 function normalizePreActionFieldSide(value: unknown): ReconciliationRulePreActionFieldSide | null {
   if (typeof value !== 'string') return null
-
   const normalized = value.trim().toLowerCase()
   if (normalized === 'file1' || normalized === 'file_1' || normalized === 'left') return 'file1'
   if (normalized === 'file2' || normalized === 'file_2' || normalized === 'right') return 'file2'
@@ -109,9 +116,7 @@ export function normalizePreActions(value: unknown): ReconciliationRulePreAction
       const action = normalizePreAction(rawValue)
       return action ? [{ fieldSide: 'file1', action }, { fieldSide: 'file2', action }] : []
     }
-
     if (!rawValue || typeof rawValue !== 'object') return []
-
     const record = rawValue as Record<string, unknown>
     const action = normalizePreAction(record.action ?? record.preAction)
     const fieldSide = normalizePreActionFieldSide(record.fieldSide ?? record.field ?? record.side)
@@ -127,42 +132,9 @@ export function normalizePreActions(value: unknown): ReconciliationRulePreAction
   })
 }
 
-function readDraftRules(value: unknown): ReconciliationRuleSetDraftRule[] {
-  if (!Array.isArray(value)) return []
-
-  return value.reduce<ReconciliationRuleSetDraftRule[]>((rules, rawRule, index) => {
-    if (!rawRule || typeof rawRule !== 'object') return rules
-
-    const record = rawRule as Record<string, unknown>
-    const expressionRule = readRuleExpression(record.expression)
-    const file1FieldPath = normalizeString(record.file1FieldPath) ?? expressionRule.file1FieldPath
-    const file2FieldPath = normalizeString(record.file2FieldPath) ?? expressionRule.file2FieldPath
-    const recordPreActions = normalizePreActions(record.preActions)
-    const preActions = recordPreActions.length ? recordPreActions : expressionRule.preActions
-    if (!file1FieldPath || !file2FieldPath) return rules
-
-    rules.push({
-      ruleId: normalizeString(record.ruleId) ?? undefined,
-      file1FieldPath,
-      file2FieldPath,
-      operator: normalizeString(record.operator) ?? expressionRule.operator ?? '=',
-      sequenceNum: normalizeSequenceNum(record.sequenceNum) ?? index + 1,
-      ...(preActions?.length ? { preActions } : {}),
-      ruleText: normalizeString(record.ruleText) ?? undefined,
-      ruleLogic: normalizeString(record.ruleLogic) ?? undefined,
-      ruleType: normalizeString(record.ruleType) ?? undefined,
-      expression: normalizeString(record.expression) ?? undefined,
-      enabled: normalizeString(record.enabled) ?? undefined,
-      severity: normalizeString(record.severity) ?? undefined,
-    })
-    return rules
-  }, [])
-}
-
 function readRuleExpression(value: unknown): Partial<ReconciliationRuleSetDraftRule> {
   const expression = normalizeString(value)
   if (!expression) return {}
-
   try {
     const parsed = JSON.parse(expression) as Record<string, unknown>
     return {
@@ -180,188 +152,55 @@ export function readReconciliationRuleExpressionPreActions(expression: string | 
   return readRuleExpression(expression).preActions ?? []
 }
 
-function readDraft(value: unknown): ReconciliationRuleSetDraft | null {
-  if (!value || typeof value !== 'object') return null
-
-  const record = value as Record<string, unknown>
-  const runName = normalizeString(record.runName)
-  const file1SystemEnumId = normalizeString(record.file1SystemEnumId)
-  const file1FileTypeEnumId = normalizeString(record.file1FileTypeEnumId)
-  const file1PrimaryIdExpression = normalizeString(record.file1PrimaryIdExpression)
-  const file1UsesApi = isApiSourceType(record.file1SourceTypeEnumId)
-  const file1ApiEndpoint = normalizeString(record.file1SystemMessageRemoteId) || normalizeString(record.file1NsRestletConfigId)
-  const file1SourceConfigId = normalizeString(record.file1SourceConfigId)
-  const file2SystemEnumId = normalizeString(record.file2SystemEnumId)
-  const file2FileTypeEnumId = normalizeString(record.file2FileTypeEnumId)
-  const file2PrimaryIdExpression = normalizeString(record.file2PrimaryIdExpression)
-  const file2UsesApi = isApiSourceType(record.file2SourceTypeEnumId)
-  const file2ApiEndpoint = normalizeString(record.file2SystemMessageRemoteId) || normalizeString(record.file2NsRestletConfigId)
-  const file2SourceConfigId = normalizeString(record.file2SourceConfigId)
-
-  if (
-    !runName
-    || !file1SystemEnumId
-    || (file1UsesApi ? (!file1SourceConfigId || !file1ApiEndpoint || !file1PrimaryIdExpression) : (!file1FileTypeEnumId || !file1PrimaryIdExpression))
-    || !file2SystemEnumId
-    || (file2UsesApi ? (!file2SourceConfigId || !file2ApiEndpoint || !file2PrimaryIdExpression) : (!file2FileTypeEnumId || !file2PrimaryIdExpression))
-  ) {
-    return null
-  }
-
+export function buildCreateRuleSetRunPayload(draft: ReconciliationRuleSetDraft): CreateRuleSetRunPayload {
+  const rules = buildRuleSetRulePayloads(draft)
   return {
-    savedRunId: normalizeString(record.savedRunId) ?? undefined,
-    runName,
-    description: normalizeString(record.description) ?? undefined,
-    file1SystemEnumId,
-    file1SystemLabel: normalizeString(record.file1SystemLabel) ?? undefined,
-    file1SourceTypeEnumId: normalizeString(record.file1SourceTypeEnumId) ?? undefined,
-    file1SystemMessageRemoteId: normalizeString(record.file1SystemMessageRemoteId) ?? undefined,
-    file1SystemMessageRemoteLabel: normalizeString(record.file1SystemMessageRemoteLabel) ?? undefined,
-    file1NsRestletConfigId: normalizeString(record.file1NsRestletConfigId) ?? undefined,
-    file1NsRestletConfigLabel: normalizeString(record.file1NsRestletConfigLabel) ?? undefined,
-    file1SourceConfigId: file1SourceConfigId ?? undefined,
-    file1SourceConfigType: normalizeString(record.file1SourceConfigType) ?? undefined,
-    file1FileTypeEnumId: file1FileTypeEnumId ?? '',
-    file1JsonSchemaId: normalizeString(record.file1JsonSchemaId) ?? undefined,
-    file1SchemaLabel: normalizeString(record.file1SchemaLabel) ?? undefined,
-    file1SchemaFileName: normalizeString(record.file1SchemaFileName) ?? undefined,
-    file1PrimaryIdExpression: file1PrimaryIdExpression ?? '',
-    file2SystemEnumId,
-    file2SystemLabel: normalizeString(record.file2SystemLabel) ?? undefined,
-    file2SourceTypeEnumId: normalizeString(record.file2SourceTypeEnumId) ?? undefined,
-    file2SystemMessageRemoteId: normalizeString(record.file2SystemMessageRemoteId) ?? undefined,
-    file2SystemMessageRemoteLabel: normalizeString(record.file2SystemMessageRemoteLabel) ?? undefined,
-    file2NsRestletConfigId: normalizeString(record.file2NsRestletConfigId) ?? undefined,
-    file2NsRestletConfigLabel: normalizeString(record.file2NsRestletConfigLabel) ?? undefined,
-    file2SourceConfigId: file2SourceConfigId ?? undefined,
-    file2SourceConfigType: normalizeString(record.file2SourceConfigType) ?? undefined,
-    file2FileTypeEnumId: file2FileTypeEnumId ?? '',
-    file2JsonSchemaId: normalizeString(record.file2JsonSchemaId) ?? undefined,
-    file2SchemaLabel: normalizeString(record.file2SchemaLabel) ?? undefined,
-    file2SchemaFileName: normalizeString(record.file2SchemaFileName) ?? undefined,
-    file2PrimaryIdExpression: file2PrimaryIdExpression ?? '',
-    rules: readDraftRules(record.rules),
-  }
-}
-
-export function buildReconciliationRuleSetDraftState(
-  draft: ReconciliationRuleSetDraft,
-  resumeStepId: ReconciliationRuleSetDraftStepId | null = null,
-): HistoryState {
-  const historyDraft: HistoryState = {
-    runName: draft.runName.trim(),
-    file1SystemEnumId: draft.file1SystemEnumId,
-    file2SystemEnumId: draft.file2SystemEnumId,
-  }
-
-  if (draft.savedRunId?.trim()) historyDraft.savedRunId = draft.savedRunId.trim()
-  if (draft.description?.trim()) historyDraft.description = draft.description.trim()
-  if (draft.file1SystemLabel?.trim()) historyDraft.file1SystemLabel = draft.file1SystemLabel.trim()
-  if (draft.file1SourceTypeEnumId?.trim()) historyDraft.file1SourceTypeEnumId = draft.file1SourceTypeEnumId.trim()
-  if (draft.file1SystemMessageRemoteId?.trim()) historyDraft.file1SystemMessageRemoteId = draft.file1SystemMessageRemoteId.trim()
-  if (draft.file1SystemMessageRemoteLabel?.trim()) historyDraft.file1SystemMessageRemoteLabel = draft.file1SystemMessageRemoteLabel.trim()
-  if (draft.file1NsRestletConfigId?.trim()) historyDraft.file1NsRestletConfigId = draft.file1NsRestletConfigId.trim()
-  if (draft.file1NsRestletConfigLabel?.trim()) historyDraft.file1NsRestletConfigLabel = draft.file1NsRestletConfigLabel.trim()
-  if (draft.file1SourceConfigId?.trim()) historyDraft.file1SourceConfigId = draft.file1SourceConfigId.trim()
-  if (draft.file1SourceConfigType?.trim()) historyDraft.file1SourceConfigType = draft.file1SourceConfigType.trim()
-  if (draft.file1FileTypeEnumId?.trim()) historyDraft.file1FileTypeEnumId = draft.file1FileTypeEnumId.trim()
-  if (draft.file1JsonSchemaId?.trim()) historyDraft.file1JsonSchemaId = draft.file1JsonSchemaId.trim()
-  if (draft.file1SchemaLabel?.trim()) historyDraft.file1SchemaLabel = draft.file1SchemaLabel.trim()
-  if (draft.file1SchemaFileName?.trim()) historyDraft.file1SchemaFileName = draft.file1SchemaFileName.trim()
-  if (draft.file1PrimaryIdExpression?.trim()) historyDraft.file1PrimaryIdExpression = draft.file1PrimaryIdExpression.trim()
-  if (draft.file2SystemLabel?.trim()) historyDraft.file2SystemLabel = draft.file2SystemLabel.trim()
-  if (draft.file2SourceTypeEnumId?.trim()) historyDraft.file2SourceTypeEnumId = draft.file2SourceTypeEnumId.trim()
-  if (draft.file2SystemMessageRemoteId?.trim()) historyDraft.file2SystemMessageRemoteId = draft.file2SystemMessageRemoteId.trim()
-  if (draft.file2SystemMessageRemoteLabel?.trim()) historyDraft.file2SystemMessageRemoteLabel = draft.file2SystemMessageRemoteLabel.trim()
-  if (draft.file2NsRestletConfigId?.trim()) historyDraft.file2NsRestletConfigId = draft.file2NsRestletConfigId.trim()
-  if (draft.file2NsRestletConfigLabel?.trim()) historyDraft.file2NsRestletConfigLabel = draft.file2NsRestletConfigLabel.trim()
-  if (draft.file2SourceConfigId?.trim()) historyDraft.file2SourceConfigId = draft.file2SourceConfigId.trim()
-  if (draft.file2SourceConfigType?.trim()) historyDraft.file2SourceConfigType = draft.file2SourceConfigType.trim()
-  if (draft.file2FileTypeEnumId?.trim()) historyDraft.file2FileTypeEnumId = draft.file2FileTypeEnumId.trim()
-  if (draft.file2JsonSchemaId?.trim()) historyDraft.file2JsonSchemaId = draft.file2JsonSchemaId.trim()
-  if (draft.file2SchemaLabel?.trim()) historyDraft.file2SchemaLabel = draft.file2SchemaLabel.trim()
-  if (draft.file2SchemaFileName?.trim()) historyDraft.file2SchemaFileName = draft.file2SchemaFileName.trim()
-  if (draft.file2PrimaryIdExpression?.trim()) historyDraft.file2PrimaryIdExpression = draft.file2PrimaryIdExpression.trim()
-  if (draft.rules?.length) {
-    historyDraft.rules = draft.rules.map((rule): HistoryState => {
-      const preActions = normalizePreActions(rule.preActions)
-      const historyRule: HistoryState = {
-        ...(rule.ruleId?.trim() ? { ruleId: rule.ruleId.trim() } : {}),
-        file1FieldPath: rule.file1FieldPath.trim(),
-        file2FieldPath: rule.file2FieldPath.trim(),
-        operator: rule.operator.trim() || '=',
-        sequenceNum: rule.sequenceNum,
-        ...(preActions.length
-          ? { preActions: preActions.map((preAction): HistoryState => ({ fieldSide: preAction.fieldSide, action: preAction.action })) }
-          : {}),
-      }
-      if (rule.ruleText?.trim()) historyRule.ruleText = rule.ruleText.trim()
-      if (rule.ruleLogic?.trim()) historyRule.ruleLogic = rule.ruleLogic.trim()
-      if (rule.ruleType?.trim()) historyRule.ruleType = rule.ruleType.trim()
-      if (rule.expression?.trim()) historyRule.expression = rule.expression.trim()
-      if (rule.enabled?.trim()) historyRule.enabled = rule.enabled.trim()
-      if (rule.severity?.trim()) historyRule.severity = rule.severity.trim()
-      return historyRule
-    })
-  }
-
-  return {
-    [RULESET_DRAFT_KEY]: historyDraft,
-    ...(resumeStepId ? { [RULESET_DRAFT_RESUME_STEP_KEY]: resumeStepId } : {}),
-  }
-}
-
-export function readReconciliationRuleSetDraftState(stateLike: unknown): ReconciliationRuleSetDraftState | null {
-  if (!stateLike || typeof stateLike !== 'object') return null
-
-  const stateRecord = stateLike as Record<string, unknown>
-  const draft = readDraft(stateRecord[RULESET_DRAFT_KEY])
-  if (!draft) return null
-
-  const resumeStepId = normalizeString(stateRecord[RULESET_DRAFT_RESUME_STEP_KEY])
-  return {
-    draft,
-    resumeStepId: resumeStepId === 'ruleset-manager' ? 'ruleset-manager' : null,
-  }
-}
-
-export function buildCreateRuleSetRunPayload(draft: ReconciliationRuleSetDraft): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
+    ...buildSideSourceFields('file1', draft),
+    ...buildSideSourceFields('file2', draft),
+    ...(rules.length ? { rules } : {}),
     runName: draft.runName.trim(),
     description: draft.description?.trim() || undefined,
     file1SystemEnumId: draft.file1SystemEnumId,
     file2SystemEnumId: draft.file2SystemEnumId,
   }
-  addSourcePayload(payload, 'file1', draft)
-  addSourcePayload(payload, 'file2', draft)
-  const rules = buildRuleSetRulePayloads(draft)
-  if (rules.length) payload.rules = rules
-  return payload
 }
 
-function addSourcePayload(payload: Record<string, unknown>, side: 'file1' | 'file2', draft: ReconciliationRuleSetDraft): void {
-  const sourceTypeEnumId = side === 'file1' ? draft.file1SourceTypeEnumId : draft.file2SourceTypeEnumId
-  if (sourceTypeEnumId === RULESET_SOURCE_TYPE_API) {
-    payload[`${side}SourceTypeEnumId`] = RULESET_SOURCE_TYPE_API
-    const systemMessageRemoteId = side === 'file1' ? draft.file1SystemMessageRemoteId : draft.file2SystemMessageRemoteId
-    const nsRestletConfigId = side === 'file1' ? draft.file1NsRestletConfigId : draft.file2NsRestletConfigId
-    const sourceConfigId = side === 'file1' ? draft.file1SourceConfigId : draft.file2SourceConfigId
-    const sourceConfigType = side === 'file1' ? draft.file1SourceConfigType : draft.file2SourceConfigType
-    const primaryIdExpression = side === 'file1' ? draft.file1PrimaryIdExpression : draft.file2PrimaryIdExpression
-    if (systemMessageRemoteId?.trim()) payload[`${side}SystemMessageRemoteId`] = systemMessageRemoteId.trim()
-    if (nsRestletConfigId?.trim()) payload[`${side}NsRestletConfigId`] = nsRestletConfigId.trim()
-    if (sourceConfigId?.trim()) payload[`${side}SourceConfigId`] = sourceConfigId.trim()
-    if (sourceConfigType?.trim()) payload[`${side}SourceConfigType`] = sourceConfigType.trim()
-    if (primaryIdExpression?.trim()) payload[`${side}PrimaryIdExpression`] = primaryIdExpression.trim()
-    return
+function buildSideSourceFields(side: 'file1' | 'file2', draft: ReconciliationRuleSetDraft): Partial<CreateRuleSetRunPayload> {
+  if (side === 'file1') {
+    if (draft.file1SourceTypeEnumId === RULESET_SOURCE_TYPE_API) {
+      return {
+        file1SourceTypeEnumId: RULESET_SOURCE_TYPE_API,
+        ...(draft.file1SystemMessageRemoteId?.trim() ? { file1SystemMessageRemoteId: draft.file1SystemMessageRemoteId.trim() } : {}),
+        ...(draft.file1NsRestletConfigId?.trim() ? { file1NsRestletConfigId: draft.file1NsRestletConfigId.trim() } : {}),
+        ...(draft.file1SourceConfigId?.trim() ? { file1SourceConfigId: draft.file1SourceConfigId.trim() } : {}),
+        ...(draft.file1SourceConfigType?.trim() ? { file1SourceConfigType: draft.file1SourceConfigType.trim() } : {}),
+        ...(draft.file1PrimaryIdExpression?.trim() ? { file1PrimaryIdExpression: draft.file1PrimaryIdExpression.trim() } : {}),
+      }
+    }
+    return {
+      file1FileTypeEnumId: draft.file1FileTypeEnumId,
+      file1SchemaFileName: normalizeString(draft.file1SchemaFileName) ?? undefined,
+      file1PrimaryIdExpression: draft.file1PrimaryIdExpression.trim(),
+    }
   }
-
-  payload[`${side}FileTypeEnumId`] = side === 'file1' ? draft.file1FileTypeEnumId : draft.file2FileTypeEnumId
-  payload[`${side}SchemaFileName`] = normalizeString(side === 'file1' ? draft.file1SchemaFileName : draft.file2SchemaFileName) ?? undefined
-  payload[`${side}PrimaryIdExpression`] = side === 'file1' ? draft.file1PrimaryIdExpression.trim() : draft.file2PrimaryIdExpression.trim()
+  if (draft.file2SourceTypeEnumId === RULESET_SOURCE_TYPE_API) {
+    return {
+      file2SourceTypeEnumId: RULESET_SOURCE_TYPE_API,
+      ...(draft.file2SystemMessageRemoteId?.trim() ? { file2SystemMessageRemoteId: draft.file2SystemMessageRemoteId.trim() } : {}),
+      ...(draft.file2NsRestletConfigId?.trim() ? { file2NsRestletConfigId: draft.file2NsRestletConfigId.trim() } : {}),
+      ...(draft.file2SourceConfigId?.trim() ? { file2SourceConfigId: draft.file2SourceConfigId.trim() } : {}),
+      ...(draft.file2SourceConfigType?.trim() ? { file2SourceConfigType: draft.file2SourceConfigType.trim() } : {}),
+      ...(draft.file2PrimaryIdExpression?.trim() ? { file2PrimaryIdExpression: draft.file2PrimaryIdExpression.trim() } : {}),
+    }
+  }
+  return {
+    file2FileTypeEnumId: draft.file2FileTypeEnumId,
+    file2SchemaFileName: normalizeString(draft.file2SchemaFileName) ?? undefined,
+    file2PrimaryIdExpression: draft.file2PrimaryIdExpression.trim(),
+  }
 }
 
-export function buildSaveRuleSetRunPayload(draft: ReconciliationRuleSetDraft): Record<string, unknown> {
+export function buildSaveRuleSetRunPayload(draft: ReconciliationRuleSetDraft): SaveRuleSetRunPayload {
   return {
     ...buildCreateRuleSetRunPayload(draft),
     savedRunId: draft.savedRunId?.trim(),
@@ -369,7 +208,7 @@ export function buildSaveRuleSetRunPayload(draft: ReconciliationRuleSetDraft): R
   }
 }
 
-export function buildRuleSetRulePayloads(draft: ReconciliationRuleSetDraft): Record<string, unknown>[] {
+export function buildRuleSetRulePayloads(draft: ReconciliationRuleSetDraft): RuleSetRulePayload[] {
   return [...(draft.rules ?? [])]
     .filter((rule) => rule.sequenceNum > 0 && rule.file1FieldPath.trim() && rule.file2FieldPath.trim())
     .sort((left, right) => left.sequenceNum - right.sequenceNum)
@@ -450,7 +289,6 @@ function preActionNamesForSide(
 
 function buildPreActionValueExpression(valueExpression: string, preActions: ReconciliationRulePreAction[]): string {
   if (!preActions.length) return valueExpression
-
   const drlPreActions = preActions.map((preAction) => `"${escapeDrlString(preAction)}"`).join(', ')
   return `reconciliation.rule.RuleDiffSupport.applyPreActions(${valueExpression}, java.util.Arrays.asList(${drlPreActions}))`
 }
@@ -475,7 +313,6 @@ function buildViolationExpression(file1ValueExpression: string, file2ValueExpres
   if (useRuleDiffSupport || ['>', '<', '>=', '<='].includes(operator)) {
     return `reconciliation.rule.RuleDiffSupport.violatesOperator(${file1ValueExpression}, ${file2ValueExpression}, "${escapeDrlString(operator)}")`
   }
-
   switch (operator) {
     case '!=':
       return `java.util.Objects.equals(${file1ValueExpression}, ${file2ValueExpression})`
@@ -489,7 +326,6 @@ function buildViolationExpression(file1ValueExpression: string, file2ValueExpres
 export function normalizeReconciliationFieldPath(fieldPath: string | undefined): string {
   const trimmed = fieldPath?.trim()
   if (!trimmed) return ''
-
   const expression = trimmed.split('|', 1)[0] ?? ''
   return expression
     .trim()
@@ -501,14 +337,12 @@ function fieldPathRelativeToPrimary(fieldPath: string, primaryExpression: string
   const normalizedField = normalizeReconciliationFieldPath(fieldPath)
   const normalizedPrimary = normalizeReconciliationFieldPath(primaryExpression)
   if (!normalizedField) return ''
-
   const starIndex = normalizedPrimary.indexOf('[*]')
   if (starIndex >= 0) {
     const recordPrefix = normalizedPrimary.slice(0, starIndex + 3)
     const prefixWithDot = `${recordPrefix}.`
     if (normalizedField.startsWith(prefixWithDot)) return stripRootPrefix(normalizedField.slice(prefixWithDot.length))
   }
-
   return stripRootPrefix(normalizedField)
 }
 
@@ -523,12 +357,10 @@ function stripRootPrefix(fieldPath: string): string {
 export function buildReconciliationFieldPathAliases(fieldPath: string | undefined): Set<string> {
   const normalized = normalizeReconciliationFieldPath(fieldPath)
   if (!normalized) return new Set()
-
   const aliases = new Set<string>([normalized])
   if (normalized.startsWith('$.')) aliases.add(normalized.slice(2))
   else if (normalized.startsWith('$[')) aliases.add(normalized.slice(1))
   else if (!normalized.startsWith('$')) aliases.add(normalized.startsWith('[') ? `$${normalized}` : `$.${normalized}`)
-
   return aliases
 }
 
@@ -540,15 +372,13 @@ export function fieldsReferenceSamePath(left: string | undefined, right: string 
 export function formatReconciliationFieldKey(fieldPath: string | undefined): string {
   const normalized = normalizeReconciliationFieldPath(fieldPath)
   if (!normalized) return 'Field pending'
-
-  const pathSegments = stripRootPrefix(normalized)
+  const segments = stripRootPrefix(normalized)
     .replace(/\[['"]?([A-Za-z_$][\w$-]*)['"]?\]/g, '.$1')
     .replace(/\[\*\]/g, '')
     .split('.')
     .map((segment) => segment.trim())
     .filter((segment) => segment && segment !== '$')
-
-  return pathSegments.at(-1) || normalized
+  return segments.at(-1) || normalized
 }
 
 const formatFieldKey = formatReconciliationFieldKey

@@ -33,22 +33,36 @@ vi.mock('../../lib/auth', () => ({
   buildAuthRedirect: (redirect: string) => ({ name: 'login', query: { redirect } }),
   ensureAuthenticated,
   useAuthState: () => authState,
-  useUiPermissions: () => ({
-    get canRunActiveTenantReconciliation() {
-      return authState.sessionInfo?.canRunActiveTenantReconciliation === true ||
-        authState.sessionInfo?.canEditActiveTenantData === true ||
-        authState.sessionInfo?.isSuperAdmin === true
-    },
-    get canEditTenantSettings() {
-      return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
-    },
-    get canManageGlobalSettings() {
-      return authState.sessionInfo?.canManageDarpanCore === true
-    },
-    get canViewTenantSettings() {
-      return Boolean(authState.sessionInfo?.userId)
-    },
+  useUiPermissions: () => permissionsShape,
+}))
+
+const permissionsShape = {
+  get canRunActiveTenantReconciliation() {
+    return authState.sessionInfo?.canRunActiveTenantReconciliation === true ||
+      authState.sessionInfo?.canEditActiveTenantData === true ||
+      authState.sessionInfo?.isSuperAdmin === true
+  },
+  get canEditTenantSettings() {
+    return authState.sessionInfo?.canEditActiveTenantData === true || authState.sessionInfo?.isSuperAdmin === true
+  },
+  get canManageGlobalSettings() {
+    return authState.sessionInfo?.canManageDarpanCore === true
+  },
+  get canViewTenantSettings() {
+    return Boolean(authState.sessionInfo?.userId)
+  },
+}
+
+vi.mock('../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: string) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    ...authState,
+    ensureAuthenticated,
   }),
+}))
+
+vi.mock('../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionsShape,
 }))
 
 import router from '../index'

@@ -203,7 +203,7 @@ import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import type { ShopifyAuthConfigRecord } from '../../lib/api/types'
-import { useUiPermissions } from '../../lib/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import { buildTimezoneOptions, normalizeTimezoneId } from '../../lib/timezones'
 import { CONFIG_ID_MAX_LENGTH, deriveConfigIdFromName, exceedsConfigIdMaxLength } from './configId'
 
@@ -233,7 +233,7 @@ interface ShopifyForm {
 
 const route = useRoute()
 const router = useRouter()
-const permissions = useUiPermissions()
+const permissionsStore = usePermissionsStore()
 
 function createDefaultShopifyForm(): ShopifyForm {
   return {
@@ -256,7 +256,7 @@ const success = ref<string | null>(null)
 const currentStepIndex = ref(0)
 
 const activeShopifyConfigId = computed(() => String(route.params.shopifyAuthConfigId ?? '').trim())
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const isEditing = computed(() => activeShopifyConfigId.value.length > 0)
 const isActiveChecked = computed({
   get: () => form.isActive !== 'N',

@@ -24,6 +24,7 @@
         :to="tile.to"
         class="static-page-tile static-page-record-tile"
         :data-testid="tileTestId"
+        @click="tile.onClick?.()"
       >
         <span class="static-page-tile-title">{{ tile.label }}</span>
       </RouterLink>
@@ -61,6 +62,7 @@ interface SettingsRecordTile {
   key: string
   label: string
   to: RouteLocationRaw
+  onClick?: () => void
 }
 
 const props = withDefaults(defineProps<{

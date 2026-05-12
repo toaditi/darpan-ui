@@ -1,3 +1,5 @@
+import { normalizeStringOrEmpty } from './utils/strings'
+
 export const PENDING_RECONCILIATION_RUNS_STORAGE_KEY = 'darpan.pendingReconciliationRuns'
 export const PENDING_RECONCILIATION_RUNS_EVENT = 'darpan:pending-reconciliation-runs-changed'
 
@@ -37,10 +39,6 @@ function notifyPendingRunsChanged(): void {
   window.dispatchEvent(new CustomEvent(PENDING_RECONCILIATION_RUNS_EVENT))
 }
 
-function normalizeText(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
 function parseTimestamp(value: string | undefined): number {
   if (!value) return Number.NaN
   const timestamp = new Date(value).getTime()
@@ -51,10 +49,10 @@ function isPendingRun(value: unknown): value is PendingReconciliationRun {
   if (!value || typeof value !== 'object') return false
   const row = value as Record<string, unknown>
   return Boolean(
-    normalizeText(row.pendingRunId) &&
-      normalizeText(row.savedRunId) &&
-      normalizeText(row.runName) &&
-      normalizeText(row.submittedAt),
+    normalizeStringOrEmpty(row.pendingRunId) &&
+      normalizeStringOrEmpty(row.savedRunId) &&
+      normalizeStringOrEmpty(row.runName) &&
+      normalizeStringOrEmpty(row.submittedAt),
   )
 }
 
@@ -102,13 +100,13 @@ function buildPendingRunId(savedRunId: string, submittedAt: string): string {
 
 export function recordPendingReconciliationRun(input: PendingReconciliationRunInput): PendingReconciliationRun {
   const submittedAt = new Date().toISOString()
-  const savedRunId = normalizeText(input.savedRunId)
+  const savedRunId = normalizeStringOrEmpty(input.savedRunId)
   const pendingRun: PendingReconciliationRun = {
     pendingRunId: buildPendingRunId(savedRunId, submittedAt),
     savedRunId,
-    runName: normalizeText(input.runName) || savedRunId || 'Selected Run',
-    file1SystemLabel: normalizeText(input.file1SystemLabel),
-    file2SystemLabel: normalizeText(input.file2SystemLabel),
+    runName: normalizeStringOrEmpty(input.runName) || savedRunId || 'Selected Run',
+    file1SystemLabel: normalizeStringOrEmpty(input.file1SystemLabel),
+    file2SystemLabel: normalizeStringOrEmpty(input.file2SystemLabel),
     submittedAt,
   }
 
@@ -121,7 +119,7 @@ export function recordPendingReconciliationRun(input: PendingReconciliationRunIn
 }
 
 export function clearPendingReconciliationRun(pendingRunId: string | undefined): void {
-  const normalizedPendingRunId = normalizeText(pendingRunId)
+  const normalizedPendingRunId = normalizeStringOrEmpty(pendingRunId)
   if (!normalizedPendingRunId) return
 
   const nextRuns = currentPendingRuns().filter((run) => run.pendingRunId !== normalizedPendingRunId)
@@ -129,7 +127,7 @@ export function clearPendingReconciliationRun(pendingRunId: string | undefined):
 }
 
 export function listPendingReconciliationRuns(savedRunId?: string): PendingReconciliationRun[] {
-  const normalizedSavedRunId = normalizeText(savedRunId)
+  const normalizedSavedRunId = normalizeStringOrEmpty(savedRunId)
   return currentPendingRuns().filter((run) => !normalizedSavedRunId || run.savedRunId === normalizedSavedRunId)
 }
 
@@ -137,7 +135,7 @@ export function resolveCompletedPendingReconciliationRuns(
   savedRunId: string,
   completedRuns: CompletedReconciliationRun[],
 ): PendingReconciliationRun[] {
-  const normalizedSavedRunId = normalizeText(savedRunId)
+  const normalizedSavedRunId = normalizeStringOrEmpty(savedRunId)
   if (!normalizedSavedRunId || completedRuns.length === 0) return listPendingReconciliationRuns(normalizedSavedRunId)
 
   const completedTimestamps = completedRuns

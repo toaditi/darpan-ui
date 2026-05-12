@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { buildAuthRedirect, ensureAuthenticated, useUiPermissions } from '../lib/auth'
+import { buildAuthRedirect, useAuthStore } from '../stores/auth'
+import { usePermissionsStore } from '../stores/permissions'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -393,9 +394,10 @@ router.beforeEach(async (to) => {
   if (to.meta.public === true) return true
   if (to.meta.requiresAuth !== true) return true
 
-  const authenticated = await ensureAuthenticated(true)
+  const authStore = useAuthStore()
+  const authenticated = await authStore.ensureAuthenticated(true)
   if (authenticated) {
-    const permissions = useUiPermissions()
+    const permissions = usePermissionsStore()
     if (to.meta.requiresGlobalSettings === true && !permissions.canManageGlobalSettings) {
       return { name: 'hub' }
     }

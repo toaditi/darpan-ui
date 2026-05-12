@@ -248,7 +248,8 @@ import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import type { OmsRestSourceConfigRecord } from '../../lib/api/types'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import { OMS_SWAGGER_BASE_URL } from '../../lib/omsSwagger'
 import { buildTimezoneOptions, normalizeTimezoneId } from '../../lib/timezones'
 import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
@@ -287,8 +288,8 @@ interface OmsForm {
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
 
 function createDefaultOmsForm(): OmsForm {
   return {
@@ -329,7 +330,7 @@ const success = ref<string | null>(null)
 const currentStepIndex = ref(0)
 
 const activeOmsConfigId = computed(() => String(route.params.omsRestSourceConfigId ?? '').trim())
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const isEditing = computed(() => activeOmsConfigId.value.length > 0)
 const isActiveChecked = computed({
   get: () => form.isActive !== 'N',
@@ -472,7 +473,7 @@ async function loadOmsConfig(): Promise<void> {
   const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 })
   const matchingConfig = filterRecordsForActiveTenant(
     response.omsRestSourceConfigs ?? [],
-    authState.sessionInfo?.activeTenantUserGroupId ?? null,
+    authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   ).find((config) => config.omsRestSourceConfigId === activeOmsConfigId.value)
   if (!matchingConfig) {
     error.value = `Unable to find HotWax source config "${activeOmsConfigId.value}".`

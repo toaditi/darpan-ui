@@ -42,7 +42,7 @@ function safeParseRecentCommandIds(rawValue: string | null): string[] {
   }
 }
 
-function normalizeText(value: string): string {
+function toSearchPhrase(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
@@ -56,7 +56,7 @@ function tokenize(value: string): string[] {
 }
 
 function normalizeQuery(query: string): { phrase: string; tokens: string[] } {
-  const normalized = normalizeText(query)
+  const normalized = toSearchPhrase(query)
   const tokens = tokenize(normalized)
   const meaningfulTokens = tokens.filter((token) => !QUERY_STOP_WORDS.has(token))
   const finalTokens = meaningfulTokens.length > 0 ? meaningfulTokens : tokens
@@ -146,9 +146,9 @@ function scoreCommandAction(
   { phrase, tokens }: NormalizedCommandQuery,
   recentIndexMap: Map<string, number>,
 ): number {
-  const label = normalizeText(action.label)
-  const description = normalizeText(action.description)
-  const aliases = action.aliases.map(normalizeText).filter((alias) => alias.length > 0)
+  const label = toSearchPhrase(action.label)
+  const description = toSearchPhrase(action.description)
+  const aliases = action.aliases.map(toSearchPhrase).filter((alias) => alias.length > 0)
 
   if (!phrase) {
     if (action.requiresQuery) return -1

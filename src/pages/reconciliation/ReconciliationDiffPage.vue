@@ -245,8 +245,8 @@ import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
 import { ApiCallError } from '../../lib/api/client'
-import { reconciliationFacade } from '../../lib/api/facade'
-import type { GeneratedOutput, SavedRunSummary, SavedRunSystemOption } from '../../lib/api/types'
+import type { SavedRunSummary, SavedRunSystemOption } from '../../lib/api/types'
+import type { RunSavedRunDiffPayload } from '../../lib/api/facadeTypes'
 import {
   clearPendingReconciliationRun,
   recordPendingReconciliationRun,
@@ -257,44 +257,31 @@ import {
   buildReconciliationRunResultRoute,
   type ReconciliationRunRouteContext,
 } from '../../lib/reconciliationRoutes'
-import { formatSavedResultDateTime } from '../../lib/utils/date'
+import {
+  addDays,
+  formatDateInputValue,
+  formatMonthLabel,
+  formatSavedResultDateTime,
+  startOfLocalDay,
+} from '../../lib/utils/date'
+import { useCalendarWidget, type CalendarRange } from '../../composables/useCalendarWidget'
+import { useReconciliationDiff } from '../../composables/useReconciliationDiff'
 
 interface UploadStep {
   id: 'run' | 'system-1' | 'api-window' | 'api-window-custom' | 'file-1' | 'system-2' | 'file-2'
-}
-
-type FailedRunFeedback = {
-  validationErrors: string[]
-  processingWarnings: string[]
 }
 
 type ExpectedFileType = 'CSV' | 'JSON' | null
 type FileStepId = 'file-1' | 'file-2'
 type UploadPayloadKey = 'file1Name' | 'file1Text' | 'file2Name' | 'file2Text'
 type ApiWindowPreset = 'previous-day' | 'previous-week' | 'previous-month' | 'custom'
-type CustomApiWindowSelectionSide = 'start' | 'end'
 
 interface ApiWindowPresetOption extends WorkflowShortcutChoiceOption {
   value: ApiWindowPreset
 }
 
-interface ApiWindowRange {
-  startDate: Date
-  endExclusiveDate: Date
+interface ApiWindowRange extends CalendarRange {
   summary: string
-}
-
-interface ApiWindowCalendarCell {
-  key: string
-  date: Date
-  day: number
-  isCurrentMonth: boolean
-}
-
-interface ApiWindowCalendarMonth {
-  key: string
-  label: string
-  cells: ApiWindowCalendarCell[]
 }
 
 interface UploadSourceInput {
@@ -310,26 +297,36 @@ const weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 const route = useRoute()
 const router = useRouter()
-const savedRuns = ref<SavedRunSummary[]>([])
-const loadingMappings = ref(false)
-const loadError = ref<string | null>(null)
+
+const diff = useReconciliationDiff()
+const {
+  savedRuns,
+  loadingSavedRuns: loadingMappings,
+  loadError,
+  latestSavedOutput,
+  latestSavedOutputLoading,
+  latestSavedOutputError,
+  runError,
+  running,
+  validationErrors,
+  processingWarnings,
+} = diff
+
+const calendar = useCalendarWidget()
+const {
+  startDate: customApiWindowStartDate,
+  endDate: customApiWindowEndDate,
+  selecting: customApiWindowSelecting,
+  endDateValue: customApiWindowEndDateValue,
+  calendarMonths: customCalendarMonths,
+} = calendar
+
 const selectedSavedRunId = ref('')
 const file1SystemEnumId = ref('')
 const file2SystemEnumId = ref('')
 const file1 = ref<File | null>(null)
 const file2 = ref<File | null>(null)
 const apiWindowPreset = ref<ApiWindowPreset | ''>('')
-const customApiWindowStartDate = ref('')
-const customApiWindowEndDate = ref('')
-const customApiWindowSelecting = ref<CustomApiWindowSelectionSide>('start')
-const customCalendarMonth = ref(getDefaultCustomCalendarMonth())
-const runError = ref<string | null>(null)
-const running = ref(false)
-const validationErrors = ref<string[]>([])
-const processingWarnings = ref<string[]>([])
-const latestSavedOutput = ref<GeneratedOutput | null>(null)
-const latestSavedOutputLoading = ref(false)
-const latestSavedOutputError = ref<string | null>(null)
 const pendingSubmittedRun = ref<PendingReconciliationRun | null>(null)
 const currentStepIndex = ref(0)
 const inputResetKey = ref(0)
@@ -415,14 +412,8 @@ const selectedApiWindowRange = computed<ApiWindowRange | null>(() => {
   if (apiWindowPreset.value === 'custom') return buildCustomApiWindowRange()
   return buildPresetApiWindowRange(apiWindowPreset.value)
 })
-const customApiWindowStartDateValue = computed(() => parseDateInput(customApiWindowStartDate.value))
-const customApiWindowEndDateValue = computed(() => parseDateInput(customApiWindowEndDate.value))
 const customApiWindowStartLabel = computed(() => formatDateInputLabel(customApiWindowStartDate.value))
 const customApiWindowEndLabel = computed(() => formatDateInputLabel(customApiWindowEndDate.value))
-const customCalendarMonths = computed<ApiWindowCalendarMonth[]>(() => [
-  buildCalendarMonth(customCalendarMonth.value),
-  buildCalendarMonth(addMonths(customCalendarMonth.value, 1)),
-])
 const file1SystemLabel = computed(() => {
   const option = selectedSystemOptions.value.find((systemOption) => systemOption.enumId === file1SystemEnumId.value)
   return option?.label || option?.enumCode || option?.enumId || ''
@@ -575,14 +566,12 @@ function chooseApiWindowPresetChoice(value: string): void {
 function chooseApiWindowPreset(preset: ApiWindowPreset): void {
   apiWindowPreset.value = preset
   if (preset !== 'custom') {
-    customApiWindowStartDate.value = ''
-    customApiWindowEndDate.value = ''
-    customApiWindowSelecting.value = 'start'
+    calendar.reset()
     return
   }
 
-  customApiWindowSelecting.value = customApiWindowStartDate.value ? 'end' : 'start'
-  customCalendarMonth.value = clampCustomCalendarMonth(customApiWindowStartDateValue.value ?? getDefaultCustomCalendarMonth())
+  calendar.setSelectionSide(customApiWindowStartDate.value ? 'end' : 'start')
+  calendar.focusVisibleMonthAroundStart()
   currentStepIndex.value = Math.min(currentStepIndex.value + 1, workflowSteps.value.length - 1)
   void focusCurrentStepControlOnNextTick()
 }
@@ -617,23 +606,13 @@ function buildPresetApiWindowRange(preset: Exclude<ApiWindowPreset, 'custom'>): 
 }
 
 function buildCustomApiWindowRange(): ApiWindowRange | null {
-  const startDate = parseDateInput(customApiWindowStartDate.value)
-  const endDate = parseDateInput(customApiWindowEndDate.value)
-  const today = startOfLocalDay(new Date())
-  if (
-    !startDate ||
-    !endDate ||
-    startDate.getTime() > endDate.getTime() ||
-    startDate.getTime() > today.getTime() ||
-    endDate.getTime() > today.getTime()
-  ) {
-    return null
-  }
+  const calendarRange = calendar.range.value
+  if (!calendarRange) return null
 
+  const inclusiveEndDate = customApiWindowEndDateValue.value ?? calendarRange.endExclusiveDate
   return {
-    startDate,
-    endExclusiveDate: addDays(endDate, 1),
-    summary: formatDateRangeLabel(startDate, endDate),
+    ...calendarRange,
+    summary: formatDateRangeLabel(calendarRange.startDate, inclusiveEndDate),
   }
 }
 
@@ -641,147 +620,17 @@ function formatApiWindowPresetOptionLabel(title: string, summary: string): strin
   return `${title}, ${summary}`
 }
 
-function parseDateInput(value: string): Date | null {
-  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return null
-
-  const year = Number(match[1])
-  const monthIndex = Number(match[2]) - 1
-  const day = Number(match[3])
-  const date = new Date(year, monthIndex, day)
-  if (date.getFullYear() !== year || date.getMonth() !== monthIndex || date.getDate() !== day) return null
-  return date
-}
-
 function formatDateInputLabel(value: string): string {
-  const date = parseDateInput(value)
-  if (!date) return 'mm/dd/yyyy'
-  return formatDateInputValue(date).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3/$1')
+  if (!value) return 'mm/dd/yyyy'
+  return value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3/$1')
 }
 
-function startOfLocalDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-}
-
-function startOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
-}
-
-function addDays(date: Date, dayCount: number): Date {
-  const nextDate = new Date(date)
-  nextDate.setDate(nextDate.getDate() + dayCount)
-  return nextDate
-}
-
-function addMonths(date: Date, monthCount: number): Date {
-  return new Date(date.getFullYear(), date.getMonth() + monthCount, 1)
-}
-
-function getDefaultCustomCalendarMonth(): Date {
-  return addMonths(startOfMonth(new Date()), -1)
-}
-
-function clampCustomCalendarMonth(date: Date): Date {
-  const monthStart = startOfMonth(date)
-  const latestMonthStart = getDefaultCustomCalendarMonth()
-  if (monthStart.getTime() > latestMonthStart.getTime()) return latestMonthStart
-  return monthStart
-}
-
-function formatDateInputValue(date: Date): string {
-  const year = date.getFullYear()
-  const month = `${date.getMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getDate()}`.padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function buildCalendarMonth(monthDate: Date): ApiWindowCalendarMonth {
-  const monthStart = startOfMonth(monthDate)
-  const firstCellDate = addDays(monthStart, -monthStart.getDay())
-  const cells = Array.from({ length: 42 }, (_, index) => {
-    const date = addDays(firstCellDate, index)
-    return {
-      key: formatDateInputValue(date),
-      date,
-      day: date.getDate(),
-      isCurrentMonth: date.getMonth() === monthStart.getMonth() && date.getFullYear() === monthStart.getFullYear(),
-    }
-  })
-
-  return {
-    key: formatDateInputValue(monthStart),
-    label: formatMonthLabel(monthStart),
-    cells,
-  }
-}
-
-function setCustomDateSelectionSide(side: CustomApiWindowSelectionSide): void {
-  customApiWindowSelecting.value = side
-}
-
-function shiftCustomCalendarMonth(monthCount: number): void {
-  if (!canShiftCustomCalendarMonth(monthCount)) return
-  customCalendarMonth.value = addMonths(customCalendarMonth.value, monthCount)
-}
-
-function canShiftCustomCalendarMonth(monthCount: number): boolean {
-  const nextMonth = addMonths(customCalendarMonth.value, monthCount)
-  return nextMonth.getTime() <= getDefaultCustomCalendarMonth().getTime()
-}
-
-function isCustomCalendarDateDisabled(date: Date): boolean {
-  return startOfLocalDay(date).getTime() > startOfLocalDay(new Date()).getTime()
-}
-
-function isCustomCalendarCellDisabled(cell: ApiWindowCalendarCell): boolean {
-  return !cell.isCurrentMonth || isCustomCalendarDateDisabled(cell.date)
-}
-
-function selectCustomCalendarDate(cell: ApiWindowCalendarCell): void {
-  if (isCustomCalendarCellDisabled(cell)) return
-
-  const selectedDate = startOfLocalDay(cell.date)
-  const selectedDateValue = formatDateInputValue(selectedDate)
-  const selectedStartDate = customApiWindowStartDateValue.value
-  const selectedEndDate = customApiWindowEndDateValue.value
-
-  if (customApiWindowSelecting.value === 'start' || (selectedStartDate && selectedEndDate)) {
-    customApiWindowStartDate.value = selectedDateValue
-    customApiWindowEndDate.value = ''
-    customApiWindowSelecting.value = 'end'
-    return
-  }
-
-  if (selectedStartDate && selectedDate.getTime() < selectedStartDate.getTime()) {
-    customApiWindowStartDate.value = selectedDateValue
-    customApiWindowEndDate.value = ''
-    customApiWindowSelecting.value = 'end'
-    return
-  }
-
-  customApiWindowEndDate.value = selectedDateValue
-  customApiWindowSelecting.value = 'start'
-}
-
-function customCalendarCellClasses(cell: ApiWindowCalendarCell): Record<string, boolean> {
-  const isDisabled = isCustomCalendarCellDisabled(cell)
-  const startDate = customApiWindowStartDateValue.value
-  const endDate = customApiWindowEndDateValue.value
-  const cellTime = startOfLocalDay(cell.date).getTime()
-  const startTime = startDate?.getTime()
-  const endTime = endDate?.getTime()
-  const isRangeStart = !isDisabled && startTime === cellTime
-  const isRangeEnd = !isDisabled && endTime === cellTime
-  const isInRange = !isDisabled && startTime !== undefined && endTime !== undefined && startTime < cellTime && cellTime < endTime
-
-  return {
-    'wizard-api-calendar-day--outside': !cell.isCurrentMonth,
-    'wizard-api-calendar-day--disabled': isDisabled,
-    'wizard-api-calendar-day--range-start': isRangeStart,
-    'wizard-api-calendar-day--range-end': isRangeEnd,
-    'wizard-api-calendar-day--in-range': isInRange,
-  }
-}
+const setCustomDateSelectionSide = calendar.setSelectionSide
+const shiftCustomCalendarMonth = calendar.shiftMonth
+const canShiftCustomCalendarMonth = calendar.canShiftMonth
+const isCustomCalendarCellDisabled = calendar.isCellDisabled
+const selectCustomCalendarDate = calendar.selectCell
+const customCalendarCellClasses = calendar.cellClasses
 
 function formatDateForPayload(date: Date): string {
   return date.toISOString()
@@ -793,10 +642,6 @@ function formatDateLabel(date: Date): string {
 
 function formatDateRangeLabel(startDate: Date, endDate: Date): string {
   return `${formatDateLabel(startDate)} to ${formatDateLabel(endDate)}`
-}
-
-function formatMonthLabel(date: Date): string {
-  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(date)
 }
 
 function normalizeExpectedFileType(rawType?: string | null): ExpectedFileType {
@@ -822,35 +667,8 @@ function buildFilePlaceholder(systemName: string, expectedFileType: ExpectedFile
   return `Choose the ${systemName}${fileTypeLabel} file to upload...`
 }
 
-function clearRunState(): void {
-  runError.value = null
-  validationErrors.value = []
-  processingWarnings.value = []
-}
-
-function clearLatestSavedOutputState(): void {
-  latestSavedOutput.value = null
-  latestSavedOutputLoading.value = false
-  latestSavedOutputError.value = null
-}
-
-function readFailedRunFeedback(error: ApiCallError): FailedRunFeedback {
-  const details = (error.details ?? {}) as {
-    result?: {
-      validationErrors?: unknown
-      processingWarnings?: unknown
-    }
-  }
-
-  return {
-    validationErrors: Array.isArray(details.result?.validationErrors)
-      ? details.result.validationErrors.map((item) => String(item))
-      : [],
-    processingWarnings: Array.isArray(details.result?.processingWarnings)
-      ? details.result.processingWarnings.map((item) => String(item))
-      : [],
-  }
-}
+const clearRunState = diff.clearRunState
+const clearLatestSavedOutputState = diff.clearLatestSavedOutputState
 
 function shouldKeepPendingRunAfterRunError(error: unknown): boolean {
   if (!(error instanceof ApiCallError)) return false
@@ -890,10 +708,7 @@ function resetWorkflow(): void {
   file1.value = null
   file2.value = null
   apiWindowPreset.value = ''
-  customApiWindowStartDate.value = ''
-  customApiWindowEndDate.value = ''
-  customApiWindowSelecting.value = 'start'
-  customCalendarMonth.value = getDefaultCustomCalendarMonth()
+  calendar.reset()
   inputResetKey.value += 1
 }
 
@@ -926,58 +741,18 @@ function syncSelectedSystems(savedRun: SavedRunSummary | null): void {
 }
 
 async function loadSavedRuns(): Promise<void> {
-  loadingMappings.value = true
-  loadError.value = null
-
-  try {
-    const response = await reconciliationFacade.listSavedRuns({
-      pageIndex: 0,
-      pageSize: 50,
-      query: '',
-    })
-    savedRuns.value = response.savedRuns ?? []
-    if (requestedSavedRunId.value && savedRuns.value.some((savedRun) => savedRun.savedRunId === requestedSavedRunId.value)) {
-      selectedSavedRunId.value = requestedSavedRunId.value
-    }
-    syncSelectedSystems(selectedSavedRun.value)
-  } catch (error) {
-    loadError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved runs.'
-  } finally {
-    loadingMappings.value = false
+  await diff.loadSavedRuns()
+  if (loadError.value) return
+  if (
+    requestedSavedRunId.value &&
+    savedRuns.value.some((savedRun) => savedRun.savedRunId === requestedSavedRunId.value)
+  ) {
+    selectedSavedRunId.value = requestedSavedRunId.value
   }
+  syncSelectedSystems(selectedSavedRun.value)
 }
 
-async function loadLatestSavedOutput(savedRunId: string): Promise<void> {
-  const normalizedSavedRunId = savedRunId.trim()
-  if (!normalizedSavedRunId) {
-    clearLatestSavedOutputState()
-    return
-  }
-
-  latestSavedOutputLoading.value = true
-  latestSavedOutputError.value = null
-  latestSavedOutput.value = null
-
-  try {
-    const response = await reconciliationFacade.listGeneratedOutputs({
-      savedRunId: normalizedSavedRunId,
-      pageIndex: 0,
-      pageSize: 1,
-      query: '',
-    })
-
-    if (selectedSavedRunId.value !== normalizedSavedRunId) return
-    latestSavedOutput.value = response.generatedOutputs?.[0] ?? null
-  } catch (error) {
-    if (selectedSavedRunId.value !== normalizedSavedRunId) return
-    latestSavedOutput.value = null
-    latestSavedOutputError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved results.'
-  } finally {
-    if (selectedSavedRunId.value === normalizedSavedRunId) {
-      latestSavedOutputLoading.value = false
-    }
-  }
-}
+const loadLatestSavedOutput = diff.loadLatestSavedOutput
 
 function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -1111,62 +886,58 @@ async function runDiff(): Promise<void> {
     return
   }
 
-  clearRunState()
-  running.value = true
   pendingSubmittedRun.value = null
   let pendingRun: PendingReconciliationRun | null = null
 
+  const payload: RunSavedRunDiffPayload = {
+    savedRunId: selectedSavedRun.value.savedRunId,
+    file1SystemEnumId: file1SystemEnumId.value,
+    file2SystemEnumId: file2SystemEnumId.value,
+    hasHeader: true,
+  }
+
+  if (apiWindowRange) {
+    payload.windowStartDate = formatDateForPayload(apiWindowRange.startDate)
+    payload.windowEndDate = formatDateForPayload(apiWindowRange.endExclusiveDate)
+    payload.windowStartLocalDate = formatDateInputValue(apiWindowRange.startDate)
+    payload.windowEndLocalDate = formatDateInputValue(apiWindowRange.endExclusiveDate)
+  }
+
+  const uploadSourcePayloads = await Promise.all([
+    file1UsesApi.value
+      ? Promise.resolve({ error: null, payload: {} })
+      : readUploadSourcePayload({
+          file: file1.value,
+          fileNameKey: 'file1Name',
+          fileTextKey: 'file1Text',
+          systemName: file1PromptSystemName.value,
+          expectedFileType: file1ExpectedFileType.value,
+        }),
+    file2UsesApi.value
+      ? Promise.resolve({ error: null, payload: {} })
+      : readUploadSourcePayload({
+          file: file2.value,
+          fileNameKey: 'file2Name',
+          fileTextKey: 'file2Text',
+          systemName: file2PromptSystemName.value,
+          expectedFileType: file2ExpectedFileType.value,
+        }),
+  ])
+  const uploadError = uploadSourcePayloads.find((sourcePayload) => sourcePayload.error)?.error
+  if (uploadError) {
+    runError.value = uploadError
+    return
+  }
+  uploadSourcePayloads.forEach((sourcePayload) => Object.assign(payload, sourcePayload.payload))
+
+  if (reconciliationRunRouteContext.value) {
+    pendingRun = recordPendingReconciliationRun(reconciliationRunRouteContext.value)
+    pendingSubmittedRun.value = pendingRun
+  }
+
   try {
-    const payload: Record<string, unknown> = {
-      savedRunId: selectedSavedRun.value.savedRunId,
-      file1SystemEnumId: file1SystemEnumId.value,
-      file2SystemEnumId: file2SystemEnumId.value,
-      hasHeader: true,
-    }
-
-    if (apiWindowRange) {
-      payload.windowStartDate = formatDateForPayload(apiWindowRange.startDate)
-      payload.windowEndDate = formatDateForPayload(apiWindowRange.endExclusiveDate)
-      payload.windowStartLocalDate = formatDateInputValue(apiWindowRange.startDate)
-      payload.windowEndLocalDate = formatDateInputValue(apiWindowRange.endExclusiveDate)
-    }
-
-    const uploadSourcePayloads = await Promise.all([
-      file1UsesApi.value
-        ? Promise.resolve({ error: null, payload: {} })
-        : readUploadSourcePayload({
-            file: file1.value,
-            fileNameKey: 'file1Name',
-            fileTextKey: 'file1Text',
-            systemName: file1PromptSystemName.value,
-            expectedFileType: file1ExpectedFileType.value,
-          }),
-      file2UsesApi.value
-        ? Promise.resolve({ error: null, payload: {} })
-        : readUploadSourcePayload({
-            file: file2.value,
-            fileNameKey: 'file2Name',
-            fileTextKey: 'file2Text',
-            systemName: file2PromptSystemName.value,
-            expectedFileType: file2ExpectedFileType.value,
-          }),
-    ])
-    const uploadError = uploadSourcePayloads.find((sourcePayload) => sourcePayload.error)?.error
-    if (uploadError) {
-      runError.value = uploadError
-      return
-    }
-    uploadSourcePayloads.forEach((sourcePayload) => Object.assign(payload, sourcePayload.payload))
-
-    if (reconciliationRunRouteContext.value) {
-      pendingRun = recordPendingReconciliationRun(reconciliationRunRouteContext.value)
-      pendingSubmittedRun.value = pendingRun
-    }
-
-    const response = await reconciliationFacade.runSavedRunDiff(payload)
-
-    validationErrors.value = response.runResult?.validationErrors ?? []
-    processingWarnings.value = response.runResult?.processingWarnings ?? []
+    const response = await diff.submitDiff(payload)
+    if (!response) return
 
     const generatedOutput = response.runResult?.generatedOutput ?? null
     if (!generatedOutput?.fileName?.trim()) {
@@ -1189,16 +960,6 @@ async function runDiff(): Promise<void> {
       clearPendingReconciliationRun(pendingRun?.pendingRunId)
       pendingSubmittedRun.value = null
     }
-    if (error instanceof ApiCallError) {
-      const failedFeedback = readFailedRunFeedback(error)
-      validationErrors.value = failedFeedback.validationErrors
-      processingWarnings.value = failedFeedback.processingWarnings
-      runError.value = error.message
-    } else {
-      runError.value = 'Unable to run the diff.'
-    }
-  } finally {
-    running.value = false
   }
 }
 

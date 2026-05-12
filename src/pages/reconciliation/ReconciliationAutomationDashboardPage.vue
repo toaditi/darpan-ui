@@ -20,6 +20,7 @@
               class="app-icon-action static-page-section-edit-action"
               data-testid="automation-edit-action"
               aria-label="Edit automation"
+              @click="setAutomationOrigin"
             >
               <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                 <path :d="editIconPath" />
@@ -37,6 +38,7 @@
                 :to="savedRunRoute"
                 class="automation-dashboard-run-link"
                 data-testid="automation-saved-run-link"
+                @click="setAutomationOrigin"
               >
                 {{ savedRunLabel }}
               </RouterLink>
@@ -177,7 +179,8 @@ import StatusBadge from '../../components/ui/StatusBadge.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { reconciliationFacade } from '../../lib/api/facade'
 import type { AutomationExecutionSummary, AutomationRecord } from '../../lib/api/types'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
 import {
   AUTOMATION_WINDOW_CUSTOM,
   AUTOMATION_WINDOW_LAST_DAYS,
@@ -193,10 +196,10 @@ import {
 } from '../../lib/reconciliationRoutes'
 import { useListPagination } from '../../lib/listPagination'
 import { fileNameFromPath, humanizeToken, normalizeDisplayText } from '../../lib/reconciliationDisplay'
-import { buildSavedRunEditorRoute } from '../../lib/savedRunEditorRoute'
+import { buildRuleSetDraft, buildSavedRunEditorRoute } from '../../lib/savedRunEditorRoute'
 import { backIconPath, editIconPath, trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import { formatDateTime } from '../../lib/utils/date'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 
 const columns = [
   { key: 'status', label: 'Status', colStyle: { width: '16%' } },
@@ -211,8 +214,9 @@ type AutomationExecutionTableRow = Record<string, unknown> & {
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 const automation = ref<AutomationRecord | null>(null)
 const executions = ref<AutomationExecutionSummary[]>([])
 const loading = ref(false)
@@ -231,9 +235,8 @@ const weekdayLabels: Record<string, string> = {
 
 const automationId = computed(() => (typeof route.params.automationId === 'string' ? route.params.automationId.trim() : ''))
 const heroTitle = computed(() => automation.value?.automationName || 'Automation')
-const workflowOriginState = computed(() => buildWorkflowOriginState(heroTitle.value, route.fullPath || `/reconciliation/automations/${automationId.value}`))
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
-const canRunActiveTenantReconciliation = computed(() => permissions.canRunActiveTenantReconciliation)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
+const canRunActiveTenantReconciliation = computed(() => permissionsStore.canRunActiveTenantReconciliation)
 const canEditAutomation = computed(() => canEditTenantSettings.value && automation.value?.permissions?.canEdit !== false)
 const canDeleteAutomation = computed(() => canEditTenantSettings.value && automation.value?.permissions?.canDelete === true)
 const canRunAutomation = computed(() => canRunActiveTenantReconciliation.value && automation.value?.permissions?.canRunNow !== false)
@@ -248,7 +251,7 @@ const windowLabel = computed(() => {
   }
   return windowDisplayLabel(row)
 })
-const tenantTimeZone = computed(() => normalizeDisplayText(authState.sessionInfo?.timeZone))
+const tenantTimeZone = computed(() => normalizeDisplayText(authStore.sessionInfo?.timeZone))
 const previousRunTime = computed(() => (
   automation.value?.lastExecution?.scheduledDate ||
   automation.value?.lastExecution?.completedDate ||
@@ -256,14 +259,13 @@ const previousRunTime = computed(() => (
   automation.value?.lastScheduledFireTime
 ))
 const savedRunRoute = computed<RouteLocationRaw | null>(() => {
-  if (automation.value?.savedRun) return buildSavedRunEditorRoute(automation.value.savedRun, workflowOriginState.value)
+  if (automation.value?.savedRun) return buildSavedRunEditorRoute(automation.value.savedRun)
 
   const savedRunId = automation.value?.reconciliationMappingId || automation.value?.ruleSetId || automation.value?.savedRunId
   if (!savedRunId) return null
   return {
     name: 'settings-runs-edit',
     params: { reconciliationMappingId: savedRunId },
-    state: workflowOriginState.value,
   }
 })
 const reconciliationRunRouteContext = computed<ReconciliationRunRouteContext | null>(() => {
@@ -281,7 +283,6 @@ const reconciliationRunRouteContext = computed<ReconciliationRunRouteContext | n
 const editRoute = computed<RouteLocationRaw>(() => ({
   name: 'reconciliation-automation-edit',
   params: { automationId: automationId.value },
-  state: workflowOriginState.value,
 }))
 const sortedExecutions = computed(() => [...executions.value].sort((left, right) => executionTime(right) - executionTime(left)))
 const {
@@ -296,6 +297,15 @@ const tableRows = computed<AutomationExecutionTableRow[]>(() =>
     execution,
   })),
 )
+
+function setAutomationOrigin(): void {
+  draftStore.setWorkflowOrigin(heroTitle.value, route.fullPath || `/reconciliation/automations/${automationId.value}`)
+  const savedRun = automation.value?.savedRun
+  if (savedRun && savedRun.runType === 'ruleset') {
+    const draft = buildRuleSetDraft(savedRun)
+    if (draft) draftStore.setRuleSetDraft(draft, 'ruleset-manager')
+  }
+}
 
 function executionRow(row: Record<string, unknown>): AutomationExecutionSummary {
   return (row as AutomationExecutionTableRow).execution

@@ -35,6 +35,30 @@ vi.mock('../../lib/auth', () => ({
   }),
 }))
 
+vi.mock('../../stores/auth', () => ({
+  buildAuthRedirect: (redirect: unknown) => ({ name: 'login', query: { redirect } }),
+  useAuthStore: () => ({
+    username: 'john.doe',
+    userId: 'aditi',
+    sessionInfo: { userId: 'aditi', username: 'john.doe' },
+    ensureAuthenticated,
+  }),
+}))
+
+vi.mock('../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
+  }),
+}))
+
 vi.mock('../../lib/api/facade', () => ({
   reconciliationFacade: {
     listSavedRuns,
@@ -108,17 +132,9 @@ describe('HomePage', () => {
         file1SystemLabel: 'OMS',
         file2SystemLabel: 'SHOPIFY',
       },
-      state: {
-        workflowOriginLabel: 'Dashboard',
-        workflowOriginPath: '/',
-      },
     })
     expect(JSON.parse(wrapper.get('[data-testid="dashboard-create-action"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-create',
-      state: {
-        workflowOriginLabel: 'Dashboard',
-        workflowOriginPath: '/',
-      },
     })
     expect(wrapper.get('[data-testid="other-runs-more"]').text()).toBe('More...')
 
@@ -224,10 +240,6 @@ describe('HomePage', () => {
     expect(wrapper.get('[data-testid="other-runs-empty-action"]').text()).toBe('Create Run')
     expect(JSON.parse(wrapper.get('[data-testid="other-runs-empty-action"]').attributes('data-to') ?? '{}')).toEqual({
       name: 'reconciliation-create',
-      state: {
-        workflowOriginLabel: 'Dashboard',
-        workflowOriginPath: '/',
-      },
     })
     expect(wrapper.findAll('[data-testid="other-runs"] .static-page-tile')).toHaveLength(0)
   })

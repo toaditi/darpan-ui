@@ -20,6 +20,7 @@
               class="app-icon-action static-page-section-edit-action"
               data-testid="oms-auth-edit-action"
               aria-label="Edit HotWax Auth"
+              @click="draftStore.setWorkflowOrigin(heroTitle, route.fullPath || `/settings/hotwax/auth/${configId}`)"
             >
               <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                 <path :d="editIconPath" />
@@ -124,17 +125,19 @@ import StaticPageSection from '../../components/ui/StaticPageSection.vue'
 import { ApiCallError } from '../../lib/api/client'
 import { settingsFacade } from '../../lib/api/facade'
 import type { OmsRestSourceConfigRecord } from '../../lib/api/types'
-import { useAuthState, useUiPermissions } from '../../lib/auth'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionsStore } from '../../stores/permissions'
+import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
 import { backIconPath, editIconPath, listIconPath, trashIconPath, trashIconTransform } from '../../lib/iconPaths'
 import { OMS_ORDERS_ENDPOINT_DOC } from '../../lib/omsSwagger'
 import { resolveRecordLabel } from '../../lib/utils/recordLabel'
 import { filterRecordsForActiveTenant } from '../../lib/utils/tenantRecords'
-import { buildWorkflowOriginState } from '../../lib/workflowOrigin'
 
 const route = useRoute()
 const router = useRouter()
-const authState = useAuthState()
-const permissions = useUiPermissions()
+const authStore = useAuthStore()
+const permissionsStore = usePermissionsStore()
+const draftStore = useReconciliationDraftStore()
 
 const config = ref<OmsRestSourceConfigRecord | null>(null)
 const loading = ref(false)
@@ -144,7 +147,7 @@ const deleteError = ref<string | null>(null)
 const ordersEndpoint = OMS_ORDERS_ENDPOINT_DOC
 
 const configId = computed(() => String(route.params.omsRestSourceConfigId ?? '').trim())
-const canEditTenantSettings = computed(() => permissions.canEditTenantSettings)
+const canEditTenantSettings = computed(() => permissionsStore.canEditTenantSettings)
 const heroTitle = computed(() => (
   config.value
     ? resolveRecordLabel({ description: config.value.description, fallbackId: config.value.omsRestSourceConfigId })
@@ -155,11 +158,9 @@ const activeLabel = computed(() => (config.value?.isActive === 'N' ? 'No' : 'Yes
 const availableEndpoints = computed(() => (
   config.value?.canReadOrders === false ? [] : [ordersEndpoint]
 ))
-const workflowOriginState = computed(() => buildWorkflowOriginState(heroTitle.value, route.fullPath || `/settings/hotwax/auth/${configId.value}`))
 const editRoute = computed(() => ({
   name: 'settings-oms-edit',
   params: { omsRestSourceConfigId: configId.value },
-  state: workflowOriginState.value,
 }))
 
 async function load(): Promise<void> {
@@ -175,7 +176,7 @@ async function load(): Promise<void> {
     const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 })
     const matchingConfig = filterRecordsForActiveTenant(
       response.omsRestSourceConfigs ?? [],
-      authState.sessionInfo?.activeTenantUserGroupId ?? null,
+      authStore.sessionInfo?.activeTenantUserGroupId ?? null,
     ).find((record) => record.omsRestSourceConfigId === configId.value)
     if (!matchingConfig) {
       error.value = `Unable to find HotWax auth config "${configId.value}".`

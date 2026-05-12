@@ -29,18 +29,45 @@ vi.mock('../../../lib/api/facade', () => ({
   },
 }))
 
+const permissionsShape = {
+  get canEditTenantSettings() {
+    return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+  },
+  get canManageGlobalSettings() {
+    return authState.sessionInfo.isSuperAdmin === true
+  },
+  get canViewTenantSettings() {
+    return Boolean(authState.sessionInfo.userId)
+  },
+  get canRunActiveTenantReconciliation() {
+    return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
+  },
+}
+
 vi.mock('../../../lib/auth', () => ({
   useAuthState: () => authState,
-  useUiPermissions: () => ({
-    get canEditTenantSettings() {
-      return authState.sessionInfo.canEditActiveTenantData === true || authState.sessionInfo.isSuperAdmin === true
-    },
-    get canManageGlobalSettings() {
-      return authState.sessionInfo.isSuperAdmin === true
-    },
-    get canViewTenantSettings() {
-      return Boolean(authState.sessionInfo.userId)
-    },
+  useUiPermissions: () => permissionsShape,
+}))
+
+vi.mock('../../../stores/auth', () => ({
+  useAuthStore: () => ({ ...authState, sessionInfo: authState.sessionInfo }),
+}))
+
+vi.mock('../../../stores/permissions', () => ({
+  usePermissionsStore: () => permissionsShape,
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => ({
+    workflowOrigin: null,
+    ruleSetDraftState: null,
+    automationDraftState: null,
+    setWorkflowOrigin: vi.fn(),
+    clearWorkflowOrigin: vi.fn(),
+    setRuleSetDraft: vi.fn(),
+    clearRuleSetDraft: vi.fn(),
+    setAutomationDraft: vi.fn(),
+    clearAutomationDraft: vi.fn(),
   }),
 }))
 

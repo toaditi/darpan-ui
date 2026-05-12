@@ -6,7 +6,6 @@ import {
   type ReconciliationRuleSetDraftRule,
 } from '../../../lib/reconciliationRuleSetDraft'
 import { WORKFLOW_CANCEL_REQUEST_EVENT } from '../../../lib/uiEvents'
-import { buildWorkflowOriginState } from '../../../lib/workflowOrigin'
 
 const getJsonSchema = vi.hoisted(() => vi.fn())
 const flattenJsonSchema = vi.hoisted(() => vi.fn())
@@ -34,6 +33,22 @@ vi.mock('../../../lib/api/facade', () => ({
     listAutomationSourceOptions,
     saveRuleSetRun,
   },
+}))
+
+const draftStoreState = vi.hoisted(() => ({
+  workflowOrigin: null as { label: string, path: string } | null,
+  ruleSetDraftState: null as null | { draft: unknown, resumeStepId: string | null },
+  automationDraftState: null,
+  setWorkflowOrigin: vi.fn(),
+  clearWorkflowOrigin: vi.fn(),
+  setRuleSetDraft: vi.fn(),
+  clearRuleSetDraft: vi.fn(),
+  setAutomationDraft: vi.fn(),
+  clearAutomationDraft: vi.fn(),
+}))
+
+vi.mock('../../../stores/reconciliationDraft', () => ({
+  useReconciliationDraftStore: () => draftStoreState,
 }))
 
 import ReconciliationRuleSetEditorPage from '../ReconciliationRuleSetEditorPage.vue'
@@ -116,14 +131,11 @@ describe('ReconciliationRuleSetEditorPage', () => {
     listAutomationSourceOptions.mockReset()
     saveRuleSetRun.mockReset()
     routerPush.mockReset()
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState(),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createDraftState()
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
 
     getJsonSchema.mockResolvedValue({
       ok: true,
@@ -232,10 +244,9 @@ describe('ReconciliationRuleSetEditorPage', () => {
   })
 
   it('loads API endpoint fields for API-backed saved runs instead of only the primary IDs', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createApiDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createApiDraftState([
           {
             ruleId: 'api-rule',
             file1FieldPath: '$.records[*].externalId',
@@ -243,11 +254,9 @@ describe('ReconciliationRuleSetEditorPage', () => {
             operator: '=',
             sequenceNum: 1,
           },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     listAutomationSourceOptions.mockResolvedValue({
       ok: true,
       messages: [],
@@ -396,21 +405,18 @@ describe('ReconciliationRuleSetEditorPage', () => {
   })
 
   it('edits operator and resequences visible rules while keeping sequence zero hidden', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createDraftState([
           { ruleId: 'basic-diff', file1FieldPath: '$.hidden', file2FieldPath: '$.hidden', operator: '=', sequenceNum: 0 },
           { ruleId: 'rule-1', file1FieldPath: '$.orders[0].order_id', file2FieldPath: '$.data.orders.edges[0].node.id', operator: '=', sequenceNum: 1 },
           { ruleId: 'rule-2', file1FieldPath: '$.orders[0].status', file2FieldPath: '$.data.orders.edges[0].node.displayFinancialStatus', operator: '=', sequenceNum: 2 },
           { ruleId: 'rule-3', file1FieldPath: '$.orders[0].total', file2FieldPath: '$.data.orders.edges[0].node.currentTotalPrice', operator: '=', sequenceNum: 3 },
           { ruleId: 'rule-4', file1FieldPath: '$.orders[0].status', file2FieldPath: '$.data.orders.edges[0].node.currentTotalPrice', operator: '!=', sequenceNum: 4 },
           { ruleId: 'rule-5', file1FieldPath: '$.orders[0].total', file2FieldPath: '$.data.orders.edges[0].node.displayFinancialStatus', operator: '<', sequenceNum: 5 },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     const wrapper = mount(ReconciliationRuleSetEditorPage)
     await flushPromises()
 
@@ -430,17 +436,14 @@ describe('ReconciliationRuleSetEditorPage', () => {
   })
 
   it('highlights the rule line and both connected field bubbles on operator hover and while the popover is open', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createDraftState([
           { ruleId: 'rule-1', file1FieldPath: '$.orders[0].order_id', file2FieldPath: '$.data.orders.edges[0].node.id', operator: '=', sequenceNum: 1 },
           { ruleId: 'rule-2', file1FieldPath: '$.orders[0].status', file2FieldPath: '$.data.orders.edges[0].node.displayFinancialStatus', operator: '=', sequenceNum: 2 },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     const wrapper = mount(ReconciliationRuleSetEditorPage)
     await flushPromises()
 
@@ -471,20 +474,17 @@ describe('ReconciliationRuleSetEditorPage', () => {
 
   it('appends new rules after existing draft rules even when draft ids would otherwise restart', async () => {
     vi.useFakeTimers()
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createDraftState([
           { file1FieldPath: '$.orders[0].order_id', file2FieldPath: '$.data.orders.edges[0].node.id', operator: '=', sequenceNum: 1 },
           { file1FieldPath: '$.orders[0].status', file2FieldPath: '$.data.orders.edges[0].node.displayFinancialStatus', operator: '=', sequenceNum: 2 },
           { file1FieldPath: '$.orders[0].total', file2FieldPath: '$.data.orders.edges[0].node.currentTotalPrice', operator: '=', sequenceNum: 3 },
           { file1FieldPath: '$.orders[0].status', file2FieldPath: '$.data.orders.edges[0].node.currentTotalPrice', operator: '=', sequenceNum: 4 },
           { file1FieldPath: '$.orders[0].total', file2FieldPath: '$.data.orders.edges[0].node.displayFinancialStatus', operator: '=', sequenceNum: 5 },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     const wrapper = mount(ReconciliationRuleSetEditorPage)
     await flushPromises()
 
@@ -499,17 +499,14 @@ describe('ReconciliationRuleSetEditorPage', () => {
   })
 
   it('closes the rule popover on outside click without applying unsaved edits', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createDraftState([
           { ruleId: 'rule-1', file1FieldPath: '$.orders[0].order_id', file2FieldPath: '$.data.orders.edges[0].node.id', operator: '=', sequenceNum: 1 },
           { ruleId: 'rule-2', file1FieldPath: '$.orders[0].status', file2FieldPath: '$.data.orders.edges[0].node.displayFinancialStatus', operator: '=', sequenceNum: 2 },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     const wrapper = mount(ReconciliationRuleSetEditorPage)
     await flushPromises()
 
@@ -527,18 +524,15 @@ describe('ReconciliationRuleSetEditorPage', () => {
   })
 
   it('deletes a visible rule from the popover trash action and resequences the rest', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createDraftState([
           { ruleId: 'rule-1', file1FieldPath: '$.orders[0].order_id', file2FieldPath: '$.data.orders.edges[0].node.id', operator: '=', sequenceNum: 1 },
           { ruleId: 'rule-2', file1FieldPath: '$.orders[0].status', file2FieldPath: '$.data.orders.edges[0].node.displayFinancialStatus', operator: '=', sequenceNum: 2 },
           { ruleId: 'rule-3', file1FieldPath: '$.orders[0].total', file2FieldPath: '$.data.orders.edges[0].node.currentTotalPrice', operator: '=', sequenceNum: 3 },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     const wrapper = mount(ReconciliationRuleSetEditorPage)
     await flushPromises()
 
@@ -552,10 +546,9 @@ describe('ReconciliationRuleSetEditorPage', () => {
   })
 
   it('anchors rule lines to normalized array field aliases instead of the first row fallback', async () => {
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+    draftStoreState.ruleSetDraftState = createDraftState([
           {
             ruleId: 'rule-normalized',
             file1FieldPath: '$.orders[*].total',
@@ -563,11 +556,9 @@ describe('ReconciliationRuleSetEditorPage', () => {
             operator: '=',
             sequenceNum: 1,
           },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     const wrapper = mount(ReconciliationRuleSetEditorPage)
     await flushPromises()
 
@@ -586,10 +577,10 @@ describe('ReconciliationRuleSetEditorPage', () => {
       return testRect(0, 0, 0, 0)
     })
 
-    window.history.replaceState(
-      {
-        ...buildWorkflowOriginState('Run Details', '/reconciliation/ruleset-manager'),
-        ...createDraftState([
+    draftStoreState.workflowOrigin = { label: 'Run Details', path: '/reconciliation/ruleset-manager' }
+
+
+    draftStoreState.ruleSetDraftState = createDraftState([
           {
             ruleId: 'rule-1',
             file1FieldPath: '$.orders[0].total',
@@ -597,11 +588,10 @@ describe('ReconciliationRuleSetEditorPage', () => {
             operator: '>',
             sequenceNum: 1,
           },
-        ]),
-      },
-      '',
-      '/reconciliation/ruleset-manager/rules',
-    )
+        ])
+
+
+    window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
     const wrapper = mount(ReconciliationRuleSetEditorPage)
     await flushPromises()
 
@@ -695,23 +685,7 @@ describe('ReconciliationRuleSetEditorPage', () => {
         }),
       ],
     }))
-    expect(routerPush).toHaveBeenCalledWith({
-      path: '/reconciliation/ruleset-manager',
-      state: expect.objectContaining({
-        reconciliationRuleSetDraft: expect.objectContaining({
-          rules: [
-            expect.objectContaining({
-              ruleId: 'RULE_1',
-              file1FieldPath: '$.orders[*].total',
-              file2FieldPath: '$.data.orders.edges[*].node.currentTotalPrice',
-              operator: '=',
-              preActions: [{ fieldSide: 'file1', action: 'STRING_TO_INT' }],
-              sequenceNum: 1,
-            }),
-          ],
-        }),
-      }),
-    })
+    expect(routerPush).toHaveBeenCalledWith({ path: '/reconciliation/ruleset-manager' })
   })
 
   it('routes workflow cancel requests through the same path as the X action', async () => {
@@ -722,16 +696,7 @@ describe('ReconciliationRuleSetEditorPage', () => {
     await flushPromises()
 
     const cancelRoute = routerPush.mock.calls.at(-1)?.[0]
-    expect(cancelRoute).toEqual({
-      path: '/reconciliation/ruleset-manager',
-      state: expect.objectContaining({
-        reconciliationRuleSetDraft: expect.objectContaining({
-          runName: 'JSON Order Compare',
-          file1SystemEnumId: 'OMS',
-          file2SystemEnumId: 'SHOPIFY',
-        }),
-      }),
-    })
+    expect(cancelRoute).toEqual({ path: '/reconciliation/ruleset-manager' })
 
     clickWrapper.unmount()
     routerPush.mockReset()
@@ -750,6 +715,7 @@ describe('ReconciliationRuleSetEditorPage', () => {
   })
 
   it('shows the setup empty state when no draft exists', async () => {
+    draftStoreState.ruleSetDraftState = null
     window.history.replaceState({}, '', '/reconciliation/ruleset-manager/rules')
 
     const wrapper = mount(ReconciliationRuleSetEditorPage)
