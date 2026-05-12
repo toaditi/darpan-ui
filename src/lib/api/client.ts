@@ -30,7 +30,32 @@ export class ApiCallError extends Error {
   }
 }
 
-export const AUTH_REQUIRED_EVENT = 'darpan:auth-required'
+export interface AuthRequiredDetail {
+  message: string
+  method: string
+  candidateUrl: string
+  status?: number
+}
+
+// AuthRequiredError extends ApiCallError so existing `instanceof ApiCallError`
+// catch sites (status === 401 branches) keep working unchanged.
+export class AuthRequiredError extends ApiCallError {
+  detail: AuthRequiredDetail
+
+  constructor(detail: AuthRequiredDetail, details?: Record<string, unknown>) {
+    super(detail.message, 401, details)
+    this.name = 'AuthRequiredError'
+    this.detail = detail
+  }
+}
+
+type AuthRequiredHandler = (detail: AuthRequiredDetail) => void
+
+let authRequiredHandler: AuthRequiredHandler | null = null
+
+export function setAuthRequiredHandler(handler: AuthRequiredHandler | null): void {
+  authRequiredHandler = handler
+}
 
 const AUTH_REQUIRED_MESSAGE = 'Your session has ended. Sign in again to continue.'
 const UNREACHABLE_MESSAGE = 'Unable to connect to Darpan right now. Try again in a moment.'
@@ -299,17 +324,12 @@ function looksLikeLoginHtml(body: string | null | undefined): boolean {
   )
 }
 
-function shouldDispatchAuthRequired(method: string): boolean {
+function shouldNotifyAuthRequired(method: string): boolean {
   return method !== AUTH_SESSION_INFO_METHOD
 }
 
-function dispatchAuthRequiredEvent(payload: { message: string; method: string; candidateUrl: string; status?: number }): void {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(
-    new CustomEvent(AUTH_REQUIRED_EVENT, {
-      detail: payload,
-    }),
-  )
+function notifyAuthRequired(detail: AuthRequiredDetail): void {
+  authRequiredHandler?.(detail)
 }
 
 function withMethodDetails(method: string, details: Record<string, unknown>): Record<string, unknown> {
@@ -319,7 +339,7 @@ function withMethodDetails(method: string, details: Record<string, unknown>): Re
   }
 }
 
-export async function callService<T>(method: string, params: object = {}): Promise<T> {
+export async function callService<T>(method: string, params: object = {}, signal?: AbortSignal): Promise<T> {
   const request: JsonRpcRequest = {
     jsonrpc: '2.0',
     id: Date.now(),
@@ -330,6 +350,10 @@ export async function callService<T>(method: string, params: object = {}): Promi
   const parseFailures: Array<{ url: string; status?: number; raw?: string; error?: unknown }> = []
 
   for (const candidateUrl of rpcCandidates) {
+    if (signal?.aborted) {
+      throw new DOMException('The operation was aborted.', 'AbortError')
+    }
+
     let response: Response
     try {
       response = await fetch(candidateUrl, {
@@ -337,8 +361,12 @@ export async function callService<T>(method: string, params: object = {}): Promi
         headers: buildHeaders(),
         credentials: 'omit',
         body: JSON.stringify(request),
+        signal,
       })
     } catch (error) {
+      if ((error as { name?: string })?.name === 'AbortError') {
+        throw error
+      }
       parseFailures.push({
         url: candidateUrl,
         error,
@@ -366,19 +394,18 @@ export async function callService<T>(method: string, params: object = {}): Promi
       const authRequired = response.status === 401 || isAuthRequiredMessage(message)
       if (authRequired) {
         clearAuthToken()
-        if (shouldDispatchAuthRequired(method)) {
-          dispatchAuthRequiredEvent({
-            message,
-            method,
-            candidateUrl,
-            status: 401,
-          })
+        const details = withMethodDetails(method, { candidateUrl, data: parsed.error?.data })
+        if (shouldNotifyAuthRequired(method)) {
+          const detail: AuthRequiredDetail = { message, method, candidateUrl, status: 401 }
+          notifyAuthRequired(detail)
+          throw new AuthRequiredError(detail, details)
         }
+        throw new ApiCallError(message, 401, details)
       }
 
       throw new ApiCallError(
         message,
-        authRequired ? 401 : response.status,
+        response.status,
         withMethodDetails(method, { candidateUrl, data: parsed.error?.data }),
       )
     }
@@ -387,19 +414,18 @@ export async function callService<T>(method: string, params: object = {}): Promi
       const authRequired = response.status === 401 || isAuthRequiredMessage(parsed.error.message)
       if (authRequired) {
         clearAuthToken()
-        if (shouldDispatchAuthRequired(method)) {
-          dispatchAuthRequiredEvent({
-            message: parsed.error.message,
-            method,
-            candidateUrl,
-            status: 401,
-          })
+        const details = withMethodDetails(method, { candidateUrl, data: parsed.error.data })
+        if (shouldNotifyAuthRequired(method)) {
+          const detail: AuthRequiredDetail = { message: parsed.error.message, method, candidateUrl, status: 401 }
+          notifyAuthRequired(detail)
+          throw new AuthRequiredError(detail, details)
         }
+        throw new ApiCallError(parsed.error.message, 401, details)
       }
 
       throw new ApiCallError(
         parsed.error.message,
-        authRequired ? 401 : response.status,
+        response.status,
         withMethodDetails(method, { candidateUrl, data: parsed.error.data }),
       )
     }
@@ -415,19 +441,18 @@ export async function callService<T>(method: string, params: object = {}): Promi
       const authRequired = isAuthRequiredMessage(message)
       if (authRequired) {
         clearAuthToken()
-        if (shouldDispatchAuthRequired(method)) {
-          dispatchAuthRequiredEvent({
-            message,
-            method,
-            candidateUrl,
-            status: 401,
-          })
+        const details = withMethodDetails(method, { candidateUrl, result })
+        if (shouldNotifyAuthRequired(method)) {
+          const detail: AuthRequiredDetail = { message, method, candidateUrl, status: 401 }
+          notifyAuthRequired(detail)
+          throw new AuthRequiredError(detail, details)
         }
+        throw new ApiCallError(message, 401, details)
       }
 
       throw new ApiCallError(
         message,
-        authRequired ? 401 : response.status,
+        response.status,
         withMethodDetails(method, { candidateUrl, result }),
       )
     }
@@ -451,23 +476,22 @@ export async function callService<T>(method: string, params: object = {}): Promi
 
   if (authLikeFailure) {
     clearAuthToken()
-    if (shouldDispatchAuthRequired(method)) {
-      dispatchAuthRequiredEvent({
+    const details = withMethodDetails(method, {
+      attemptedUrls,
+      failures: parseFailures,
+    })
+    if (shouldNotifyAuthRequired(method)) {
+      const detail: AuthRequiredDetail = {
         message: AUTH_REQUIRED_MESSAGE,
         method,
         candidateUrl: authLikeFailure.url,
         status: authLikeFailure.status ?? 401,
-      })
+      }
+      notifyAuthRequired(detail)
+      throw new AuthRequiredError({ ...detail, message: AUTH_REQUIRED_MESSAGE }, details)
     }
 
-    throw new ApiCallError(
-      AUTH_REQUIRED_MESSAGE,
-      401,
-      withMethodDetails(method, {
-        attemptedUrls,
-        failures: parseFailures,
-      }),
-    )
+    throw new ApiCallError(AUTH_REQUIRED_MESSAGE, 401, details)
   }
 
   if (allUnreachable) {

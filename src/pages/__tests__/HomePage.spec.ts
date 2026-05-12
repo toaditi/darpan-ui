@@ -142,7 +142,7 @@ describe('HomePage', () => {
       pageIndex: 0,
       pageSize: 12,
       query: '',
-    })
+    }, expect.any(AbortSignal))
 
     await wrapper.get('[data-testid="other-runs-more"]').trigger('click')
     await flushPromises()

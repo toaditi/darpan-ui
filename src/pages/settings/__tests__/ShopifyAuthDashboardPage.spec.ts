@@ -128,7 +128,7 @@ describe('ShopifyAuthDashboardPage', () => {
     const wrapper = mount(ShopifyAuthDashboardPage)
     await flushPromises()
 
-    expect(getShopifyAuthConfig).toHaveBeenCalledWith({ shopifyAuthConfigId: 'krewe-shopify' })
+    expect(getShopifyAuthConfig).toHaveBeenCalledWith({ shopifyAuthConfigId: 'krewe-shopify' }, expect.any(AbortSignal))
     expect(wrapper.text()).toContain('Krewe Shopify')
     expect(wrapper.text()).toContain('Auth')
     expect(wrapper.text()).toContain('Endpoints')

@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { reconciliationFacade } from '../../lib/api/facade'
@@ -43,10 +43,15 @@ const {
   error,
   load,
   goToPage,
+  dispose,
 } = useSettingsPagedList({
   loadPage: (request) => reconciliationFacade.listSavedRuns({ ...request, query: '' }),
   selectRecords: (response) => response.savedRuns ?? [],
   fallbackErrorMessage: 'Failed to load runs.',
+})
+
+onBeforeUnmount(() => {
+  dispose()
 })
 const recordTiles = computed(() => rows.value.map((row) => {
   const ruleSetDraft = row.runType === 'ruleset' ? buildRuleSetDraft(row) : null

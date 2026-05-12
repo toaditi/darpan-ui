@@ -167,7 +167,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import AppListPager from '../../components/ui/AppListPager.vue'
 import AppTableFrame from '../../components/ui/AppTableFrame.vue'
@@ -453,12 +453,20 @@ function openExecutionResult(payload: { row: Record<string, unknown> }): void {
   void router.push(route)
 }
 
-async function loadExecutions(): Promise<void> {
+const pageAbortController = new AbortController()
+let loadController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadController?.abort()
+})
+
+async function loadExecutions(signal?: AbortSignal): Promise<void> {
   const response = await reconciliationFacade.listAutomationExecutions({
     automationId: automationId.value,
     pageIndex: 0,
     pageSize: 200,
-  })
+  }, signal)
   executions.value = response.executions ?? []
   resetExecutionsPage()
 }
@@ -469,14 +477,18 @@ async function load(): Promise<void> {
     return
   }
 
+  loadController?.abort()
+  loadController = new AbortController()
+  const signal = loadController.signal
+
   loading.value = true
   error.value = null
   automation.value = null
   executions.value = []
   try {
     const [automationResponse] = await Promise.all([
-      reconciliationFacade.getAutomation({ automationId: automationId.value }),
-      loadExecutions(),
+      reconciliationFacade.getAutomation({ automationId: automationId.value }, signal),
+      loadExecutions(signal),
     ])
     if (!automationResponse.automation) {
       error.value = `Unable to find automation "${automationId.value}".`
@@ -484,6 +496,7 @@ async function load(): Promise<void> {
     }
     automation.value = automationResponse.automation
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load automation.'
   } finally {
     loading.value = false

@@ -330,9 +330,9 @@ describe('RunsSettingsWorkflowPage', () => {
     expect(wrapper.find('input[name="mappingName"]').element).toHaveProperty('value', 'Order ID')
     expect(wrapper.text()).not.toContain('Source 1 system:')
     expect(wrapper.text()).not.toContain('Source 2 system:')
-    expect(getMapping).toHaveBeenCalledWith({ reconciliationMappingId: 'OrderIdMap' })
-    expect(flatten).toHaveBeenCalledWith({ jsonSchemaId: '100408' })
-    expect(flatten).toHaveBeenCalledWith({ jsonSchemaId: '100409' })
+    expect(getMapping).toHaveBeenCalledWith({ reconciliationMappingId: 'OrderIdMap' }, expect.any(AbortSignal))
+    expect(flatten).toHaveBeenCalledWith({ jsonSchemaId: '100408' }, expect.any(AbortSignal))
+    expect(flatten).toHaveBeenCalledWith({ jsonSchemaId: '100409' }, expect.any(AbortSignal))
 
     await wrapper.find('input[name="mappingName"]').setValue('Order Returns')
     await chooseAppSelectOption(wrapper, 'run-field-1', '$.return_ref')

@@ -522,11 +522,14 @@ function selectedApiSourceOption(side: RuleSide): AutomationNsRestletOption | Au
   return null
 }
 
+const pageAbortController = new AbortController()
+let submitController: AbortController | null = null
+
 async function ensureApiSourceOptionsLoaded(): Promise<void> {
   if (!sourceUsesApi('file1') && !sourceUsesApi('file2')) return
   if (nsRestletConfigs.value.length || systemRemotes.value.length) return
 
-  const response = await reconciliationFacade.listAutomationSourceOptions()
+  const response = await reconciliationFacade.listAutomationSourceOptions(pageAbortController.signal)
   nsRestletConfigs.value = response.nsRestletConfigs ?? []
   systemRemotes.value = response.systemRemotes ?? []
 }
@@ -595,7 +598,7 @@ async function resolveSchemaId(side: RuleSide): Promise<string> {
   const normalizedSchemaName = schemaName?.trim()
   if (!normalizedSchemaName) return ''
 
-  const response = await jsonSchemaFacade.get({ schemaName: normalizedSchemaName })
+  const response = await jsonSchemaFacade.get({ schemaName: normalizedSchemaName }, pageAbortController.signal)
   if (!response.schemaData) return schemaId?.trim() ?? ''
 
   return response.schemaData.jsonSchemaId
@@ -610,7 +613,7 @@ async function loadSourceFields(side: RuleSide): Promise<void> {
   const schemaId = await resolveSchemaId(side)
   if (!schemaId?.trim()) return
 
-  const response = await jsonSchemaFacade.flatten({ jsonSchemaId: schemaId.trim() })
+  const response = await jsonSchemaFacade.flatten({ jsonSchemaId: schemaId.trim() }, pageAbortController.signal)
   const comparableFields = (response.fieldList ?? [])
     .filter((field) => field.type !== 'object' && field.type !== 'array')
     .map(toRuleField)
@@ -654,6 +657,7 @@ async function loadEditorData(): Promise<void> {
       loadSourceFields('file2'),
     ])
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     pageError.value = error instanceof ApiCallError ? error.message : 'Unable to load source fields.'
   } finally {
     loadingFields.value = false
@@ -1124,7 +1128,11 @@ function savedRunRuleToDraftRule(rule: SavedRunRule, index: number): Reconciliat
 async function persistSavedRunRules(nextDraft: ReconciliationRuleSetDraft): Promise<ReconciliationRuleSetDraft> {
   if (!nextDraft.savedRunId?.trim()) return nextDraft
 
-  const response = await reconciliationFacade.saveRuleSetRun(buildSaveRuleSetRunPayload(nextDraft))
+  submitController?.abort()
+  submitController = new AbortController()
+  const submitSignal = submitController.signal
+
+  const response = await reconciliationFacade.saveRuleSetRun(buildSaveRuleSetRunPayload(nextDraft), submitSignal)
   const savedRules = response.savedRun?.rules
   if (!Array.isArray(savedRules)) return nextDraft
 
@@ -1148,6 +1156,10 @@ async function finishRuleEdit(): Promise<void> {
   try {
     persistedDraft = await persistSavedRunRules(nextDraft)
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      loadingFields.value = false
+      return
+    }
     pageError.value = error instanceof ApiCallError ? error.message : 'Unable to save rules.'
     loadingFields.value = false
     return
@@ -1181,6 +1193,8 @@ onBeforeUnmount(() => {
   clearLongPressTimer()
   window.removeEventListener('resize', updateLineLayout)
   window.removeEventListener('pointerdown', handleWindowPointerDown)
+  pageAbortController.abort()
+  submitController?.abort()
 })
 </script>
 

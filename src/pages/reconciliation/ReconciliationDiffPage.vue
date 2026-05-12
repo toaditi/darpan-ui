@@ -234,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect from '../../components/workflow/WorkflowSelect.vue'
@@ -670,6 +670,16 @@ function buildFilePlaceholder(systemName: string, expectedFileType: ExpectedFile
 const clearRunState = diff.clearRunState
 const clearLatestSavedOutputState = diff.clearLatestSavedOutputState
 
+const pageAbortController = new AbortController()
+let latestOutputAbortController: AbortController | null = null
+let submitDiffAbortController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  latestOutputAbortController?.abort()
+  submitDiffAbortController?.abort()
+})
+
 function shouldKeepPendingRunAfterRunError(error: unknown): boolean {
   if (!(error instanceof ApiCallError)) return false
   if (error.status !== 503) return false
@@ -741,7 +751,7 @@ function syncSelectedSystems(savedRun: SavedRunSummary | null): void {
 }
 
 async function loadSavedRuns(): Promise<void> {
-  await diff.loadSavedRuns()
+  await diff.loadSavedRuns(pageAbortController.signal)
   if (loadError.value) return
   if (
     requestedSavedRunId.value &&
@@ -752,7 +762,12 @@ async function loadSavedRuns(): Promise<void> {
   syncSelectedSystems(selectedSavedRun.value)
 }
 
-const loadLatestSavedOutput = diff.loadLatestSavedOutput
+function loadLatestSavedOutput(savedRunId: string): Promise<void> {
+  latestOutputAbortController?.abort()
+  const controller = new AbortController()
+  latestOutputAbortController = controller
+  return diff.loadLatestSavedOutput(savedRunId, controller.signal)
+}
 
 function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -935,8 +950,12 @@ async function runDiff(): Promise<void> {
     pendingSubmittedRun.value = pendingRun
   }
 
+  submitDiffAbortController?.abort()
+  submitDiffAbortController = new AbortController()
+  const submitSignal = submitDiffAbortController.signal
+
   try {
-    const response = await diff.submitDiff(payload)
+    const response = await diff.submitDiff(payload, submitSignal)
     if (!response) return
 
     const generatedOutput = response.runResult?.generatedOutput ?? null
@@ -956,6 +975,7 @@ async function runDiff(): Promise<void> {
 
     await router.push(resultRoute)
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     if (!shouldKeepPendingRunAfterRunError(error)) {
       clearPendingReconciliationRun(pendingRun?.pendingRunId)
       pendingSubmittedRun.value = null

@@ -242,7 +242,7 @@ describe('ShopifyAuthWorkflowPage', () => {
     const wrapper = mount(ShopifyAuthWorkflowPage)
     await flushPromises()
 
-    expect(getShopifyAuthConfig).toHaveBeenCalledWith({ shopifyAuthConfigId: 'krewe-shopify' })
+    expect(getShopifyAuthConfig).toHaveBeenCalledWith({ shopifyAuthConfigId: 'krewe-shopify' }, expect.any(AbortSignal))
     expect(wrapper.get('input[name="shopifyAuthConfigId"]').element).toHaveProperty('value', 'krewe-shopify')
     expect(wrapper.get('[data-testid="shopify-timezone-select"]').text()).toContain('America/Chicago')
     expect(wrapper.find('input[name="timeZone"]').exists()).toBe(false)

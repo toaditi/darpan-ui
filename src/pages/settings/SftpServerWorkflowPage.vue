@@ -213,7 +213,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
@@ -364,13 +364,25 @@ function resetCreateForm(): void {
   success.value = null
 }
 
+const pageAbortController = new AbortController()
+let loadServerController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadServerController?.abort()
+})
+
 async function loadServer(): Promise<void> {
   if (!isEditing.value) return
+
+  loadServerController?.abort()
+  loadServerController = new AbortController()
+  const signal = loadServerController.signal
 
   loading.value = true
   error.value = null
   try {
-    const response = await settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 })
+    const response = await settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 }, signal)
     const matchingServer = filterRecordsForActiveTenant(
       response.servers ?? [],
       authStore.sessionInfo?.activeTenantUserGroupId ?? null,
@@ -381,6 +393,7 @@ async function loadServer(): Promise<void> {
     }
     applyRecord(matchingServer)
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load server.'
   } finally {
     loading.value = false

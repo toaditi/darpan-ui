@@ -264,7 +264,7 @@ describe('ReconciliationRunHistoryPage', () => {
       pageIndex: 0,
       pageSize: 6,
       query: '',
-    })
+    }, expect.any(AbortSignal))
     expect(wrapper.find('.static-page-frame').exists()).toBe(true)
     expect(wrapper.text()).toContain('CSV Order Compare')
     const editableTitle = wrapper.get('[data-testid="run-history-title"]')
@@ -523,7 +523,7 @@ describe('ReconciliationRunHistoryPage', () => {
       pageIndex: 1,
       pageSize: 6,
       query: '',
-    })
+    }, expect.any(AbortSignal))
     expect(wrapper.findAll('[data-testid="run-history-result-tile"]')).toHaveLength(6)
     expect(wrapper.text()).toContain(formatCreatedDateForExpectation('2026-03-25T09:00:00.000Z'))
     expect(wrapper.find('[data-testid="run-history-more"]').exists()).toBe(false)

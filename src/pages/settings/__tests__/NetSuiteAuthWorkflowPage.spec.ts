@@ -329,7 +329,7 @@ describe('NetSuiteAuthWorkflowPage', () => {
     const wrapper = mount(NetSuiteAuthWorkflowPage)
     await flushPromises()
 
-    expect(listNsAuthConfigs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 })
+    expect(listNsAuthConfigs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 }, expect.any(AbortSignal))
     expect((wrapper.get('input[name="nsAuthConfigId"]').element as HTMLInputElement).value).toBe('auth-primary')
     expect((wrapper.get('input[name="description"]').element as HTMLInputElement).value).toBe('Primary Auth')
     expect(wrapper.get('[data-testid="netsuite-auth-type"]').text()).toContain('OAuth2 M2M JWT')

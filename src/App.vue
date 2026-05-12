@@ -125,7 +125,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { buildAuthRedirect, useAuthStore } from './stores/auth'
 import { usePermissionsStore } from './stores/permissions'
 import { useReconciliationDraftStore } from './stores/reconciliationDraft'
-import { AUTH_REQUIRED_EVENT } from './lib/api/client'
+import { setAuthRequiredHandler } from './lib/api/client'
 import { shouldAbortWorkflowOnEscape } from './lib/keyboard'
 import { useTheme } from './composables/useTheme'
 import { useCommandPalette } from './composables/useCommandPalette'
@@ -589,7 +589,9 @@ onMounted(() => {
   commandPalette.loadRecentFromStorage()
   window.addEventListener('keydown', handleKeyboard)
   window.addEventListener('mousedown', handleWindowMouseDown)
-  window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
+  setAuthRequiredHandler(() => {
+    void handleAuthRequired()
+  })
   document.addEventListener(WORKFLOW_HINT_REQUEST_EVENT, handleWorkflowHintRequest)
   syncBodySurfaceMode(surfaceMode.value)
   if (!isShelllessRoute.value) {
@@ -601,7 +603,7 @@ onBeforeUnmount(() => {
   hideWorkflowEscapeHint()
   window.removeEventListener('keydown', handleKeyboard)
   window.removeEventListener('mousedown', handleWindowMouseDown)
-  window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired)
+  setAuthRequiredHandler(null)
   document.removeEventListener(WORKFLOW_HINT_REQUEST_EVENT, handleWorkflowHintRequest)
   if (typeof document !== 'undefined') {
     document.body.classList.remove('surface-mode-static', 'surface-mode-workflow')

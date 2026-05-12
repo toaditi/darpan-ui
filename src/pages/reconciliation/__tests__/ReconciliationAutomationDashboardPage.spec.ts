@@ -201,8 +201,8 @@ describe('ReconciliationAutomationDashboardPage', () => {
     const wrapper = mount(ReconciliationAutomationDashboardPage)
     await flushPromises()
 
-    expect(getAutomation).toHaveBeenCalledWith({ automationId: 'AUT_ACTIVE_API' })
-    expect(listAutomationExecutions).toHaveBeenCalledWith({ automationId: 'AUT_ACTIVE_API', pageIndex: 0, pageSize: 200 })
+    expect(getAutomation).toHaveBeenCalledWith({ automationId: 'AUT_ACTIVE_API' }, expect.any(AbortSignal))
+    expect(listAutomationExecutions).toHaveBeenCalledWith({ automationId: 'AUT_ACTIVE_API', pageIndex: 0, pageSize: 200 }, expect.any(AbortSignal))
     expect(wrapper.text()).toContain('Daily API orders')
     expect(wrapper.text()).toContain('Setup')
     expect(wrapper.text()).toContain('Previous Runs')

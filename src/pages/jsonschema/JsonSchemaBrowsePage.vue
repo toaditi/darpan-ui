@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -101,6 +101,12 @@ function resolveSchemaCardTitle(schema: JsonSchemaSummary): string {
   })
 }
 
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
+
 async function loadSchemas(): Promise<void> {
   loading.value = true
   error.value = null
@@ -110,10 +116,11 @@ async function loadSchemas(): Promise<void> {
       pageIndex: 0,
       pageSize: 12,
       query: '',
-    })
+    }, pageAbortController.signal)
     schemaCards.value = response.schemas ?? []
     showAllSchemas.value = false
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load schemas.'
   } finally {
     loading.value = false

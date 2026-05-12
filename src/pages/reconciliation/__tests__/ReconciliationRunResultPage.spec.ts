@@ -265,7 +265,7 @@ describe('ReconciliationRunResultPage', () => {
     expect(getGeneratedOutput).toHaveBeenCalledWith({
       fileName: 'CSV-Order-Compare-diff-20260331-063304.json',
       format: 'json',
-    })
+    }, expect.any(AbortSignal))
     expect(wrapper.find('.static-page-frame').exists()).toBe(true)
     expect(wrapper.find('.wizard-progress-track').exists()).toBe(false)
     expect(wrapper.text()).toContain('CSV Order Compare')

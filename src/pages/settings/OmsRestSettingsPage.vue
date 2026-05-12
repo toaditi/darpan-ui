@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { settingsFacade } from '../../lib/api/facade'
@@ -54,11 +54,16 @@ const {
   error: authError,
   load,
   goToPage: goToAuthPage,
+  dispose,
 } = useSettingsPagedList({
   loadPage: (request) => settingsFacade.listOmsRestSourceConfigs(request),
   selectRecords: (response) => response.omsRestSourceConfigs ?? [],
   activeTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   fallbackErrorMessage: 'Failed to load HotWax auth configs.',
+})
+
+onBeforeUnmount(() => {
+  dispose()
 })
 
 const authCreateRoute = computed(() => ({

@@ -18,7 +18,7 @@ interface PaginatedSettingsResponse {
 
 interface UseSettingsPagedListOptions<T extends object, R extends PaginatedSettingsResponse> {
   pageSize?: number
-  loadPage: (request: PageRequest) => Promise<R>
+  loadPage: (request: PageRequest, signal?: AbortSignal) => Promise<R>
   selectRecords: (response: R) => T[] | undefined
   activeTenantUserGroupId?: () => string | null | undefined
   fallbackErrorMessage: string
@@ -34,6 +34,11 @@ function normalizeError(error: unknown, fallbackMessage: string): string {
   return error instanceof ApiCallError ? error.message : fallbackMessage
 }
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException) return error.name === 'AbortError'
+  return typeof error === 'object' && error !== null && (error as { name?: string }).name === 'AbortError'
+}
+
 export function useSettingsPagedList<T extends object, R extends PaginatedSettingsResponse>({
   pageSize = 12,
   loadPage,
@@ -47,14 +52,21 @@ export function useSettingsPagedList<T extends object, R extends PaginatedSettin
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  let activeController: AbortController | null = null
+
   async function load(): Promise<void> {
+    activeController?.abort()
+    const controller = new AbortController()
+    activeController = controller
+
     loading.value = true
     error.value = null
     try {
       const response = await loadPage({
         pageIndex: pageIndex.value,
         pageSize,
-      })
+      }, controller.signal)
+      if (controller.signal.aborted) return
       const records = selectRecords(response) ?? []
       const tenantId = activeTenantUserGroupId?.()
       rows.value = tenantId === undefined
@@ -62,9 +74,15 @@ export function useSettingsPagedList<T extends object, R extends PaginatedSettin
         : filterRecordsForActiveTenant(records as TenantOwnedRecord[], tenantId) as T[]
       pageCount.value = normalizePageCount(response.pagination?.pageCount)
     } catch (loadError) {
+      if (controller.signal.aborted || isAbortError(loadError)) return
       error.value = normalizeError(loadError, fallbackErrorMessage)
     } finally {
-      loading.value = false
+      if (!controller.signal.aborted) {
+        loading.value = false
+      }
+      if (activeController === controller) {
+        activeController = null
+      }
     }
   }
 
@@ -72,6 +90,11 @@ export function useSettingsPagedList<T extends object, R extends PaginatedSettin
     if (nextPageIndex === pageIndex.value) return
     pageIndex.value = nextPageIndex
     void load()
+  }
+
+  function dispose(): void {
+    activeController?.abort()
+    activeController = null
   }
 
   return {
@@ -83,5 +106,6 @@ export function useSettingsPagedList<T extends object, R extends PaginatedSettin
     error,
     load,
     goToPage,
+    dispose,
   }
 }

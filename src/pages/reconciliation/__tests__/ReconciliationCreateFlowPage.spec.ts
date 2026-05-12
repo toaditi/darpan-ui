@@ -337,8 +337,8 @@ describe('ReconciliationCreateFlowPage', () => {
 
     await advanceToFinalPrimaryIdStep(wrapper)
 
-    expect(flattenJsonSchema).toHaveBeenCalledWith({ jsonSchemaId: 'schema-oms-orders' })
-    expect(flattenJsonSchema).toHaveBeenCalledWith({ jsonSchemaId: 'schema-shopify-orders' })
+    expect(flattenJsonSchema).toHaveBeenCalledWith({ jsonSchemaId: 'schema-oms-orders' }, expect.any(AbortSignal))
+    expect(flattenJsonSchema).toHaveBeenCalledWith({ jsonSchemaId: 'schema-shopify-orders' }, expect.any(AbortSignal))
     expect(wrapper.text()).toContain('Which field identifies each record in Shopify orders')
     expect(wrapper.text()).not.toContain('Create JSON Order Compare now, or open the Ruleset Manager first?')
     expect(wrapper.text()).not.toContain(RULESET_MANAGER_HELPER_COPY)
@@ -366,7 +366,7 @@ describe('ReconciliationCreateFlowPage', () => {
       pageIndex: 0,
       pageSize: 200,
       query: '',
-    })
+    }, expect.any(AbortSignal))
     expect(createRuleSetRun).toHaveBeenCalledWith({
       runName: 'JSON Order Compare',
       description: undefined,
@@ -378,7 +378,7 @@ describe('ReconciliationCreateFlowPage', () => {
       file2FileTypeEnumId: 'DftJson',
       file2SchemaFileName: 'test-shopify-orders.schema.json',
       file2PrimaryIdExpression: '$.data.orders.edges[0].node.id',
-    })
+    }, expect.any(AbortSignal))
     expect(push).toHaveBeenCalledWith({ name: 'hub' })
   })
 
@@ -444,7 +444,7 @@ describe('ReconciliationCreateFlowPage', () => {
       file2FileTypeEnumId: 'DftCsv',
       file2SchemaFileName: undefined,
       file2PrimaryIdExpression: 'order_id',
-    })
+    }, expect.any(AbortSignal))
   })
 
   it('filters API endpoint choices to endpoints for the selected system', async () => {
@@ -581,7 +581,7 @@ describe('ReconciliationCreateFlowPage', () => {
       file2SourceConfigId: 'gorjana_prod',
       file2SourceConfigType: 'HOTWAX_OMS_REST',
       file2PrimaryIdExpression: '$.records[*].externalId',
-    })
+    }, expect.any(AbortSignal))
   })
 
   it('uses canonical Shopify system options when UAT returns legacy system rows', async () => {

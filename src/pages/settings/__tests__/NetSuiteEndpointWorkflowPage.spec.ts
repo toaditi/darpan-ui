@@ -293,7 +293,7 @@ describe('NetSuiteEndpointWorkflowPage', () => {
     const wrapper = mount(NetSuiteEndpointWorkflowPage)
     await flushPromises()
 
-    expect(listNsRestletConfigs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 })
+    expect(listNsRestletConfigs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 }, expect.any(AbortSignal))
     expect((wrapper.get('input[name="nsRestletConfigId"]').element as HTMLInputElement).value).toBe('endpoint-primary')
     expect((wrapper.get('input[name="description"]').element as HTMLInputElement).value).toBe('Invoice Export')
     expect((wrapper.get('input[name="endpointUrl"]').element as HTMLInputElement).value).toBe(

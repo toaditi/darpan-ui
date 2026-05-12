@@ -398,7 +398,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowShortcutChoiceCards, { type WorkflowShortcutChoiceOption } from '../../components/workflow/WorkflowShortcutChoiceCards.vue'
@@ -1147,20 +1147,33 @@ async function openReconciliationCreateWorkflow(): Promise<void> {
   })
 }
 
+const pageAbortController = new AbortController()
+let submitController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  submitController?.abort()
+})
+
 async function saveAutomationSetup(): Promise<void> {
   if (!selectedSavedRun.value || !canSave.value || saving.value) return
   saving.value = true
   pageError.value = null
 
+  submitController?.abort()
+  submitController = new AbortController()
+  const submitSignal = submitController.signal
+
   try {
-    const response = await reconciliationFacade.saveAutomation(buildSaveAutomationPayload(activeDraft.value, selectedSavedRun.value))
+    const response = await reconciliationFacade.saveAutomation(buildSaveAutomationPayload(activeDraft.value, selectedSavedRun.value), submitSignal)
     const origin = draftStore.workflowOrigin
     const savedAutomationId = response.automation?.automationId || activeDraft.value.automationId
     const fallbackRoute = savedAutomationId
       ? { name: 'reconciliation-automation-dashboard', params: { automationId: savedAutomationId } }
       : { name: 'hub' }
     await router.push(activeDraft.value.returnPath || origin?.path || fallbackRoute)
-  } catch {
+  } catch (saveError) {
+    if ((saveError as { name?: string })?.name === 'AbortError') return
     pageError.value = 'Unable to save automation setup. The saved run is still available; adjust the automation settings and retry.'
   } finally {
     saving.value = false
@@ -1239,14 +1252,15 @@ async function loadAutomationForEdit(): Promise<boolean> {
   if (!editAutomationId) return false
   pageError.value = null
   try {
-    const response = await reconciliationFacade.getAutomation({ automationId: editAutomationId })
+    const response = await reconciliationFacade.getAutomation({ automationId: editAutomationId }, pageAbortController.signal)
     if (!response.automation) {
       pageError.value = `Unable to load automation ${editAutomationId}.`
       return false
     }
     hydrateAutomation(response.automation)
     return true
-  } catch {
+  } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return false
     pageError.value = 'Unable to load automation setup.'
     return false
   }
@@ -1287,7 +1301,7 @@ async function loadOptions(): Promise<void> {
   pageError.value = null
 
   try {
-    const response = await reconciliationFacade.listAutomationSourceOptions()
+    const response = await reconciliationFacade.listAutomationSourceOptions(pageAbortController.signal)
     sourceOptions.value = {
       inputModes: response.inputModes ?? [],
       relativeWindows: response.relativeWindows ?? [],
@@ -1297,7 +1311,8 @@ async function loadOptions(): Promise<void> {
       systemRemotes: response.systemRemotes ?? [],
     }
     applyDeterministicDefaults()
-  } catch {
+  } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     pageError.value = 'Unable to load automation setup options.'
   } finally {
     loadingOptions.value = false

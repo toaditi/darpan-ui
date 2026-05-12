@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
 import { settingsFacade } from '../../lib/api/facade'
@@ -77,6 +77,7 @@ const {
   error: authError,
   load: loadAuthConfigs,
   goToPage: goToAuthPage,
+  dispose: disposeAuthConfigs,
 } = useSettingsPagedList({
   pageSize: 10,
   loadPage: (request) => settingsFacade.listNsAuthConfigs(request),
@@ -92,12 +93,18 @@ const {
   error: endpointError,
   load: loadEndpointConfigs,
   goToPage: goToEndpointPage,
+  dispose: disposeEndpointConfigs,
 } = useSettingsPagedList({
   pageSize: 10,
   loadPage: (request) => settingsFacade.listNsRestletConfigs(request),
   selectRecords: (response) => response.restletConfigs ?? [],
   activeTenantUserGroupId: () => authStore.sessionInfo?.activeTenantUserGroupId ?? null,
   fallbackErrorMessage: 'Failed to load endpoint configs.',
+})
+
+onBeforeUnmount(() => {
+  disposeAuthConfigs()
+  disposeEndpointConfigs()
 })
 
 const authCreateRoute = computed(() => ({ name: 'settings-netsuite-auth-create' }))

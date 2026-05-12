@@ -5,7 +5,6 @@ import { buildDataCommandActions } from '../lib/commandDataSearch'
 import { listRecentCommandIds, recordRecentCommand } from '../lib/commandSearch'
 import type { CommandAction } from '../lib/types/ux'
 import { filterRecordsForActiveTenant } from '../lib/utils/tenantRecords'
-import { makeRequestGuard } from '../lib/utils/async'
 
 export interface UseCommandPaletteOptions {
   getActiveTenantUserGroupId: () => string | null
@@ -22,6 +21,7 @@ export interface UseCommandPalette {
   clearCommandData: () => void
   recordExecution: (actionId: string) => void
   loadRecentFromStorage: () => void
+  dispose: () => void
 }
 
 function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
@@ -34,7 +34,7 @@ export function useCommandPalette(options: UseCommandPaletteOptions): UseCommand
   const recentCommandIds = ref<string[]>([])
   const dataCommandActions = ref<CommandAction[]>([])
 
-  const commandDataRequest = makeRequestGuard()
+  let activeController: AbortController | null = null
 
   function readSftpServers(result: PromiseSettledResult<{ servers?: SftpServerRecord[] } | undefined>): SftpServerRecord[] {
     if (!isFulfilled(result)) return []
@@ -50,24 +50,29 @@ export function useCommandPalette(options: UseCommandPaletteOptions): UseCommand
   }
 
   async function loadCommandData(): Promise<void> {
-    const requestId = commandDataRequest.getRequestId()
+    activeController?.abort()
+    const controller = new AbortController()
+    activeController = controller
     isLoadingCommandData.value = true
 
     try {
       const [sftpResult, generatedOutputResult] = await Promise.allSettled([
-        settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 }),
-        reconciliationFacade.listGeneratedOutputs({ pageIndex: 0, pageSize: 80, query: '' }),
+        settingsFacade.listSftpServers({ pageIndex: 0, pageSize: 200 }, controller.signal),
+        reconciliationFacade.listGeneratedOutputs({ pageIndex: 0, pageSize: 80, query: '' }, controller.signal),
       ])
 
-      if (!commandDataRequest.isCurrentRequest(requestId)) return
+      if (controller.signal.aborted) return
 
       dataCommandActions.value = buildDataCommandActions({
         sftpServers: readSftpServers(sftpResult),
         generatedOutputs: readGeneratedOutputs(generatedOutputResult),
       })
     } finally {
-      if (commandDataRequest.isCurrentRequest(requestId)) {
+      if (!controller.signal.aborted) {
         isLoadingCommandData.value = false
+      }
+      if (activeController === controller) {
+        activeController = null
       }
     }
   }
@@ -93,6 +98,11 @@ export function useCommandPalette(options: UseCommandPaletteOptions): UseCommand
     recentCommandIds.value = listRecentCommandIds()
   }
 
+  function dispose(): void {
+    activeController?.abort()
+    activeController = null
+  }
+
   return {
     isCommandPaletteOpen,
     isLoadingCommandData,
@@ -104,5 +114,6 @@ export function useCommandPalette(options: UseCommandPaletteOptions): UseCommand
     clearCommandData,
     recordExecution,
     loadRecentFromStorage,
+    dispose,
   }
 }

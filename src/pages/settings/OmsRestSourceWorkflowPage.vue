@@ -236,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowShortcutChoiceCards, {
@@ -467,10 +467,18 @@ function buildOmsSourceDashboardRoute(omsRestSourceConfigId: string) {
   }
 }
 
-async function loadOmsConfig(): Promise<void> {
+const pageAbortController = new AbortController()
+let loadController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadController?.abort()
+})
+
+async function loadOmsConfig(signal?: AbortSignal): Promise<void> {
   if (!isEditing.value) return
 
-  const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 })
+  const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 }, signal)
   const matchingConfig = filterRecordsForActiveTenant(
     response.omsRestSourceConfigs ?? [],
     authStore.sessionInfo?.activeTenantUserGroupId ?? null,
@@ -488,9 +496,14 @@ async function load(): Promise<void> {
   success.value = null
   if (!isEditing.value) resetCreateForm()
 
+  loadController?.abort()
+  loadController = new AbortController()
+  const signal = loadController.signal
+
   try {
-    await loadOmsConfig()
+    await loadOmsConfig(signal)
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load HotWax source config.'
   } finally {
     loading.value = false

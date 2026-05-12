@@ -18,7 +18,6 @@
     "check": "npm run lint && npm run type-check && npm run test"
   },
   "dependencies": {
-    "@tanstack/vue-query": "^5.100.9",
     "pinia": "^3.0.4",
     "vue": "^3.5.13",
     "vue-router": "^4.5.1"

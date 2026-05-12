@@ -220,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect, { type WorkflowSelectOption } from '../../components/workflow/WorkflowSelect.vue'
@@ -393,8 +393,16 @@ function resetCreateForm(): void {
   success.value = null
 }
 
-async function loadAuthOptions(): Promise<void> {
-  const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 })
+const pageAbortController = new AbortController()
+let loadController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadController?.abort()
+})
+
+async function loadAuthOptions(signal?: AbortSignal): Promise<void> {
+  const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 }, signal)
   authOptions.value = filterRecordsForActiveTenant(
     response.authConfigs ?? [],
     authStore.sessionInfo?.activeTenantUserGroupId ?? null,
@@ -408,10 +416,10 @@ async function loadAuthOptions(): Promise<void> {
   }))
 }
 
-async function loadEndpointConfig(): Promise<void> {
+async function loadEndpointConfig(signal?: AbortSignal): Promise<void> {
   if (!isEditing.value) return
 
-  const response = await settingsFacade.listNsRestletConfigs({ pageIndex: 0, pageSize: 200 })
+  const response = await settingsFacade.listNsRestletConfigs({ pageIndex: 0, pageSize: 200 }, signal)
   const matchingConfig = filterRecordsForActiveTenant(
     response.restletConfigs ?? [],
     authStore.sessionInfo?.activeTenantUserGroupId ?? null,
@@ -431,9 +439,14 @@ async function load(): Promise<void> {
   success.value = null
   if (!isEditing.value) resetCreateForm()
 
+  loadController?.abort()
+  loadController = new AbortController()
+  const signal = loadController.signal
+
   try {
-    await Promise.all([loadAuthOptions(), loadEndpointConfig()])
+    await Promise.all([loadAuthOptions(signal), loadEndpointConfig(signal)])
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load endpoint config.'
   } finally {
     loading.value = false

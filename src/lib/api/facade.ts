@@ -1,5 +1,18 @@
 import { callService } from './client'
-export { clearApiResponseCache } from '../queryClient'
+
+// Cache-reset coordinator. The actual reset implementation is wired up in
+// main.ts after Pinia is installed, so this module stays free of store
+// imports (avoiding circular dependencies with referenceData store, which
+// itself depends on settingsFacade defined below).
+let _resetApiCache: (() => void) | null = null
+
+export function setApiCacheReset(fn: () => void): void {
+  _resetApiCache = fn
+}
+
+export function clearApiResponseCache(): void {
+  _resetApiCache?.()
+}
 import type {
   CreateRuleSetRunResponse,
   CreateCsvRunResponse,
@@ -188,193 +201,193 @@ const RECONCILIATION = {
 }
 
 export const authFacade = {
-  loginSession(username: string, password: string): Promise<LoginSessionResponse> {
-    return callService<LoginSessionResponse>(AUTH.loginSession, { username, password })
+  loginSession(username: string, password: string, signal?: AbortSignal): Promise<LoginSessionResponse> {
+    return callService<LoginSessionResponse>(AUTH.loginSession, { username, password }, signal)
   },
-  getSessionInfo(): Promise<SessionInfoResponse> {
-    return callService<SessionInfoResponse>(AUTH.getSessionInfo)
+  getSessionInfo(signal?: AbortSignal): Promise<SessionInfoResponse> {
+    return callService<SessionInfoResponse>(AUTH.getSessionInfo, {}, signal)
   },
-  saveActiveTenant(activeTenantUserGroupId: string): Promise<SaveActiveTenantResponse> {
-    return callService<SaveActiveTenantResponse>(AUTH.saveActiveTenant, { activeTenantUserGroupId })
+  saveActiveTenant(activeTenantUserGroupId: string, signal?: AbortSignal): Promise<SaveActiveTenantResponse> {
+    return callService<SaveActiveTenantResponse>(AUTH.saveActiveTenant, { activeTenantUserGroupId }, signal)
   },
-  saveUserSettings(payload: SaveUserSettingsPayload): Promise<SaveUserSettingsResponse> {
-    return callService<SaveUserSettingsResponse>(AUTH.saveUserSettings, payload)
+  saveUserSettings(payload: SaveUserSettingsPayload, signal?: AbortSignal): Promise<SaveUserSettingsResponse> {
+    return callService<SaveUserSettingsResponse>(AUTH.saveUserSettings, payload, signal)
   },
-  verifyOwnPassword(payload: VerifyOwnPasswordPayload): Promise<VerifyOwnPasswordResponse> {
-    return callService<VerifyOwnPasswordResponse>(AUTH.verifyOwnPassword, payload)
+  verifyOwnPassword(payload: VerifyOwnPasswordPayload, signal?: AbortSignal): Promise<VerifyOwnPasswordResponse> {
+    return callService<VerifyOwnPasswordResponse>(AUTH.verifyOwnPassword, payload, signal)
   },
-  changeOwnPassword(payload: ChangeOwnPasswordPayload): Promise<ChangeOwnPasswordResponse> {
-    return callService<ChangeOwnPasswordResponse>(AUTH.changeOwnPassword, payload)
+  changeOwnPassword(payload: ChangeOwnPasswordPayload, signal?: AbortSignal): Promise<ChangeOwnPasswordResponse> {
+    return callService<ChangeOwnPasswordResponse>(AUTH.changeOwnPassword, payload, signal)
   },
-  logoutSession(): Promise<LogoutSessionResponse> {
-    return callService<LogoutSessionResponse>(AUTH.logoutSession)
+  logoutSession(signal?: AbortSignal): Promise<LogoutSessionResponse> {
+    return callService<LogoutSessionResponse>(AUTH.logoutSession, {}, signal)
   },
 }
 
 export const settingsFacade = {
-  listEnumOptions(enumTypeId: string): Promise<ListEnumOptionsResponse> {
-    return callService<ListEnumOptionsResponse>(SETTINGS.listEnumOptions, { enumTypeId })
+  listEnumOptions(enumTypeId: string, signal?: AbortSignal): Promise<ListEnumOptionsResponse> {
+    return callService<ListEnumOptionsResponse>(SETTINGS.listEnumOptions, { enumTypeId }, signal)
   },
-  getLlmSettings(payload?: GetLlmSettingsPayload): Promise<LlmSettingsResponse> {
-    return callService<LlmSettingsResponse>(SETTINGS.getLlmSettings, payload)
+  getLlmSettings(payload?: GetLlmSettingsPayload, signal?: AbortSignal): Promise<LlmSettingsResponse> {
+    return callService<LlmSettingsResponse>(SETTINGS.getLlmSettings, payload ?? {}, signal)
   },
-  saveLlmSettings(payload: SaveLlmSettingsPayload): Promise<SaveLlmSettingsResponse> {
-    return callService<SaveLlmSettingsResponse>(SETTINGS.saveLlmSettings, payload)
+  saveLlmSettings(payload: SaveLlmSettingsPayload, signal?: AbortSignal): Promise<SaveLlmSettingsResponse> {
+    return callService<SaveLlmSettingsResponse>(SETTINGS.saveLlmSettings, payload, signal)
   },
-  getTenantSettings(): Promise<GetTenantSettingsResponse> {
-    return callService<GetTenantSettingsResponse>(SETTINGS.getTenantSettings)
+  getTenantSettings(signal?: AbortSignal): Promise<GetTenantSettingsResponse> {
+    return callService<GetTenantSettingsResponse>(SETTINGS.getTenantSettings, {}, signal)
   },
-  saveTenantSettings(payload: SaveTenantSettingsPayload): Promise<SaveTenantSettingsResponse> {
-    return callService<SaveTenantSettingsResponse>(SETTINGS.saveTenantSettings, payload)
+  saveTenantSettings(payload: SaveTenantSettingsPayload, signal?: AbortSignal): Promise<SaveTenantSettingsResponse> {
+    return callService<SaveTenantSettingsResponse>(SETTINGS.saveTenantSettings, payload, signal)
   },
-  getTenantNotificationSettings(): Promise<GetTenantNotificationSettingsResponse> {
-    return callService<GetTenantNotificationSettingsResponse>(SETTINGS.getTenantNotificationSettings)
+  getTenantNotificationSettings(signal?: AbortSignal): Promise<GetTenantNotificationSettingsResponse> {
+    return callService<GetTenantNotificationSettingsResponse>(SETTINGS.getTenantNotificationSettings, {}, signal)
   },
-  saveTenantNotificationSettings(payload: SaveTenantNotificationSettingsPayload): Promise<SaveTenantNotificationSettingsResponse> {
-    return callService<SaveTenantNotificationSettingsResponse>(SETTINGS.saveTenantNotificationSettings, payload)
+  saveTenantNotificationSettings(payload: SaveTenantNotificationSettingsPayload, signal?: AbortSignal): Promise<SaveTenantNotificationSettingsResponse> {
+    return callService<SaveTenantNotificationSettingsResponse>(SETTINGS.saveTenantNotificationSettings, payload, signal)
   },
-  listSftpServers(payload: ListSftpServersPayload): Promise<ListSftpServersResponse> {
-    return callService<ListSftpServersResponse>(SETTINGS.listSftpServers, payload)
+  listSftpServers(payload: ListSftpServersPayload, signal?: AbortSignal): Promise<ListSftpServersResponse> {
+    return callService<ListSftpServersResponse>(SETTINGS.listSftpServers, payload, signal)
   },
-  saveSftpServer(payload: SaveSftpServerPayload): Promise<SaveSftpServerResponse> {
-    return callService<SaveSftpServerResponse>(SETTINGS.saveSftpServer, payload)
+  saveSftpServer(payload: SaveSftpServerPayload, signal?: AbortSignal): Promise<SaveSftpServerResponse> {
+    return callService<SaveSftpServerResponse>(SETTINGS.saveSftpServer, payload, signal)
   },
-  listNsAuthConfigs(payload: ListNsAuthConfigsPayload): Promise<ListNsAuthConfigsResponse> {
-    return callService<ListNsAuthConfigsResponse>(SETTINGS.listNsAuthConfigs, payload)
+  listNsAuthConfigs(payload: ListNsAuthConfigsPayload, signal?: AbortSignal): Promise<ListNsAuthConfigsResponse> {
+    return callService<ListNsAuthConfigsResponse>(SETTINGS.listNsAuthConfigs, payload, signal)
   },
-  saveNsAuthConfig(payload: SaveNsAuthConfigPayload): Promise<SaveNsAuthConfigResponse> {
-    return callService<SaveNsAuthConfigResponse>(SETTINGS.saveNsAuthConfig, payload)
+  saveNsAuthConfig(payload: SaveNsAuthConfigPayload, signal?: AbortSignal): Promise<SaveNsAuthConfigResponse> {
+    return callService<SaveNsAuthConfigResponse>(SETTINGS.saveNsAuthConfig, payload, signal)
   },
-  listNsRestletConfigs(payload: ListNsRestletConfigsPayload): Promise<ListNsRestletConfigsResponse> {
-    return callService<ListNsRestletConfigsResponse>(SETTINGS.listNsRestletConfigs, payload)
+  listNsRestletConfigs(payload: ListNsRestletConfigsPayload, signal?: AbortSignal): Promise<ListNsRestletConfigsResponse> {
+    return callService<ListNsRestletConfigsResponse>(SETTINGS.listNsRestletConfigs, payload, signal)
   },
-  saveNsRestletConfig(payload: SaveNsRestletConfigPayload): Promise<SaveNsRestletConfigResponse> {
-    return callService<SaveNsRestletConfigResponse>(SETTINGS.saveNsRestletConfig, payload)
+  saveNsRestletConfig(payload: SaveNsRestletConfigPayload, signal?: AbortSignal): Promise<SaveNsRestletConfigResponse> {
+    return callService<SaveNsRestletConfigResponse>(SETTINGS.saveNsRestletConfig, payload, signal)
   },
-  listShopifyAuthConfigs(payload: ListShopifyAuthConfigsPayload): Promise<ListShopifyAuthConfigsResponse> {
-    return callService<ListShopifyAuthConfigsResponse>(SETTINGS.listShopifyAuthConfigs, payload)
+  listShopifyAuthConfigs(payload: ListShopifyAuthConfigsPayload, signal?: AbortSignal): Promise<ListShopifyAuthConfigsResponse> {
+    return callService<ListShopifyAuthConfigsResponse>(SETTINGS.listShopifyAuthConfigs, payload, signal)
   },
-  getShopifyAuthConfig(payload: GetShopifyAuthConfigPayload): Promise<GetShopifyAuthConfigResponse> {
-    return callService<GetShopifyAuthConfigResponse>(SETTINGS.getShopifyAuthConfig, payload)
+  getShopifyAuthConfig(payload: GetShopifyAuthConfigPayload, signal?: AbortSignal): Promise<GetShopifyAuthConfigResponse> {
+    return callService<GetShopifyAuthConfigResponse>(SETTINGS.getShopifyAuthConfig, payload, signal)
   },
-  saveShopifyAuthConfig(payload: SaveShopifyAuthConfigPayload): Promise<SaveShopifyAuthConfigResponse> {
-    return callService<SaveShopifyAuthConfigResponse>(SETTINGS.saveShopifyAuthConfig, payload)
+  saveShopifyAuthConfig(payload: SaveShopifyAuthConfigPayload, signal?: AbortSignal): Promise<SaveShopifyAuthConfigResponse> {
+    return callService<SaveShopifyAuthConfigResponse>(SETTINGS.saveShopifyAuthConfig, payload, signal)
   },
-  deleteShopifyAuthConfig(payload: DeleteShopifyAuthConfigPayload): Promise<DeleteShopifyAuthConfigResponse> {
-    return callService<DeleteShopifyAuthConfigResponse>(SETTINGS.deleteShopifyAuthConfig, payload)
+  deleteShopifyAuthConfig(payload: DeleteShopifyAuthConfigPayload, signal?: AbortSignal): Promise<DeleteShopifyAuthConfigResponse> {
+    return callService<DeleteShopifyAuthConfigResponse>(SETTINGS.deleteShopifyAuthConfig, payload, signal)
   },
-  listOmsRestSourceConfigs(payload: ListOmsRestSourceConfigsPayload): Promise<ListOmsRestSourceConfigsResponse> {
-    return callService<ListOmsRestSourceConfigsResponse>(SETTINGS.listOmsRestSourceConfigs, payload)
+  listOmsRestSourceConfigs(payload: ListOmsRestSourceConfigsPayload, signal?: AbortSignal): Promise<ListOmsRestSourceConfigsResponse> {
+    return callService<ListOmsRestSourceConfigsResponse>(SETTINGS.listOmsRestSourceConfigs, payload, signal)
   },
-  saveOmsRestSourceConfig(payload: SaveOmsRestSourceConfigPayload): Promise<SaveOmsRestSourceConfigResponse> {
-    return callService<SaveOmsRestSourceConfigResponse>(SETTINGS.saveOmsRestSourceConfig, payload)
+  saveOmsRestSourceConfig(payload: SaveOmsRestSourceConfigPayload, signal?: AbortSignal): Promise<SaveOmsRestSourceConfigResponse> {
+    return callService<SaveOmsRestSourceConfigResponse>(SETTINGS.saveOmsRestSourceConfig, payload, signal)
   },
-  deleteOmsRestSourceConfig(payload: DeleteOmsRestSourceConfigPayload): Promise<DeleteOmsRestSourceConfigResponse> {
-    return callService<DeleteOmsRestSourceConfigResponse>(SETTINGS.deleteOmsRestSourceConfig, payload)
+  deleteOmsRestSourceConfig(payload: DeleteOmsRestSourceConfigPayload, signal?: AbortSignal): Promise<DeleteOmsRestSourceConfigResponse> {
+    return callService<DeleteOmsRestSourceConfigResponse>(SETTINGS.deleteOmsRestSourceConfig, payload, signal)
   },
 }
 
 export const jsonSchemaFacade = {
-  list(payload: ListJsonSchemasPayload): Promise<ListJsonSchemasResponse> {
-    return callService<ListJsonSchemasResponse>(JSON_SCHEMA.list, payload)
+  list(payload: ListJsonSchemasPayload, signal?: AbortSignal): Promise<ListJsonSchemasResponse> {
+    return callService<ListJsonSchemasResponse>(JSON_SCHEMA.list, payload, signal)
   },
-  get(payload: GetJsonSchemaPayload): Promise<GetJsonSchemaResponse> {
-    return callService<GetJsonSchemaResponse>(JSON_SCHEMA.get, payload)
+  get(payload: GetJsonSchemaPayload, signal?: AbortSignal): Promise<GetJsonSchemaResponse> {
+    return callService<GetJsonSchemaResponse>(JSON_SCHEMA.get, payload, signal)
   },
-  saveText(payload: SaveJsonSchemaTextPayload): Promise<SaveJsonSchemaTextResponse> {
-    return callService<SaveJsonSchemaTextResponse>(JSON_SCHEMA.saveText, payload)
+  saveText(payload: SaveJsonSchemaTextPayload, signal?: AbortSignal): Promise<SaveJsonSchemaTextResponse> {
+    return callService<SaveJsonSchemaTextResponse>(JSON_SCHEMA.saveText, payload, signal)
   },
-  inferFromText(payload: InferJsonSchemaFromTextPayload): Promise<InferJsonSchemaResponse> {
-    return callService<InferJsonSchemaResponse>(JSON_SCHEMA.inferFromText, payload)
+  inferFromText(payload: InferJsonSchemaFromTextPayload, signal?: AbortSignal): Promise<InferJsonSchemaResponse> {
+    return callService<InferJsonSchemaResponse>(JSON_SCHEMA.inferFromText, payload, signal)
   },
-  validateText(payload: ValidateJsonTextPayload): Promise<ValidateJsonResponse> {
-    return callService<ValidateJsonResponse>(JSON_SCHEMA.validateText, payload)
+  validateText(payload: ValidateJsonTextPayload, signal?: AbortSignal): Promise<ValidateJsonResponse> {
+    return callService<ValidateJsonResponse>(JSON_SCHEMA.validateText, payload, signal)
   },
-  flatten(payload: FlattenJsonSchemaPayload): Promise<FlattenJsonSchemaResponse> {
-    return callService<FlattenJsonSchemaResponse>(JSON_SCHEMA.flatten, payload)
+  flatten(payload: FlattenJsonSchemaPayload, signal?: AbortSignal): Promise<FlattenJsonSchemaResponse> {
+    return callService<FlattenJsonSchemaResponse>(JSON_SCHEMA.flatten, payload, signal)
   },
-  saveRefined(payload: SaveRefinedSchemaPayload): Promise<SaveRefinedSchemaResponse> {
-    return callService<SaveRefinedSchemaResponse>(JSON_SCHEMA.saveRefined, payload)
+  saveRefined(payload: SaveRefinedSchemaPayload, signal?: AbortSignal): Promise<SaveRefinedSchemaResponse> {
+    return callService<SaveRefinedSchemaResponse>(JSON_SCHEMA.saveRefined, payload, signal)
   },
-  delete(payload: DeleteJsonSchemaPayload): Promise<DeleteJsonSchemaResponse> {
-    return callService<DeleteJsonSchemaResponse>(JSON_SCHEMA.delete, payload)
+  delete(payload: DeleteJsonSchemaPayload, signal?: AbortSignal): Promise<DeleteJsonSchemaResponse> {
+    return callService<DeleteJsonSchemaResponse>(JSON_SCHEMA.delete, payload, signal)
   },
 }
 
 export const reconciliationFacade = {
-  createRuleSetRun(payload: CreateRuleSetRunPayload): Promise<CreateRuleSetRunResponse> {
-    return callService<CreateRuleSetRunResponse>(RECONCILIATION.createRuleSetRun, payload)
+  createRuleSetRun(payload: CreateRuleSetRunPayload, signal?: AbortSignal): Promise<CreateRuleSetRunResponse> {
+    return callService<CreateRuleSetRunResponse>(RECONCILIATION.createRuleSetRun, payload, signal)
   },
-  saveRuleSetRun(payload: SaveRuleSetRunPayload): Promise<SaveRuleSetRunResponse> {
-    return callService<SaveRuleSetRunResponse>(RECONCILIATION.saveRuleSetRun, payload)
+  saveRuleSetRun(payload: SaveRuleSetRunPayload, signal?: AbortSignal): Promise<SaveRuleSetRunResponse> {
+    return callService<SaveRuleSetRunResponse>(RECONCILIATION.saveRuleSetRun, payload, signal)
   },
-  createCsvRun(payload: CreateCsvRunPayload): Promise<CreateCsvRunResponse> {
-    return callService<CreateCsvRunResponse>(RECONCILIATION.createCsvRun, payload)
+  createCsvRun(payload: CreateCsvRunPayload, signal?: AbortSignal): Promise<CreateCsvRunResponse> {
+    return callService<CreateCsvRunResponse>(RECONCILIATION.createCsvRun, payload, signal)
   },
-  listSavedRuns(payload: ListSavedRunsPayload): Promise<ListSavedRunsResponse> {
-    return callService<ListSavedRunsResponse>(RECONCILIATION.listSavedRuns, payload)
+  listSavedRuns(payload: ListSavedRunsPayload, signal?: AbortSignal): Promise<ListSavedRunsResponse> {
+    return callService<ListSavedRunsResponse>(RECONCILIATION.listSavedRuns, payload, signal)
   },
-  createMapping(payload: CreateMappingPayload): Promise<CreateMappingResponse> {
-    return callService<CreateMappingResponse>(RECONCILIATION.createMapping, payload)
+  createMapping(payload: CreateMappingPayload, signal?: AbortSignal): Promise<CreateMappingResponse> {
+    return callService<CreateMappingResponse>(RECONCILIATION.createMapping, payload, signal)
   },
-  listMappings(payload: ListMappingsPayload): Promise<ListMappingsResponse> {
-    return callService<ListMappingsResponse>(RECONCILIATION.listMappings, payload)
+  listMappings(payload: ListMappingsPayload, signal?: AbortSignal): Promise<ListMappingsResponse> {
+    return callService<ListMappingsResponse>(RECONCILIATION.listMappings, payload, signal)
   },
-  getMapping(payload: GetMappingPayload): Promise<GetMappingResponse> {
-    return callService<GetMappingResponse>(RECONCILIATION.getMapping, payload)
+  getMapping(payload: GetMappingPayload, signal?: AbortSignal): Promise<GetMappingResponse> {
+    return callService<GetMappingResponse>(RECONCILIATION.getMapping, payload, signal)
   },
-  saveMapping(payload: SaveMappingPayload): Promise<SaveMappingResponse> {
-    return callService<SaveMappingResponse>(RECONCILIATION.saveMapping, payload)
+  saveMapping(payload: SaveMappingPayload, signal?: AbortSignal): Promise<SaveMappingResponse> {
+    return callService<SaveMappingResponse>(RECONCILIATION.saveMapping, payload, signal)
   },
-  saveDashboardPinnedMappings(payload: SaveDashboardPinnedMappingsPayload): Promise<SaveDashboardPinnedMappingsResponse> {
-    return callService<SaveDashboardPinnedMappingsResponse>(RECONCILIATION.saveDashboardPinnedMappings, payload)
+  saveDashboardPinnedMappings(payload: SaveDashboardPinnedMappingsPayload, signal?: AbortSignal): Promise<SaveDashboardPinnedMappingsResponse> {
+    return callService<SaveDashboardPinnedMappingsResponse>(RECONCILIATION.saveDashboardPinnedMappings, payload, signal)
   },
-  saveDashboardPinnedSavedRuns(payload: SaveDashboardPinnedSavedRunsPayload): Promise<SaveDashboardPinnedSavedRunsResponse> {
-    return callService<SaveDashboardPinnedSavedRunsResponse>(RECONCILIATION.saveDashboardPinnedSavedRuns, payload)
+  saveDashboardPinnedSavedRuns(payload: SaveDashboardPinnedSavedRunsPayload, signal?: AbortSignal): Promise<SaveDashboardPinnedSavedRunsResponse> {
+    return callService<SaveDashboardPinnedSavedRunsResponse>(RECONCILIATION.saveDashboardPinnedSavedRuns, payload, signal)
   },
-  saveSavedRunName(payload: SaveSavedRunNamePayload): Promise<SaveSavedRunNameResponse> {
-    return callService<SaveSavedRunNameResponse>(RECONCILIATION.saveSavedRunName, payload)
+  saveSavedRunName(payload: SaveSavedRunNamePayload, signal?: AbortSignal): Promise<SaveSavedRunNameResponse> {
+    return callService<SaveSavedRunNameResponse>(RECONCILIATION.saveSavedRunName, payload, signal)
   },
-  deleteSavedRun(payload: DeleteSavedRunPayload): Promise<DeleteSavedRunResponse> {
-    return callService<DeleteSavedRunResponse>(RECONCILIATION.deleteSavedRun, payload)
+  deleteSavedRun(payload: DeleteSavedRunPayload, signal?: AbortSignal): Promise<DeleteSavedRunResponse> {
+    return callService<DeleteSavedRunResponse>(RECONCILIATION.deleteSavedRun, payload, signal)
   },
-  runSavedRunDiff(payload: RunSavedRunDiffPayload): Promise<RunSavedRunDiffResponse> {
-    return callService<RunSavedRunDiffResponse>(RECONCILIATION.runSavedRunDiff, payload)
+  runSavedRunDiff(payload: RunSavedRunDiffPayload, signal?: AbortSignal): Promise<RunSavedRunDiffResponse> {
+    return callService<RunSavedRunDiffResponse>(RECONCILIATION.runSavedRunDiff, payload, signal)
   },
-  listGeneratedOutputs(payload: ListGeneratedOutputsPayload): Promise<ListGeneratedOutputsResponse> {
-    return callService<ListGeneratedOutputsResponse>(RECONCILIATION.listGeneratedOutputs, payload)
+  listGeneratedOutputs(payload: ListGeneratedOutputsPayload, signal?: AbortSignal): Promise<ListGeneratedOutputsResponse> {
+    return callService<ListGeneratedOutputsResponse>(RECONCILIATION.listGeneratedOutputs, payload, signal)
   },
-  getGeneratedOutput(payload: GetGeneratedOutputPayload): Promise<GetGeneratedOutputResponse> {
-    return callService<GetGeneratedOutputResponse>(RECONCILIATION.getGeneratedOutput, payload)
+  getGeneratedOutput(payload: GetGeneratedOutputPayload, signal?: AbortSignal): Promise<GetGeneratedOutputResponse> {
+    return callService<GetGeneratedOutputResponse>(RECONCILIATION.getGeneratedOutput, payload, signal)
   },
-  deleteGeneratedOutput(payload: DeleteGeneratedOutputPayload): Promise<DeleteGeneratedOutputResponse> {
-    return callService<DeleteGeneratedOutputResponse>(RECONCILIATION.deleteGeneratedOutput, payload)
+  deleteGeneratedOutput(payload: DeleteGeneratedOutputPayload, signal?: AbortSignal): Promise<DeleteGeneratedOutputResponse> {
+    return callService<DeleteGeneratedOutputResponse>(RECONCILIATION.deleteGeneratedOutput, payload, signal)
   },
-  listAutomations(payload: ListAutomationsPayload): Promise<ListAutomationsResponse> {
-    return callService<ListAutomationsResponse>(RECONCILIATION.listAutomations, payload)
+  listAutomations(payload: ListAutomationsPayload, signal?: AbortSignal): Promise<ListAutomationsResponse> {
+    return callService<ListAutomationsResponse>(RECONCILIATION.listAutomations, payload, signal)
   },
-  getAutomation(payload: GetAutomationPayload): Promise<GetAutomationResponse> {
-    return callService<GetAutomationResponse>(RECONCILIATION.getAutomation, payload)
+  getAutomation(payload: GetAutomationPayload, signal?: AbortSignal): Promise<GetAutomationResponse> {
+    return callService<GetAutomationResponse>(RECONCILIATION.getAutomation, payload, signal)
   },
-  saveAutomation(payload: SaveAutomationPayload): Promise<SaveAutomationResponse> {
-    return callService<SaveAutomationResponse>(RECONCILIATION.saveAutomation, payload)
+  saveAutomation(payload: SaveAutomationPayload, signal?: AbortSignal): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.saveAutomation, payload, signal)
   },
-  deleteAutomation(payload: DeleteAutomationPayload): Promise<DeleteAutomationResponse> {
-    return callService<DeleteAutomationResponse>(RECONCILIATION.deleteAutomation, payload)
+  deleteAutomation(payload: DeleteAutomationPayload, signal?: AbortSignal): Promise<DeleteAutomationResponse> {
+    return callService<DeleteAutomationResponse>(RECONCILIATION.deleteAutomation, payload, signal)
   },
-  pauseAutomation(payload: PauseAutomationPayload): Promise<SaveAutomationResponse> {
-    return callService<SaveAutomationResponse>(RECONCILIATION.pauseAutomation, payload)
+  pauseAutomation(payload: PauseAutomationPayload, signal?: AbortSignal): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.pauseAutomation, payload, signal)
   },
-  resumeAutomation(payload: ResumeAutomationPayload): Promise<SaveAutomationResponse> {
-    return callService<SaveAutomationResponse>(RECONCILIATION.resumeAutomation, payload)
+  resumeAutomation(payload: ResumeAutomationPayload, signal?: AbortSignal): Promise<SaveAutomationResponse> {
+    return callService<SaveAutomationResponse>(RECONCILIATION.resumeAutomation, payload, signal)
   },
-  runAutomationNow(payload: RunAutomationNowPayload): Promise<RunAutomationNowResponse> {
-    return callService<RunAutomationNowResponse>(RECONCILIATION.runAutomationNow, payload)
+  runAutomationNow(payload: RunAutomationNowPayload, signal?: AbortSignal): Promise<RunAutomationNowResponse> {
+    return callService<RunAutomationNowResponse>(RECONCILIATION.runAutomationNow, payload, signal)
   },
-  listAutomationExecutions(payload: ListAutomationExecutionsPayload): Promise<ListAutomationExecutionsResponse> {
-    return callService<ListAutomationExecutionsResponse>(RECONCILIATION.listAutomationExecutions, payload)
+  listAutomationExecutions(payload: ListAutomationExecutionsPayload, signal?: AbortSignal): Promise<ListAutomationExecutionsResponse> {
+    return callService<ListAutomationExecutionsResponse>(RECONCILIATION.listAutomationExecutions, payload, signal)
   },
-  listAutomationSourceOptions(): Promise<ListAutomationSourceOptionsResponse> {
-    return callService<ListAutomationSourceOptionsResponse>(RECONCILIATION.listAutomationSourceOptions)
+  listAutomationSourceOptions(signal?: AbortSignal): Promise<ListAutomationSourceOptionsResponse> {
+    return callService<ListAutomationSourceOptionsResponse>(RECONCILIATION.listAutomationSourceOptions, {}, signal)
   },
 }

@@ -403,13 +403,11 @@ router.beforeEach(async (to) => {
     }
 
     if (to.meta.requiresReconciliationRun === true && !permissions.canRunActiveTenantReconciliation) {
-      const redirectName = typeof to.meta.reconciliationRunRedirectName === 'string' ? to.meta.reconciliationRunRedirectName : 'hub'
-      return { name: redirectName }
+      return { name: to.meta.reconciliationRunRedirectName ?? 'hub' }
     }
 
     if (to.meta.requiresTenantEdit === true && !permissions.canEditTenantSettings) {
-      const redirectName = typeof to.meta.tenantEditRedirectName === 'string' ? to.meta.tenantEditRedirectName : 'hub'
-      return { name: redirectName }
+      return { name: to.meta.tenantEditRedirectName ?? 'hub' }
     }
 
     return true

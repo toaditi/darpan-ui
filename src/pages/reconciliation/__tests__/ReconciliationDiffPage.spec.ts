@@ -219,11 +219,14 @@ describe('ReconciliationDiffPage', () => {
     const wrapper = mount(ReconciliationDiffPage)
     await flushPromises()
 
-    expect(listSavedRuns).toHaveBeenCalledWith({
-      pageIndex: 0,
-      pageSize: 50,
-      query: '',
-    })
+    expect(listSavedRuns).toHaveBeenCalledWith(
+      {
+        pageIndex: 0,
+        pageSize: 50,
+        query: '',
+      },
+      expect.any(AbortSignal),
+    )
     expect(wrapper.find('.workflow-page').exists()).toBe(true)
     expect(wrapper.find('.wizard-progress-track').exists()).toBe(true)
     expect(wrapper.find('.workflow-shell--center-stage').exists()).toBe(true)
@@ -294,12 +297,15 @@ describe('ReconciliationDiffPage', () => {
     const wrapper = mount(ReconciliationDiffPage)
     await flushPromises()
 
-    expect(listGeneratedOutputs).toHaveBeenCalledWith({
-      savedRunId: 'RS_ORDER_CSV',
-      pageIndex: 0,
-      pageSize: 1,
-      query: '',
-    })
+    expect(listGeneratedOutputs).toHaveBeenCalledWith(
+      {
+        savedRunId: 'RS_ORDER_CSV',
+        pageIndex: 0,
+        pageSize: 1,
+        query: '',
+      },
+      expect.any(AbortSignal),
+    )
     expect(wrapper.text()).toContain('Upload the OMS CSV file')
     expect(wrapper.find('.reconciliation-run-history-board').exists()).toBe(true)
     expect(wrapper.get('[data-testid="latest-run-result"]').text()).toContain('Mar')
@@ -391,16 +397,19 @@ describe('ReconciliationDiffPage', () => {
     await wrapper.get('.workflow-step-shell').trigger('keydown.enter')
     await flushPromises()
 
-    expect(runSavedRunDiff).toHaveBeenCalledWith({
-      savedRunId: 'RS_ORDER_CSV',
-      file1Name: 'oms-orders.csv',
-      file1Text: 'order_id\n1001\n1002\n',
-      file2Name: 'shopify-orders.csv',
-      file2Text: 'order_id\n1002\n1003\n',
-      file1SystemEnumId: 'OMS',
-      file2SystemEnumId: 'SHOPIFY',
-      hasHeader: true,
-    })
+    expect(runSavedRunDiff).toHaveBeenCalledWith(
+      {
+        savedRunId: 'RS_ORDER_CSV',
+        file1Name: 'oms-orders.csv',
+        file1Text: 'order_id\n1001\n1002\n',
+        file2Name: 'shopify-orders.csv',
+        file2Text: 'order_id\n1002\n1003\n',
+        file1SystemEnumId: 'OMS',
+        file2SystemEnumId: 'SHOPIFY',
+        hasHeader: true,
+      },
+      expect.any(AbortSignal),
+    )
     expect(push).toHaveBeenCalledWith({
       name: 'reconciliation-run-result',
       params: {
@@ -924,11 +933,14 @@ describe('ReconciliationDiffPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Upload the OMS CSV file')
-    expect(listGeneratedOutputs).toHaveBeenCalledWith({
-      savedRunId: 'RS_ORDER_CSV',
-      pageIndex: 0,
-      pageSize: 1,
-      query: '',
-    })
+    expect(listGeneratedOutputs).toHaveBeenCalledWith(
+      {
+        savedRunId: 'RS_ORDER_CSV',
+        pageIndex: 0,
+        pageSize: 1,
+        query: '',
+      },
+      expect.any(AbortSignal),
+    )
   })
 })

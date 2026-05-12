@@ -3,11 +3,26 @@ import { ApiCallError } from '../lib/api/client'
 import { reconciliationFacade } from '../lib/api/facade'
 import type { GeneratedOutput, RunSavedRunDiffResponse, SavedRunSummary } from '../lib/api/types'
 import type { RunSavedRunDiffPayload } from '../lib/api/facadeTypes'
-import { makeRequestGuard } from '../lib/utils/async'
 
 interface FailedRunFeedback {
   validationErrors: string[]
   processingWarnings: string[]
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException) return error.name === 'AbortError'
+  return typeof error === 'object' && error !== null && (error as { name?: string }).name === 'AbortError'
+}
+
+function linkExternalSignal(internal: AbortController, external: AbortSignal | undefined): () => void {
+  if (!external) return () => {}
+  if (external.aborted) {
+    internal.abort()
+    return () => {}
+  }
+  const onAbort = (): void => internal.abort()
+  external.addEventListener('abort', onAbort, { once: true })
+  return () => external.removeEventListener('abort', onAbort)
 }
 
 export interface UseReconciliationDiff {
@@ -21,11 +36,11 @@ export interface UseReconciliationDiff {
   running: Ref<boolean>
   validationErrors: Ref<string[]>
   processingWarnings: Ref<string[]>
-  loadSavedRuns: () => Promise<void>
-  loadLatestSavedOutput: (savedRunId: string) => Promise<void>
+  loadSavedRuns: (signal?: AbortSignal) => Promise<void>
+  loadLatestSavedOutput: (savedRunId: string, signal?: AbortSignal) => Promise<void>
   clearLatestSavedOutputState: () => void
   clearRunState: () => void
-  submitDiff: (payload: RunSavedRunDiffPayload) => Promise<RunSavedRunDiffResponse | null>
+  submitDiff: (payload: RunSavedRunDiffPayload, signal?: AbortSignal) => Promise<RunSavedRunDiffResponse | null>
   readFailedRunFeedback: (error: ApiCallError) => FailedRunFeedback
 }
 
@@ -41,7 +56,7 @@ export function useReconciliationDiff(): UseReconciliationDiff {
   const validationErrors = ref<string[]>([])
   const processingWarnings = ref<string[]>([])
 
-  const latestOutputRequest = makeRequestGuard()
+  let latestOutputController: AbortController | null = null
 
   function clearRunState(): void {
     runError.value = null
@@ -55,7 +70,7 @@ export function useReconciliationDiff(): UseReconciliationDiff {
     latestSavedOutputError.value = null
   }
 
-  async function loadSavedRuns(): Promise<void> {
+  async function loadSavedRuns(signal?: AbortSignal): Promise<void> {
     loadingSavedRuns.value = true
     loadError.value = null
 
@@ -64,23 +79,30 @@ export function useReconciliationDiff(): UseReconciliationDiff {
         pageIndex: 0,
         pageSize: 50,
         query: '',
-      })
+      }, signal)
       savedRuns.value = response.savedRuns ?? []
     } catch (error) {
+      if (isAbortError(error)) return
       loadError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved runs.'
     } finally {
-      loadingSavedRuns.value = false
+      if (!signal?.aborted) {
+        loadingSavedRuns.value = false
+      }
     }
   }
 
-  async function loadLatestSavedOutput(savedRunId: string): Promise<void> {
+  async function loadLatestSavedOutput(savedRunId: string, signal?: AbortSignal): Promise<void> {
     const normalizedSavedRunId = savedRunId.trim()
     if (!normalizedSavedRunId) {
       clearLatestSavedOutputState()
       return
     }
 
-    const requestId = latestOutputRequest.getRequestId()
+    latestOutputController?.abort()
+    const controller = new AbortController()
+    latestOutputController = controller
+    const unlink = linkExternalSignal(controller, signal)
+
     latestSavedOutputLoading.value = true
     latestSavedOutputError.value = null
     latestSavedOutput.value = null
@@ -91,17 +113,20 @@ export function useReconciliationDiff(): UseReconciliationDiff {
         pageIndex: 0,
         pageSize: 1,
         query: '',
-      })
-
-      if (!latestOutputRequest.isCurrentRequest(requestId)) return
+      }, controller.signal)
+      if (controller.signal.aborted) return
       latestSavedOutput.value = response.generatedOutputs?.[0] ?? null
     } catch (error) {
-      if (!latestOutputRequest.isCurrentRequest(requestId)) return
+      if (controller.signal.aborted || isAbortError(error)) return
       latestSavedOutput.value = null
       latestSavedOutputError.value = error instanceof ApiCallError ? error.message : 'Unable to load saved results.'
     } finally {
-      if (latestOutputRequest.isCurrentRequest(requestId)) {
+      unlink()
+      if (!controller.signal.aborted) {
         latestSavedOutputLoading.value = false
+      }
+      if (latestOutputController === controller) {
+        latestOutputController = null
       }
     }
   }
@@ -124,16 +149,19 @@ export function useReconciliationDiff(): UseReconciliationDiff {
     }
   }
 
-  async function submitDiff(payload: RunSavedRunDiffPayload): Promise<RunSavedRunDiffResponse | null> {
+  async function submitDiff(payload: RunSavedRunDiffPayload, signal?: AbortSignal): Promise<RunSavedRunDiffResponse | null> {
     clearRunState()
     running.value = true
 
     try {
-      const response = await reconciliationFacade.runSavedRunDiff(payload)
+      const response = await reconciliationFacade.runSavedRunDiff(payload, signal)
       validationErrors.value = response.runResult?.validationErrors ?? []
       processingWarnings.value = response.runResult?.processingWarnings ?? []
       return response
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error
+      }
       if (error instanceof ApiCallError) {
         const failedFeedback = readFailedRunFeedback(error)
         validationErrors.value = failedFeedback.validationErrors
@@ -144,7 +172,9 @@ export function useReconciliationDiff(): UseReconciliationDiff {
       }
       throw error
     } finally {
-      running.value = false
+      if (!signal?.aborted) {
+        running.value = false
+      }
     }
   }
 

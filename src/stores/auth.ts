@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 import type { RouteLocationRaw } from 'vue-router'
 import { ApiCallError, clearAuthToken, setAuthTokenContract } from '../lib/api/client'
 import { authFacade, clearApiResponseCache, settingsFacade } from '../lib/api/facade'
+import { useReferenceDataStore } from './referenceData'
+import { useRunResultsStore } from './runResults'
 import type {
   ChangeOwnPasswordResponse,
   LoginSessionResponse,
@@ -156,6 +158,18 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
+  function _hydrateReferenceData(): void {
+    // Fire-and-forget — pages await ensureLoaded() if they arrive before the
+    // fan-out resolves, so we don't block the post-login redirect here.
+    try {
+      void useReferenceDataStore().hydrate()
+      void useRunResultsStore().hydrate()
+    } catch {
+      // Pinia not active (e.g. some test setups); data will be lazy-loaded
+      // on first page access instead.
+    }
+  }
+
   function _applyAuthResponse(response: SessionInfoResponse | LoginSessionResponse, unauthenticatedMessage: string): boolean {
     if (response.authenticated) {
       _applyAuthenticatedSession(response.sessionInfo)
@@ -177,6 +191,7 @@ export const useAuthStore = defineStore('auth', () => {
         status: 'authenticated',
         sessionInfo: { userId: 'local-dev', username: 'local-dev' },
       })
+      _hydrateReferenceData()
       return true
     }
 
@@ -184,7 +199,9 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const response = await authFacade.getSessionInfo()
-      return _applyAuthResponse(response, 'No active authenticated session detected.')
+      const isAuthenticated = _applyAuthResponse(response, 'No active authenticated session detected.')
+      if (isAuthenticated) _hydrateReferenceData()
+      return isAuthenticated
     } catch (err) {
       if (err instanceof ApiCallError && err.status === 401) {
         clearAuthToken()
@@ -205,6 +222,7 @@ export const useAuthStore = defineStore('auth', () => {
         status: 'authenticated',
         sessionInfo: { userId: 'local-dev', username: 'local-dev' },
       })
+      _hydrateReferenceData()
       return true
     }
 
@@ -214,10 +232,13 @@ export const useAuthStore = defineStore('auth', () => {
         const authToken = response.authToken?.toString()?.trim()
         if (!authToken) throw new Error('Authenticated login response missing authToken')
         setAuthTokenContract(response)
+        // Clear any stale tenant cache before fan-out so the new session
+        // starts from a clean slate.
+        clearApiResponseCache()
       }
 
       const isAuthenticated = _applyAuthResponse(response, 'Login failed')
-      if (isAuthenticated) clearApiResponseCache()
+      if (isAuthenticated) _hydrateReferenceData()
       return isAuthenticated
     } catch (err) {
       clearAuthToken()
@@ -264,6 +285,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function saveActiveTenant(activeTenantUserGroupId: string): Promise<boolean> {
     if (authBypass) {
       clearApiResponseCache()
+      _hydrateReferenceData()
       return true
     }
 
@@ -273,6 +295,7 @@ export const useAuthStore = defineStore('auth', () => {
         const errorMessage = response.ok ? null : response.errors?.[0] ?? 'Unable to switch tenant.'
         if (response.ok) clearApiResponseCache()
         _applyAuthenticatedSession(response.sessionInfo, errorMessage)
+        if (response.ok) _hydrateReferenceData()
         return response.ok
       }
 
@@ -375,6 +398,11 @@ export const useAuthStore = defineStore('auth', () => {
           ..._sessionInfo.value,
           timeZone: response.tenantSettings.timeZone,
         })
+        try {
+          useReferenceDataStore().setTenantSettings(response.tenantSettings)
+        } catch {
+          // ignore — store optional in some test contexts
+        }
       } else if (!response.ok) {
         _applyAuthState({
           status: _status.value === 'authenticated' ? 'authenticated' : 'verification-failed',

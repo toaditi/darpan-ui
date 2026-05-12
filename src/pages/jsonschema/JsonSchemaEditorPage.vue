@@ -180,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppTableFrame from '../../components/ui/AppTableFrame.vue'
 import AppSaveAction from '../../components/ui/AppSaveAction.vue'
@@ -337,8 +337,16 @@ function getSchemaDeleteLabel(): string {
   return description.value.trim() || schemaName.value.trim() || currentSchemaId.value
 }
 
-async function loadFlattenedRows(): Promise<void> {
-  const response = await jsonSchemaFacade.flatten({ jsonSchemaId: currentSchemaId.value })
+const pageAbortController = new AbortController()
+let initializeController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  initializeController?.abort()
+})
+
+async function loadFlattenedRows(signal?: AbortSignal): Promise<void> {
+  const response = await jsonSchemaFacade.flatten({ jsonSchemaId: currentSchemaId.value }, signal)
   fieldRows.value = (response.fieldList ?? []).map((item) => ({
     fieldPath: String(item.fieldPath ?? ''),
     type: normalizeFieldType(item.type),
@@ -346,7 +354,7 @@ async function loadFlattenedRows(): Promise<void> {
   }))
 }
 
-async function loadSchema(): Promise<void> {
+async function loadSchema(signal?: AbortSignal): Promise<void> {
   if (!hasTarget.value) {
     initialLoadCompleted.value = true
     return
@@ -356,7 +364,7 @@ async function loadSchema(): Promise<void> {
   error.value = null
 
   try {
-    const response = await jsonSchemaFacade.get({ jsonSchemaId: currentSchemaId.value })
+    const response = await jsonSchemaFacade.get({ jsonSchemaId: currentSchemaId.value }, signal)
     const schemaData = response.schemaData
 
     if (!schemaData) {
@@ -373,9 +381,10 @@ async function loadSchema(): Promise<void> {
     lastUpdatedStamp.value = schemaData.lastUpdatedStamp ?? ''
     schemaText.value = schemaData.schemaText ?? ''
 
-    await loadFlattenedRows()
+    await loadFlattenedRows(signal)
     initialLoadSucceeded.value = true
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load schema.'
   } finally {
     initialLoadCompleted.value = true
@@ -386,13 +395,16 @@ async function loadSchema(): Promise<void> {
 async function reload(): Promise<void> {
   initialLoadCompleted.value = false
   initialLoadSucceeded.value = false
-  await loadSchema()
-  await loadSystemOptions()
+  initializeController?.abort()
+  initializeController = new AbortController()
+  const signal = initializeController.signal
+  await loadSchema(signal)
+  await loadSystemOptions(signal)
 }
 
-async function loadSystemOptions(): Promise<void> {
+async function loadSystemOptions(signal?: AbortSignal): Promise<void> {
   try {
-    const response = await settingsFacade.listEnumOptions('DarpanSystemSource')
+    const response = await settingsFacade.listEnumOptions('DarpanSystemSource', signal)
     const resolvedOptions = (response.options ?? []).map(toSystemOption)
     if (systemEnumId.value && !resolvedOptions.some((option) => option.value === systemEnumId.value)) {
       resolvedOptions.unshift({
@@ -402,6 +414,7 @@ async function loadSystemOptions(): Promise<void> {
     }
     systemOptions.value = resolvedOptions
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load reconciliation systems.'
   }
 }
@@ -456,8 +469,11 @@ async function deleteSchema(): Promise<void> {
 
 async function initializeEditor(): Promise<void> {
   resetEditorState(resolveTargetSchemaId())
-  await loadSchema()
-  await loadSystemOptions()
+  initializeController?.abort()
+  initializeController = new AbortController()
+  const signal = initializeController.signal
+  await loadSchema(signal)
+  await loadSystemOptions(signal)
 }
 
 watch(() => [props.jsonSchemaId, route.fullPath], () => {

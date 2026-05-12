@@ -194,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.vue'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
@@ -359,12 +359,20 @@ function buildShopifyAuthDashboardRoute(shopifyAuthConfigId: string) {
   }
 }
 
-async function loadShopifyConfig(): Promise<void> {
+const pageAbortController = new AbortController()
+let loadController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadController?.abort()
+})
+
+async function loadShopifyConfig(signal?: AbortSignal): Promise<void> {
   if (!isEditing.value) return
 
   const response = await settingsFacade.getShopifyAuthConfig({
     shopifyAuthConfigId: activeShopifyConfigId.value,
-  })
+  }, signal)
   if (!response.shopifyAuthConfig) {
     error.value = `Unable to find Shopify config "${activeShopifyConfigId.value}".`
     return
@@ -378,9 +386,14 @@ async function load(): Promise<void> {
   success.value = null
   if (!isEditing.value) resetCreateForm()
 
+  loadController?.abort()
+  loadController = new AbortController()
+  const signal = loadController.signal
+
   try {
-    await loadShopifyConfig()
+    await loadShopifyConfig(signal)
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load Shopify config.'
   } finally {
     loading.value = false

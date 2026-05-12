@@ -361,7 +361,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowSelect from '../../components/workflow/WorkflowSelect.vue'
@@ -736,13 +736,25 @@ async function handlePrimarySubmit(): Promise<void> {
   goNext()
 }
 
+const pageAbortController = new AbortController()
+let loadAuthConfigController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadAuthConfigController?.abort()
+})
+
 async function loadAuthConfig(): Promise<void> {
   if (!isEditing.value) return
+
+  loadAuthConfigController?.abort()
+  loadAuthConfigController = new AbortController()
+  const signal = loadAuthConfigController.signal
 
   loading.value = true
   error.value = null
   try {
-    const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 })
+    const response = await settingsFacade.listNsAuthConfigs({ pageIndex: 0, pageSize: 200 }, signal)
     const matchingConfig = filterRecordsForActiveTenant(
       response.authConfigs ?? [],
       authStore.sessionInfo?.activeTenantUserGroupId ?? null,
@@ -753,6 +765,7 @@ async function loadAuthConfig(): Promise<void> {
     }
     applyRecord(matchingConfig)
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load auth config.'
   } finally {
     loading.value = false

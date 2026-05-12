@@ -145,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import StaticEditableTitle from '../../components/ui/StaticEditableTitle.vue'
 import StaticPageFrame from '../../components/ui/StaticPageFrame.vue'
@@ -157,10 +157,11 @@ import { reconciliationFacade } from '../../lib/api/facade'
 import type { PaginationMeta, GeneratedOutput } from '../../lib/api/types'
 import { usePermissionsStore } from '../../stores/permissions'
 import { useReconciliationDraftStore } from '../../stores/reconciliationDraft'
+import { useRunResultsStore } from '../../stores/runResults'
 import {
   listPendingReconciliationRuns,
-  PENDING_RECONCILIATION_RUNS_EVENT,
   resolveCompletedPendingReconciliationRuns,
+  subscribeToPendingReconciliationRunsChange,
   type PendingReconciliationRun,
 } from '../../lib/reconciliationPendingRuns'
 import { normalizeDisplayText } from '../../lib/reconciliationDisplay'
@@ -187,6 +188,7 @@ const route = useRoute()
 const router = useRouter()
 const permissionsStore = usePermissionsStore()
 const draftStore = useReconciliationDraftStore()
+const runResultsStore = useRunResultsStore()
 const loading = ref(false)
 const loadingMore = ref(false)
 const loadError = ref<string | null>(null)
@@ -388,6 +390,14 @@ function appendGeneratedOutputs(nextOutputs: GeneratedOutput[]): void {
   generatedOutputs.value = [...generatedOutputs.value, ...dedupedOutputs]
 }
 
+const pageAbortController = new AbortController()
+let historyController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  historyController?.abort()
+})
+
 async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promise<void> {
   const requestedSavedRunId = savedRunId.value
 
@@ -396,6 +406,12 @@ async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promis
     loadError.value = 'Run history is unavailable without a selected reconciliation run.'
     return
   }
+
+  if (!append) {
+    historyController?.abort()
+    historyController = new AbortController()
+  }
+  const signal = historyController?.signal
 
   if (append) loadingMore.value = true
   else {
@@ -409,7 +425,7 @@ async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promis
       pageIndex: targetPageIndex,
       pageSize: GENERATED_OUTPUT_FETCH_PAGE_SIZE,
       query: '',
-    })
+    }, signal)
 
     if (savedRunId.value !== requestedSavedRunId) return
 
@@ -423,7 +439,12 @@ async function loadGeneratedOutputs(targetPageIndex = 0, append = false): Promis
 
     pagination.value = response.pagination ?? pagination.value
     lastLoadedPageIndex.value = targetPageIndex
+
+    // Seed the global run-results cache from this fetch so navigating away
+    // and back doesn't need to re-fetch.
+    if (nextOutputs.length > 0) runResultsStore.upsertOutputs(nextOutputs)
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     if (savedRunId.value !== requestedSavedRunId) return
 
     if (!append) generatedOutputs.value = []
@@ -448,18 +469,43 @@ async function loadMoreOutputs(): Promise<void> {
   visibleOtherOutputCount.value += OTHER_RESULTS_BATCH_SIZE
 }
 
-watch(savedRunId, () => {
+function primeFromCache(targetSavedRunId: string): boolean {
+  if (!targetSavedRunId) return false
+  const cached = runResultsStore.getOutputsForSavedRun(targetSavedRunId)
+  if (cached.length === 0) return false
+
+  generatedOutputs.value = cached
+  pendingRuns.value = resolveCompletedPendingReconciliationRuns(
+    targetSavedRunId,
+    cached.filter(isCompletedGeneratedOutput),
+  )
+  // We don't know the full pageCount from the cache alone; leave pagination
+  // at its reset default. The background refresh below will fill it in.
+  return true
+}
+
+watch(savedRunId, (nextSavedRunId) => {
   resetHistoryState()
   refreshPendingRuns()
+
+  // Render cached outputs immediately (no spinner) if hydration found any
+  // for this saved run, then refresh in the background.
+  // showLoadingState only flips the spinner when generatedOutputs is empty,
+  // so a primed cache + fresh fetch produces no spinner — the list silently
+  // updates when the server response replaces the cached snapshot.
+  primeFromCache(nextSavedRunId)
   void loadGeneratedOutputs()
 }, { immediate: true })
 
+let unsubscribePendingRunsListener: (() => void) | null = null
+
 onMounted(() => {
-  window.addEventListener(PENDING_RECONCILIATION_RUNS_EVENT, refreshPendingRuns)
+  unsubscribePendingRunsListener = subscribeToPendingReconciliationRunsChange(refreshPendingRuns)
 })
 
 onUnmounted(() => {
-  window.removeEventListener(PENDING_RECONCILIATION_RUNS_EVENT, refreshPendingRuns)
+  unsubscribePendingRunsListener?.()
+  unsubscribePendingRunsListener = null
 })
 </script>
 

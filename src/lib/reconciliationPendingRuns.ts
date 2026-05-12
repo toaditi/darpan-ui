@@ -1,9 +1,18 @@
 import { normalizeStringOrEmpty } from './utils/strings'
 
 export const PENDING_RECONCILIATION_RUNS_STORAGE_KEY = 'darpan.pendingReconciliationRuns'
-export const PENDING_RECONCILIATION_RUNS_EVENT = 'darpan:pending-reconciliation-runs-changed'
 
 const PENDING_RUN_MAX_AGE_MS = 12 * 60 * 60 * 1000
+
+type PendingRunsListener = () => void
+const pendingRunsListeners = new Set<PendingRunsListener>()
+
+export function subscribeToPendingReconciliationRunsChange(listener: PendingRunsListener): () => void {
+  pendingRunsListeners.add(listener)
+  return () => {
+    pendingRunsListeners.delete(listener)
+  }
+}
 
 export interface PendingReconciliationRun {
   pendingRunId: string
@@ -35,8 +44,13 @@ function storage(): Storage | null {
 }
 
 function notifyPendingRunsChanged(): void {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent(PENDING_RECONCILIATION_RUNS_EVENT))
+  pendingRunsListeners.forEach((listener) => {
+    try {
+      listener()
+    } catch (error) {
+      console.error('[pendingReconciliationRuns] listener threw:', error)
+    }
+  })
 }
 
 function parseTimestamp(value: string | undefined): number {

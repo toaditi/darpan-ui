@@ -530,8 +530,8 @@ describe('ReconciliationRuleSetManagerPage', () => {
     const wrapper = mount(ReconciliationRuleSetManagerPage)
     await flushPromises()
 
-    expect(getJsonSchema).toHaveBeenCalledWith({ schemaName: 'orders-reconciliation-prod-2026-03-01-to-2026-03-31-2026-04-09-04-55-22' })
-    expect(getJsonSchema).toHaveBeenCalledWith({ schemaName: 'Krewe OMS Orders (1)' })
+    expect(getJsonSchema).toHaveBeenCalledWith({ schemaName: 'orders-reconciliation-prod-2026-03-01-to-2026-03-31-2026-04-09-04-55-22' }, expect.any(AbortSignal))
+    expect(getJsonSchema).toHaveBeenCalledWith({ schemaName: 'Krewe OMS Orders (1)' }, expect.any(AbortSignal))
     expect(wrapper.get('[data-testid="ruleset-manager-preview"]').text()).toContain('legacyResourceId = shopify_order_id')
     expect(wrapper.get('[data-testid="ruleset-manager-rule-list"]').text()).toContain('#0')
     expect(wrapper.get('[data-testid="ruleset-manager-preview"]').text()).not.toContain('$.orders[*].legacyResourceId')

@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, type RouteLocationRaw } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -92,6 +92,12 @@ function buildAutomationDashboardRoute(automation: AutomationRecord): RouteLocat
   }
 }
 
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
+
 async function loadAutomations(): Promise<void> {
   loading.value = true
   error.value = null
@@ -100,9 +106,10 @@ async function loadAutomations(): Promise<void> {
       pageIndex: 0,
       pageSize: 200,
       query: '',
-    })
+    }, pageAbortController.signal)
     automations.value = response.automations ?? []
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     automations.value = []
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load automations.'
   } finally {

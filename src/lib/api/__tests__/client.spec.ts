@@ -210,7 +210,7 @@ describe('callService', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://customer.example.com/rpc/json')
   })
 
-  it('does not dispatch the global auth-required event for get#SessionInfo failures', async () => {
+  it('does not invoke the auth-required handler for get#SessionInfo failures', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response('<html><title>Login</title></html>', {
         status: 200,
@@ -219,11 +219,12 @@ describe('callService', () => {
         },
       }),
     )
-    const dispatchEvent = vi.spyOn(window, 'dispatchEvent')
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { callService } = await import('../client')
+    const { callService, setAuthRequiredHandler } = await import('../client')
+    const authRequiredHandler = vi.fn()
+    setAuthRequiredHandler(authRequiredHandler)
 
     let error: unknown
     try {
@@ -239,6 +240,7 @@ describe('callService', () => {
     expect((error as { details?: unknown }).details).toMatchObject({
       method: 'facade.AuthFacadeServices.get#SessionInfo',
     })
-    expect(dispatchEvent).not.toHaveBeenCalled()
+    expect(authRequiredHandler).not.toHaveBeenCalled()
+    setAuthRequiredHandler(null)
   })
 })

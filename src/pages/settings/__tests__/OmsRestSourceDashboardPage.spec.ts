@@ -135,7 +135,7 @@ describe('OmsRestSourceDashboardPage', () => {
     const wrapper = mount(OmsRestSourceDashboardPage)
     await flushPromises()
 
-    expect(listOmsRestSourceConfigs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 })
+    expect(listOmsRestSourceConfigs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 }, expect.any(AbortSignal))
     expect(wrapper.text()).toContain('Krewe HotWax')
     expect(wrapper.text()).toContain('Auth')
     expect(wrapper.text()).toContain('Endpoints')

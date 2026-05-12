@@ -648,7 +648,7 @@ describe('ReconciliationRuleSetEditorPage', () => {
           }),
         }),
       ],
-    }))
+    }), expect.any(AbortSignal))
 
     rectSpy.mockRestore()
   })
@@ -684,7 +684,7 @@ describe('ReconciliationRuleSetEditorPage', () => {
           ruleLogic: expect.stringContaining('RuleDiffSupport.applyPreActions'),
         }),
       ],
-    }))
+    }), expect.any(AbortSignal))
     expect(routerPush).toHaveBeenCalledWith({ path: '/reconciliation/ruleset-manager' })
   })
 

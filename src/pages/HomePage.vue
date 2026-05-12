@@ -73,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import StaticPageFrame from '../components/ui/StaticPageFrame.vue'
 import StaticPageSection from '../components/ui/StaticPageSection.vue'
@@ -135,6 +135,12 @@ const savedRuns = ref<SavedRunSummary[]>([])
 const pinnedSavedRunIds = ref<string[]>([])
 const showAllOtherRuns = ref(false)
 const createFlowRoute: RouteLocationRaw = { name: 'reconciliation-create' }
+
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
 
 const savedRunCards = computed<DashboardFlowCard[]>(() =>
   savedRuns.value.map((savedRun) => {
@@ -233,10 +239,11 @@ async function loadDashboard(): Promise<void> {
       pageIndex: 0,
       pageSize: 12,
       query: '',
-    })
+    }, pageAbortController.signal)
     pinnedSavedRunIds.value = response.pinnedSavedRunIds ?? []
     savedRuns.value = response.savedRuns ?? []
-  } catch {
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     pinnedSavedRunIds.value = []
     savedRuns.value = []
   }

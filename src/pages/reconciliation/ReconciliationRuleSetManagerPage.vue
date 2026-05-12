@@ -240,7 +240,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -642,12 +642,18 @@ function schemaLabelLookupKey(schemaId: string | undefined, schemaName: string |
   return ''
 }
 
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
+
 async function ensureSchemaLabel(schemaId: string | undefined, schemaName: string | undefined, currentLabel: string | undefined): Promise<void> {
   const lookupKey = schemaLabelLookupKey(schemaId, schemaName)
   if (!lookupKey || currentLabel?.trim() || schemaLabels.value[lookupKey]) return
 
   try {
-    const response = await jsonSchemaFacade.get(schemaId?.trim() ? { jsonSchemaId: schemaId.trim() } : { schemaName })
+    const response = await jsonSchemaFacade.get(schemaId?.trim() ? { jsonSchemaId: schemaId.trim() } : { schemaName }, pageAbortController.signal)
     if (!response.schemaData) return
 
     schemaLabels.value = {

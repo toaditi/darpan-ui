@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -163,6 +163,12 @@ const editRoute = computed(() => ({
   params: { omsRestSourceConfigId: configId.value },
 }))
 
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
+
 async function load(): Promise<void> {
   if (!configId.value) {
     error.value = 'HotWax Config ID is missing.'
@@ -173,7 +179,7 @@ async function load(): Promise<void> {
   error.value = null
   config.value = null
   try {
-    const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 })
+    const response = await settingsFacade.listOmsRestSourceConfigs({ pageIndex: 0, pageSize: 200 }, pageAbortController.signal)
     const matchingConfig = filterRecordsForActiveTenant(
       response.omsRestSourceConfigs ?? [],
       authStore.sessionInfo?.activeTenantUserGroupId ?? null,
@@ -184,6 +190,7 @@ async function load(): Promise<void> {
     }
     config.value = matchingConfig
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load HotWax auth config.'
   } finally {
     loading.value = false

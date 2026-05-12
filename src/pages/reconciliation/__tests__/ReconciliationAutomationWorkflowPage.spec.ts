@@ -468,7 +468,7 @@ describe('ReconciliationAutomationWorkflowPage', () => {
           remotePathTemplate: '/shopify/{{date}}',
         }),
       ],
-    })
+    }, expect.any(AbortSignal))
   })
 
   it('saves an existing-run API automation with endpoint and date-window fields', async () => {
@@ -526,7 +526,7 @@ describe('ReconciliationAutomationWorkflowPage', () => {
       relativeWindowTypeEnumId: 'AUT_WIN_CUSTOM',
       customWindowStartDate: '2026-04-01T00:00:00.000Z',
       customWindowEndDate: '2026-05-01T00:00:00.000Z',
-    }))
+    }), expect.any(AbortSignal))
     expect(saveAutomation.mock.calls[0]?.[0].sources).toEqual([
       expect.objectContaining({
         fileSide: 'FILE_1',
@@ -585,7 +585,7 @@ describe('ReconciliationAutomationWorkflowPage', () => {
     const wrapper = mount(ReconciliationAutomationWorkflowPage)
     await flushPromises()
 
-    expect(getAutomation).toHaveBeenCalledWith({ automationId: 'AUT_ORDER_SYNC' })
+    expect(getAutomation).toHaveBeenCalledWith({ automationId: 'AUT_ORDER_SYNC' }, expect.any(AbortSignal))
     expect(wrapper.find('.workflow-page--edit').exists()).toBe(true)
     expect(wrapper.find('.wizard-progress').exists()).toBe(false)
     expect(wrapper.get('form').classes()).toContain('workflow-form--edit-single-page')
@@ -630,7 +630,7 @@ describe('ReconciliationAutomationWorkflowPage', () => {
       scheduleExpr: '0 0 6 * * ?',
       relativeWindowTypeEnumId: 'AUT_WIN_PREV_DAY',
       isActive: false,
-    }))
+    }), expect.any(AbortSignal))
     expect(push).toHaveBeenCalledWith({
       name: 'reconciliation-automation-dashboard',
       params: { automationId: 'AUT_ORDER_SYNC' },

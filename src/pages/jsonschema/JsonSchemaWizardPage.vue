@@ -107,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowShortcutChoiceCards, {
@@ -520,11 +520,18 @@ function toSystemOption(option: EnumOption): AppSelectOption {
   }
 }
 
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
+
 async function loadSystemOptions(): Promise<void> {
   try {
-    const response = await settingsFacade.listEnumOptions('DarpanSystemSource')
+    const response = await settingsFacade.listEnumOptions('DarpanSystemSource', pageAbortController.signal)
     systemOptions.value = (response.options ?? []).map(toSystemOption)
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     pageError.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load reconciliation systems.'
   }
 }

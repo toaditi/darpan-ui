@@ -158,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowStepForm from '../../components/workflow/WorkflowStepForm.vue'
@@ -655,10 +655,18 @@ function resolveOriginPath(): string {
   return draftStore.workflowOrigin?.path ?? '/settings/runs'
 }
 
-async function ensureFieldsLoaded(schemaId: string): Promise<void> {
+const pageAbortController = new AbortController()
+let loadController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadController?.abort()
+})
+
+async function ensureFieldsLoaded(schemaId: string, signal?: AbortSignal): Promise<void> {
   if (!schemaId || flattenedFields.value[schemaId]) return
 
-  const response = await jsonSchemaFacade.flatten({ jsonSchemaId: schemaId })
+  const response = await jsonSchemaFacade.flatten({ jsonSchemaId: schemaId }, signal ?? pageAbortController.signal)
   const comparableFields = (response.fieldList ?? []).filter((field) => field.type !== 'object' && field.type !== 'array')
   flattenedFields.value = {
     ...flattenedFields.value,
@@ -666,7 +674,7 @@ async function ensureFieldsLoaded(schemaId: string): Promise<void> {
   }
 }
 
-async function syncFieldOptions(sourceKey: 'source1' | 'source2'): Promise<void> {
+async function syncFieldOptions(sourceKey: 'source1' | 'source2', signal?: AbortSignal): Promise<void> {
   if (sourceUsesApi(sourceKey)) return
 
   const source = form[sourceKey]
@@ -676,11 +684,12 @@ async function syncFieldOptions(sourceKey: 'source1' | 'source2'): Promise<void>
   }
 
   try {
-    await ensureFieldsLoaded(source.schemaId)
+    await ensureFieldsLoaded(source.schemaId, signal)
     if (source.fieldPath) {
       source.fieldPath = resolveSelectedFieldPath(source.schemaId, source.fieldPath) ?? ''
     }
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load schema fields.'
   }
 }
@@ -695,6 +704,10 @@ async function load(): Promise<void> {
   error.value = null
   success.value = null
 
+  loadController?.abort()
+  loadController = new AbortController()
+  const signal = loadController.signal
+
   try {
     const draftState = draftStore.ruleSetDraftState
     const historyDraft = draftState?.draft?.savedRunId === activeMappingId.value ? draftState.draft : null
@@ -706,9 +719,9 @@ async function load(): Promise<void> {
       pageIndex: 0,
       pageSize: 200,
       query: '',
-    })
+    }, signal)
     const automationSourceOptionsResponse = shouldLoadApiOptions
-      ? await reconciliationFacade.listAutomationSourceOptions()
+      ? await reconciliationFacade.listAutomationSourceOptions(signal)
       : null
 
     schemas.value = schemasResponse.schemas ?? []
@@ -720,15 +733,15 @@ async function load(): Promise<void> {
       ruleSetDraft.value = historyDraft
       hydrateRuleSetDraftForm(historyDraft)
       await Promise.all([
-        syncFieldOptions('source1'),
-        syncFieldOptions('source2'),
+        syncFieldOptions('source1', signal),
+        syncFieldOptions('source2', signal),
       ])
       return
     }
 
     const mappingResponse = await reconciliationFacade.getMapping({
       reconciliationMappingId: activeMappingId.value,
-    })
+    }, signal)
 
     const mapping = mappingResponse.mapping
     if (!mapping) {
@@ -747,10 +760,11 @@ async function load(): Promise<void> {
     form.source2.fieldPath = mapping.members[1]?.fieldPath ?? ''
 
     await Promise.all([
-      syncFieldOptions('source1'),
-      syncFieldOptions('source2'),
+      syncFieldOptions('source1', signal),
+      syncFieldOptions('source2', signal),
     ])
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load run settings.'
   } finally {
     loading.value = false

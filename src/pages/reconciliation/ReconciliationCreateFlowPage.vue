@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkflowPage from '../../components/workflow/WorkflowPage.vue'
 import WorkflowShortcutChoiceCards, {
@@ -1072,13 +1072,14 @@ async function ensureFieldsLoaded(schemaId: string): Promise<void> {
   pageError.value = null
 
   try {
-    const response = await jsonSchemaFacade.flatten({ jsonSchemaId: schemaId })
+    const response = await jsonSchemaFacade.flatten({ jsonSchemaId: schemaId }, pageAbortController.signal)
     const comparableFields = (response.fieldList ?? []).filter((field) => field.type !== 'object' && field.type !== 'array')
     flattenedFields.value = {
       ...flattenedFields.value,
       [schemaId]: comparableFields,
     }
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     pageError.value = error instanceof ApiCallError ? error.message : 'Unable to load schema fields.'
   } finally {
     pendingSchemaFieldLoads.value = Math.max(0, pendingSchemaFieldLoads.value - 1)
@@ -1166,6 +1167,14 @@ async function restoreDraftFromHistoryState(): Promise<void> {
   ])
 }
 
+const pageAbortController = new AbortController()
+let submitController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  submitController?.abort()
+})
+
 async function loadOptions(): Promise<void> {
   loadingOptions.value = true
   pageError.value = null
@@ -1176,8 +1185,8 @@ async function loadOptions(): Promise<void> {
         pageIndex: 0,
         pageSize: 200,
         query: '',
-      }),
-      reconciliationFacade.listAutomationSourceOptions(),
+      }, pageAbortController.signal),
+      reconciliationFacade.listAutomationSourceOptions(pageAbortController.signal),
     ])
 
     systemOptions.value = deduplicateDarpanSystemOptions(automationSourceOptionsResponse.systems ?? []).map((option) => ({
@@ -1193,6 +1202,7 @@ async function loadOptions(): Promise<void> {
     nsRestletConfigs.value = automationSourceOptionsResponse.nsRestletConfigs ?? []
     systemRemotes.value = automationSourceOptionsResponse.systemRemotes ?? []
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     pageError.value = error instanceof ApiCallError ? error.message : 'Unable to load reconciliation setup options.'
   } finally {
     loadingOptions.value = false
@@ -1230,8 +1240,12 @@ async function createRun(): Promise<void> {
 
   pageError.value = null
 
+  submitController?.abort()
+  submitController = new AbortController()
+  const submitSignal = submitController.signal
+
   try {
-    const response = await reconciliationFacade.createRuleSetRun(buildCreateRuleSetRunPayload(activeDraft.value))
+    const response = await reconciliationFacade.createRuleSetRun(buildCreateRuleSetRunPayload(activeDraft.value), submitSignal)
     if (!response.savedRun?.savedRunId) {
       throw new Error('Missing saved run identifier.')
     }
@@ -1255,6 +1269,7 @@ async function createRun(): Promise<void> {
     const workflowOrigin = draftStore.workflowOrigin
     await router.push(workflowOrigin?.path ?? { name: 'hub' })
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     pageError.value = error instanceof ApiCallError ? error.message : 'Unable to create reconciliation flow.'
   }
 }

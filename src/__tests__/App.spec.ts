@@ -77,7 +77,12 @@ const authState = vi.hoisted(() => ({
     return this.sessionInfo?.username ?? this.sessionInfo?.userId ?? null
   },
 }))
-const authRequiredEvent = vi.hoisted(() => 'darpan:auth-required')
+const authRequiredHandlerRef = vi.hoisted(() => ({ current: null as ((detail: unknown) => void) | null }))
+const setAuthRequiredHandler = vi.hoisted(() =>
+  vi.fn((handler: ((detail: unknown) => void) | null) => {
+    authRequiredHandlerRef.current = handler
+  }),
+)
 const route = vi.hoisted(() => ({
   name: 'hub',
   path: '/',
@@ -217,7 +222,7 @@ vi.mock('../stores/reconciliationDraft', () => ({
 }))
 
 vi.mock('../lib/api/client', () => ({
-  AUTH_REQUIRED_EVENT: authRequiredEvent,
+  setAuthRequiredHandler,
 }))
 
 vi.mock('../lib/api/facade', () => ({
@@ -388,8 +393,8 @@ describe('App shell logout', () => {
     await wrapper.get('.command-bubble').trigger('click')
     await flushPromises()
 
-    expect(listSftpServers).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 })
-    expect(listGeneratedOutputs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 80, query: '' })
+    expect(listSftpServers).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 }, expect.any(AbortSignal))
+    expect(listGeneratedOutputs).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 80, query: '' }, expect.any(AbortSignal))
     expect(wrapper.text()).toContain('Edit SFTP: Warehouse Dropship')
     expect(wrapper.text()).toContain('Open Result: Order Match')
   })
@@ -1151,7 +1156,7 @@ describe('App shell logout', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
-  it('re-checks auth on auth-required events and routes verification failures to login', async () => {
+  it('re-checks auth via the registered auth-required handler and routes verification failures to login', async () => {
     ensureAuthenticated.mockResolvedValue(false)
     authState.error = 'Unable to verify authentication'
     authState.status = 'verification-failed'
@@ -1160,7 +1165,9 @@ describe('App shell logout', () => {
     mountApp()
     await flushPromises()
 
-    window.dispatchEvent(new CustomEvent(authRequiredEvent))
+    expect(setAuthRequiredHandler).toHaveBeenCalled()
+    expect(authRequiredHandlerRef.current).toBeTypeOf('function')
+    authRequiredHandlerRef.current?.({ message: 'unauthorized', method: 'facade.X', candidateUrl: '/rpc/json', status: 401 })
     await flushPromises()
 
     expect(ensureAuthenticated).toHaveBeenCalled()

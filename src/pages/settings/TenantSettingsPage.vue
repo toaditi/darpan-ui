@@ -392,7 +392,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSelect, { type AppSelectOption } from '../../components/ui/AppSelect.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -406,6 +406,7 @@ import { settingsFacade } from '../../lib/api/facade'
 import type { LlmSettings, TenantNotificationSettings, TenantSettings } from '../../lib/api/types'
 import { useAuthStore } from '../../stores/auth'
 import { usePermissionsStore } from '../../stores/permissions'
+import { useReferenceDataStore } from '../../stores/referenceData'
 import { buildTimezoneOptions } from '../../lib/timezones'
 import { normalizeStringOrEmpty } from '../../lib/utils/strings'
 import { useTenantSettingsPopup } from '../../composables/useActivePopup'
@@ -431,6 +432,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const permissionsStore = usePermissionsStore()
+const referenceDataStore = useReferenceDataStore()
 
 const providerOrder: LlmProvider[] = ['OPENAI', 'GEMINI']
 const providerLabels: Record<LlmProvider, string> = {
@@ -466,19 +468,37 @@ const createSteps: CreateStep[] = [
   { id: 'llmApiKey', title: 'What API key should this provider use?', kind: 'password' },
 ]
 
-const providers = ref<ProviderProfile[]>([])
-const aiLoading = ref(false)
-const aiError = ref<string | null>(null)
+const providers = computed<ProviderProfile[]>(() => {
+  if (!canManageGlobalSettings.value) return []
+  return (['OPENAI', 'GEMINI'] as LlmProvider[]).map((provider) =>
+    buildProfile(provider, referenceDataStore.getLlmProvider(provider)),
+  )
+})
+const aiLoading = computed(() => referenceDataStore.llmProvidersLoading)
+const aiError = computed(() => referenceDataStore.llmProvidersError)
 const aiSuccess = ref<string | null>(null)
-const summaryLoading = ref(false)
-const summaryError = ref<string | null>(null)
-const tenantSettings = ref<TenantSettings | null>(null)
-const tenantTimezoneSummary = ref('UTC')
+const summaryLoading = computed(() => (
+  referenceDataStore.tenantSettingsLoading || referenceDataStore.notificationSettingsLoading
+))
+const summaryError = computed(() => {
+  const errs = [referenceDataStore.tenantSettingsError, referenceDataStore.notificationSettingsError].filter(Boolean)
+  return errs.length > 0 ? 'Some tenant settings could not be loaded.' : null
+})
+const tenantSettings = computed<TenantSettings | null>(() => referenceDataStore.tenantSettings)
+const tenantTimezoneSummary = computed(() => (
+  normalizeStringOrEmpty(tenantSettings.value?.timeZone)
+  || normalizeStringOrEmpty(authStore.sessionInfo?.timeZone)
+  || 'UTC'
+))
 const timezoneWorkflowError = ref<string | null>(null)
 const timezoneWorkflowSuccess = ref<string | null>(null)
 const timezoneWorkflowSaving = ref(false)
-const notificationSettings = ref<TenantNotificationSettings | null>(null)
-const notificationSummary = ref('Not configured')
+const notificationSettings = computed<TenantNotificationSettings | null>(() => referenceDataStore.notificationSettings)
+const notificationSummary = computed(() => {
+  const settings = notificationSettings.value
+  if (!settings?.googleChatConfigured) return 'Not configured'
+  return settings.isActive === 'N' ? 'Configured, disabled' : 'Configured'
+})
 const notificationWorkflowError = ref<string | null>(null)
 const notificationWorkflowSuccess = ref<string | null>(null)
 const notificationWorkflowSaving = ref(false)
@@ -716,25 +736,21 @@ function resetAiForm(): void {
 }
 
 function applyTenantSettings(nextSettings?: TenantSettings | null): void {
-  tenantSettings.value = nextSettings ?? null
+  referenceDataStore.setTenantSettings(nextSettings)
   const nextTimeZone = normalizeStringOrEmpty(nextSettings?.timeZone) || normalizeStringOrEmpty(authStore.sessionInfo?.timeZone) || 'UTC'
   timezoneForm.timeZone = nextTimeZone
-  tenantTimezoneSummary.value = nextTimeZone
 }
 
 function applyNotificationSettings(nextSettings?: TenantNotificationSettings | null): void {
-  notificationSettings.value = nextSettings ?? null
+  referenceDataStore.setNotificationSettings(nextSettings)
   notificationForm.googleChatWebhookUrl = ''
   notificationForm.isActive = (nextSettings?.isActive ?? 'N') !== 'N' ? 'Y' : 'N'
-  notificationSummary.value = nextSettings?.googleChatConfigured
-    ? (nextSettings.isActive === 'N' ? 'Configured, disabled' : 'Configured')
-    : 'Not configured'
 }
 
 function openTimezoneWorkflow(): void {
   timezoneWorkflowError.value = null
   timezoneWorkflowSuccess.value = null
-  timezoneForm.timeZone = tenantTimezoneSummary.value || 'UTC'
+  timezoneForm.timeZone = normalizeStringOrEmpty(tenantTimezoneSummary.value) || 'UTC'
   openTimezone()
 }
 
@@ -843,17 +859,29 @@ function applyAiSettings(settings: ProviderProfile | LlmSettings, fallbackProvid
   fallbackLlmKeyEnvName.value = settings.fallbackLlmKeyEnvName ?? ''
 }
 
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
+
 async function loadAiProvider(llmProvider: LlmProvider): Promise<void> {
   aiWorkflowLoading.value = true
   aiWorkflowError.value = null
   try {
-    const response = await settingsFacade.getLlmSettings({ llmProvider })
-    if (!response.llmSettings) {
+    let llmSettings = referenceDataStore.getLlmProvider(llmProvider)
+    if (!llmSettings) {
+      const response = await settingsFacade.getLlmSettings({ llmProvider }, pageAbortController.signal)
+      llmSettings = response.llmSettings ?? null
+      if (llmSettings) referenceDataStore.setLlmProvider(llmProvider, llmSettings)
+    }
+    if (!llmSettings) {
       aiWorkflowError.value = `Unable to find AI provider "${llmProvider}".`
       return
     }
-    applyAiSettings(response.llmSettings, llmProvider)
+    applyAiSettings(llmSettings, llmProvider)
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     aiWorkflowError.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load AI provider settings.'
   } finally {
     aiWorkflowLoading.value = false
@@ -967,7 +995,7 @@ async function saveAiSettings(): Promise<void> {
     closeActivePopup()
     resetAiForm()
     aiSuccess.value = response.messages?.[0] ?? 'Saved LLM settings.'
-    await loadAiProviders()
+    await referenceDataStore.refreshLlmProviders()
   } catch (saveError) {
     aiWorkflowError.value = saveError instanceof ApiCallError ? saveError.message : 'Failed to save AI provider settings.'
   } finally {
@@ -975,59 +1003,6 @@ async function saveAiSettings(): Promise<void> {
   }
 }
 
-async function loadAiProviders(): Promise<void> {
-  if (!canManageGlobalSettings.value) {
-    providers.value = []
-    aiError.value = null
-    return
-  }
-
-  aiLoading.value = true
-  aiError.value = null
-  try {
-    const responses = await Promise.all(providerOrder.map((llmProvider) => settingsFacade.getLlmSettings({ llmProvider })))
-    providers.value = responses.map((response, index) => buildProfile(providerOrder[index]!, response.llmSettings))
-  } catch (loadError) {
-    providers.value = []
-    aiError.value = loadError instanceof ApiCallError ? loadError.message : 'Unable to load AI provider settings.'
-  } finally {
-    aiLoading.value = false
-  }
-}
-
-async function loadTenantSummaries(): Promise<void> {
-  summaryLoading.value = true
-  summaryError.value = null
-  try {
-    const [
-      tenantSettingsResult,
-      notificationResult,
-    ] = await Promise.allSettled([
-      settingsFacade.getTenantSettings(),
-      settingsFacade.getTenantNotificationSettings(),
-    ])
-
-    if (tenantSettingsResult.status === 'fulfilled') {
-      applyTenantSettings(tenantSettingsResult.value.tenantSettings)
-    } else {
-      tenantTimezoneSummary.value = 'Not loaded'
-    }
-
-    if (notificationResult.status === 'fulfilled') {
-      applyNotificationSettings(notificationResult.value.tenantNotificationSettings)
-    } else {
-      notificationSummary.value = 'Not loaded'
-    }
-
-    const failed = [
-      tenantSettingsResult,
-      notificationResult,
-    ].some((result) => result.status === 'rejected')
-    summaryError.value = failed ? 'Some tenant settings could not be loaded.' : null
-  } finally {
-    summaryLoading.value = false
-  }
-}
 
 function openRouteRequestedWorkflow(): void {
   const workflow = String(route.query.workflow ?? '')
@@ -1058,7 +1033,8 @@ watch(
 )
 
 onMounted(() => {
-  void loadAiProviders()
-  void loadTenantSummaries()
+  // Reference data is prefetched at login; ensureLoaded() returns the
+  // in-flight promise (or resolves immediately if hydration already finished).
+  void referenceDataStore.ensureLoaded()
 })
 </script>

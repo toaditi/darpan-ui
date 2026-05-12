@@ -109,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import InlineValidation from '../../components/ui/InlineValidation.vue'
@@ -164,6 +164,12 @@ const editRoute = computed(() => ({
   params: { shopifyAuthConfigId: configId.value },
 }))
 
+const pageAbortController = new AbortController()
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+})
+
 async function load(): Promise<void> {
   if (!configId.value) {
     error.value = 'Shopify Config ID is missing.'
@@ -174,7 +180,7 @@ async function load(): Promise<void> {
   error.value = null
   config.value = null
   try {
-    const response = await settingsFacade.getShopifyAuthConfig({ shopifyAuthConfigId: configId.value })
+    const response = await settingsFacade.getShopifyAuthConfig({ shopifyAuthConfigId: configId.value }, pageAbortController.signal)
     const record = response.shopifyAuthConfig ?? null
     const [tenantRecord] = record
       ? filterRecordsForActiveTenant([record], authStore.sessionInfo?.activeTenantUserGroupId ?? null)
@@ -185,6 +191,7 @@ async function load(): Promise<void> {
     }
     config.value = tenantRecord
   } catch (loadError) {
+    if ((loadError as { name?: string })?.name === 'AbortError') return
     error.value = loadError instanceof ApiCallError ? loadError.message : 'Failed to load Shopify config.'
   } finally {
     loading.value = false

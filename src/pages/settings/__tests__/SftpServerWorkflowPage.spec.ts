@@ -199,7 +199,7 @@ describe('SftpServerWorkflowPage', () => {
     const wrapper = mount(SftpServerWorkflowPage)
     await flushPromises()
 
-    expect(listSftpServers).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 })
+    expect(listSftpServers).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 200 }, expect.any(AbortSignal))
     expect((wrapper.get('input[name="sftpServerId"]').element as HTMLInputElement).value).toBe('sftp-primary')
     expect((wrapper.get('input[name="description"]').element as HTMLInputElement).value).toBe('Primary SFTP')
     expect((wrapper.get('input[name="host"]').element as HTMLInputElement).value).toBe('sftp.example.com')

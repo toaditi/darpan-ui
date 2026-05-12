@@ -306,7 +306,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import AppTableFrame from '../../components/ui/AppTableFrame.vue'
 import JsonCollapseViewer from '../../components/ui/JsonCollapseViewer.vue'
@@ -1089,6 +1089,14 @@ function buildGeneratedOutputFromPayload(fileName: string, payload: DiffDetailsP
   }
 }
 
+const pageAbortController = new AbortController()
+let loadSavedResultController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  pageAbortController.abort()
+  loadSavedResultController?.abort()
+})
+
 async function loadSavedResult(): Promise<void> {
   const requestedSavedRunId = savedRunId.value
   const requestedOutputFileName = outputFileName.value
@@ -1099,6 +1107,10 @@ async function loadSavedResult(): Promise<void> {
     return
   }
 
+  loadSavedResultController?.abort()
+  loadSavedResultController = new AbortController()
+  const signal = loadSavedResultController.signal
+
   loading.value = true
   loadError.value = null
   resetDiffDetailsState()
@@ -1107,7 +1119,7 @@ async function loadSavedResult(): Promise<void> {
     const response = await reconciliationFacade.getGeneratedOutput({
       fileName: requestedOutputFileName,
       format: 'json',
-    })
+    }, signal)
 
     if (savedRunId.value !== requestedSavedRunId || outputFileName.value !== requestedOutputFileName) return
 
@@ -1136,6 +1148,7 @@ async function loadSavedResult(): Promise<void> {
     }
     diffDetailRows.value = normalizeDiffDetailRows(payload, descriptor.file1Label || 'File 1', descriptor.file2Label || 'File 2')
   } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return
     if (savedRunId.value !== requestedSavedRunId || outputFileName.value !== requestedOutputFileName) return
 
     resetDiffDetailsState()
